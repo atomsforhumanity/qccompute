@@ -1,5 +1,5 @@
 site_name: qccompute
-site_url: https://qccompute.coltonhicks.com/
+site_url: https://qccompute.docs.atomsforhumanity.org/
 theme:
   name: material
   palette:
@@ -37,7 +37,7 @@ theme:
   icon:
     repo: fontawesome/brands/github-alt
 
-repo_url: https://github.com/coltonbh/qccompute
+repo_url: https://github.com/atomsforhumanity/qccompute
 edit_uri: edit/master/docs/
 site_author: Colton Hicks
 plugins:
@@ -48,7 +48,7 @@ plugins:
         python:
           options:
             members_order: source
-            separate_signature: true
+            separate_signature: false
             show_bases: false
             show_root_heading: true
             show_symbol_type_heading: true
@@ -113,4 +113,4 @@ nav:
       - Optimization: examples/optimization.md
       - Conformer Search: examples/conformer_search.md
       - File Input: examples/file_input.md
-  - Changelog: https://github.com/coltonbh/qccompute/blob/master/CHANGELOG.md
+  - Changelog: https://github.com/atomsforhumanity/qccompute/blob/master/CHANGELOG.md

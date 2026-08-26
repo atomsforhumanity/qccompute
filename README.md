@@ -1,24 +1,26 @@
 # qccompute
 
-A package for running Quantum Chemistry programs using [qcdata](https://github.com/coltonbh/qcdata) standardized data structures. Compatible with `TeraChem`, `psi4`, `Crest`, `xTB`, `QChem`, `NWChem`, `ORCA`, `Molpro`, `geomeTRIC` and many more.
+A package for running Quantum Chemistry programs using [qcdata](https://github.com/atomsforhumanity/qcdata) standardized data structures. Compatible with `TeraChem`, `psi4`, `Crest`, `xTB`, `QChem`, `NWChem`, `ORCA`, `Molpro`, `geomeTRIC` and many more.
 
 [![image](https://img.shields.io/pypi/v/qccompute.svg)](https://pypi.python.org/pypi/qccompute)
 [![image](https://img.shields.io/pypi/l/qccompute.svg)](https://pypi.python.org/pypi/qccompute)
 [![image](https://img.shields.io/pypi/pyversions/qccompute.svg)](https://pypi.python.org/pypi/qccompute)
-[![Actions status](https://github.com/coltonbh/qccompute/workflows/Tests/badge.svg)](https://github.com/coltonbh/qccompute/actions)
-[![Actions status](https://github.com/coltonbh/qccompute/workflows/Basic%20Code%20Quality/badge.svg)](https://github.com/coltonbh/qccompute/actions)
+[![Actions status](https://github.com/atomsforhumanity/qccompute/workflows/Tests/badge.svg)](https://github.com/atomsforhumanity/qccompute/actions)
+[![Actions status](https://github.com/atomsforhumanity/qccompute/workflows/Basic%20Code%20Quality/badge.svg)](https://github.com/atomsforhumanity/qccompute/actions)
 
 `qccompute` works in harmony with a suite of other quantum chemistry tools for fast, structured, and interoperable quantum chemistry.
 
 ## The QC Suite of Programs
 
-- [qcconst](https://github.com/coltonbh/qcconst) - Physical constants, conversion factors, and a periodic table with clear source information for every value.
-- [qcdata](https://github.com/coltonbh/qcdata) - Beautiful and user-friendly data structures for quantum chemistry, featuring seamless Jupyter Notebook visualizations.
-- [qcinf](https://github.com/coltonbh/qcinf) - Cheminformatics algorithms and structure utilities such as `rmsd` and alignment, using standardized [qcdata](https://qcdata.coltonhicks.com/) data structures.
-- [qccodec](https://github.com/coltonbh/qccodec) - A library for efficient parsing of quantum chemistry data into structured `qcdata` objects.
-- [qccompute](https://github.com/coltonbh/qccompute) - A package for running quantum chemistry programs using `qcdata` standardized data structures. Compatible with `TeraChem`, `psi4`, `QChem`, `NWChem`, `ORCA`, `Molpro`, `geomeTRIC`, and many more, featuring seamless Jupyter Notebook visualizations.
-- [BigChem](https://github.com/mtzgroup/bigchem) - A distributed application for running quantum chemistry calculations at scale across clusters of computers or the cloud. Bring multi-node scaling to your favorite quantum chemistry program, featuring seamless Jupyter Notebook visualizations of your data.
-- `ChemCloud` - A [web application](https://github.com/mtzgroup/chemcloud-server) and associated [Python client](https://github.com/mtzgroup/chemcloud-client) for exposing a BigChem cluster securely over the internet, featuring seamless Jupyter Notebook visualizations.
+The QC Suite works in harmony to provide fast, structured, and interoperable quantum chemistry tools.
+
+- [qcconst](https://github.com/atomsforhumanity/qcconst) - Physical constants, conversion factors, and a periodic table with clear source information for every value.
+- [qcdata](https://github.com/atomsforhumanity/qcdata) - Elegant and intuitive data structures for quantum chemistry, featuring seamless Jupyter Notebook visualizations. [Documentation](https://qcdata.docs.atomsforhumanity.org)
+- [qcinf](https://github.com/atomsforhumanity/qcinf) - Cheminformatics algorithms and structure utilities using standardized [qcdata](https://qcdata.docs.atomsforhumanity.org/) data structures.
+- [qccodec](https://github.com/atomsforhumanity/qccodec) - A package for translating between standardized [qcdata](https://github.com/atomsforhumanity/qcdata) data structures and native QC program inputs and outputs.
+- [qccompute](https://github.com/atomsforhumanity/qccompute) - A package for operating quantum chemistry programs using standardized [qcdata](https://qcdata.docs.atomsforhumanity.org/) data structures. Compatible with `TeraChem`, `psi4`, `QChem`, `NWChem`, `ORCA`, `Molpro`, `geomeTRIC` and many more.
+- [BigChem](https://github.com/mtzgroup/bigchem) - A distributed application for running quantum chemistry calculations at scale across clusters of computers or the cloud. Bring multi-node scaling to your favorite quantum chemistry program.
+- `ChemCloud` - A [web application](https://github.com/mtzgroup/chemcloud-server) and associated [Python client](https://github.com/mtzgroup/chemcloud-client) for exposing a BigChem cluster securely over the internet.
 
 ## Installation
 
@@ -28,7 +30,7 @@ python -m pip install qccompute
 
 ## Quickstart
 
-`qccompute` uses the `qcdata` data structures to drive quantum chemistry programs in a standardized way. This allows for a simple and consistent interface to a wide variety of quantum chemistry programs. See the [qcdata](https://github.com/coltonbh/qcdata) library for documentation on the input and output data structures.
+`qccompute` uses the `qcdata` data structures to drive quantum chemistry programs in a standardized way. This allows for a simple and consistent interface to a wide variety of quantum chemistry programs. See the [qcdata](https://github.com/atomsforhumanity/qcdata) library for documentation on the input and output data structures.
 
 The `compute` function is the main entry point for the library and is used to run a calculation.
 
@@ -122,9 +124,9 @@ prog_output = compute_args(
 )
 ```
 
-The behavior of `compute()` and `compute_args()` can be tuned by passing in keyword arguments like `collect_files` shown above. Arguments can modify which scratch directory location to use, whether to delete or keep the scratch files after a calculation completes, what files to collect from a calculation, whether to stream the program logs in real time as the program executes, and whether to propagate a wavefunction through a series of calculations. Arguments also include hooks for passing in update functions that can be called as a program executes in real time. See the [compute method docstring](https://github.com/coltonbh/src/qccompute/blob/83868df51d241ffae3497981dfc3c72235319c6e/qccompute/adapters/base.py#L57-L123) for more details.
+The behavior of `compute()` and `compute_args()` can be tuned by passing in keyword arguments like `collect_files` shown above. Arguments can modify which scratch directory location to use, whether to delete or keep the scratch files after a calculation completes, what files to collect from a calculation, whether to stream the program logs in real time as the program executes, and whether to propagate a wavefunction through a series of calculations. Arguments also include hooks for passing in update functions that can be called as a program executes in real time. See the [compute method docstring](https://github.com/atomsforhumanity/qccompute/blob/83868df51d241ffae3497981dfc3c72235319c6e/qccompute/adapters/base.py#L57-L123) for more details.
 
-See the [/examples](https://github.com/coltonbh/qccompute/tree/master/examples) directory for more examples.
+See the [/examples](https://github.com/atomsforhumanity/qccompute/tree/master/examples) directory for more examples.
 
 ## ✨ Visualization ✨
 
@@ -158,4 +160,4 @@ If you want to use the HTML generated by the viewer to build your own dashboards
 
 ## Support
 
-If you have any issues with `qccompute` or would like to request a feature, please open an [issue](https://github.com/coltonbh/qccompute/issues).
+If you have any issues with `qccompute` or would like to request a feature, please open an [issue](https://github.com/atomsforhumanity/qccompute/issues).

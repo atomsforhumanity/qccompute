@@ -89,7 +89,7 @@ class BaseAdapter(ABC, Generic[InputType, DataType]):
         print_logs: bool = False,
         raise_exc: bool = True,
         propagate_wfn: bool = False,
-        **adapter_kwargs,
+        **adapter_kwargs: Any,
     ) -> ProgramOutput[InputType, DataType]:
         """Compute the given input using the adapter's program.
 

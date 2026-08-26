@@ -1,51 +1,51 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
-         <loc>https://qccompute.coltonhicks.com/</loc>
-         <lastmod>2026-07-16</lastmod>
+         <loc>https://qccompute.docs.atomsforhumanity.org/</loc>
+         <lastmod>2026-08-26</lastmod>
     </url>
     <url>
-         <loc>https://qccompute.coltonhicks.com/examples/conformer_search/</loc>
-         <lastmod>2026-07-16</lastmod>
+         <loc>https://qccompute.docs.atomsforhumanity.org/examples/conformer_search/</loc>
+         <lastmod>2026-08-26</lastmod>
     </url>
     <url>
-         <loc>https://qccompute.coltonhicks.com/examples/file_input/</loc>
-         <lastmod>2026-07-16</lastmod>
+         <loc>https://qccompute.docs.atomsforhumanity.org/examples/file_input/</loc>
+         <lastmod>2026-08-26</lastmod>
     </url>
     <url>
-         <loc>https://qccompute.coltonhicks.com/examples/optimization/</loc>
-         <lastmod>2026-07-16</lastmod>
+         <loc>https://qccompute.docs.atomsforhumanity.org/examples/optimization/</loc>
+         <lastmod>2026-08-26</lastmod>
     </url>
     <url>
-         <loc>https://qccompute.coltonhicks.com/examples/overview/</loc>
-         <lastmod>2026-07-16</lastmod>
+         <loc>https://qccompute.docs.atomsforhumanity.org/examples/overview/</loc>
+         <lastmod>2026-08-26</lastmod>
     </url>
     <url>
-         <loc>https://qccompute.coltonhicks.com/examples/single_point/</loc>
-         <lastmod>2026-07-16</lastmod>
+         <loc>https://qccompute.docs.atomsforhumanity.org/examples/single_point/</loc>
+         <lastmod>2026-08-26</lastmod>
     </url>
     <url>
-         <loc>https://qccompute.coltonhicks.com/programs/crest/</loc>
-         <lastmod>2026-07-16</lastmod>
+         <loc>https://qccompute.docs.atomsforhumanity.org/programs/crest/</loc>
+         <lastmod>2026-08-26</lastmod>
     </url>
     <url>
-         <loc>https://qccompute.coltonhicks.com/programs/geometric/</loc>
-         <lastmod>2026-07-16</lastmod>
+         <loc>https://qccompute.docs.atomsforhumanity.org/programs/geometric/</loc>
+         <lastmod>2026-08-26</lastmod>
     </url>
     <url>
-         <loc>https://qccompute.coltonhicks.com/programs/overview/</loc>
-         <lastmod>2026-07-16</lastmod>
+         <loc>https://qccompute.docs.atomsforhumanity.org/programs/overview/</loc>
+         <lastmod>2026-08-26</lastmod>
     </url>
     <url>
-         <loc>https://qccompute.coltonhicks.com/programs/qcengine/</loc>
-         <lastmod>2026-07-16</lastmod>
+         <loc>https://qccompute.docs.atomsforhumanity.org/programs/qcengine/</loc>
+         <lastmod>2026-08-26</lastmod>
     </url>
     <url>
-         <loc>https://qccompute.coltonhicks.com/programs/terachem/</loc>
-         <lastmod>2026-07-16</lastmod>
+         <loc>https://qccompute.docs.atomsforhumanity.org/programs/terachem/</loc>
+         <lastmod>2026-08-26</lastmod>
     </url>
     <url>
-         <loc>https://qccompute.coltonhicks.com/programs/xtb/</loc>
-         <lastmod>2026-07-16</lastmod>
+         <loc>https://qccompute.docs.atomsforhumanity.org/programs/xtb/</loc>
+         <lastmod>2026-08-26</lastmod>
     </url>
 </urlset>

@@ -1,6 +1,6 @@
 [project]
 name = "qccompute"
-version = "0.13.2"
+version = "0.13.3"
 description = "A package for operating Quantum Chemistry programs using qcdata standardized data structures. Compatible with TeraChem, psi4, QChem, NWChem, ORCA, Molpro, geomeTRIC and many more."
 authors = [{ name = "Colton Hicks", email = "github@coltonhicks.com" }]
 requires-python = ">=3.10"

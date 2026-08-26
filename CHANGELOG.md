@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [unreleased]
 
+## [0.13.3] - 2026-08-26
+
 - Updated GitHub references from `coltonbh` to `atomsforhumanity`.
 - Moved documentation from `qccompute.coltonhicks.com` to `qccompute.docs.atomsforhumanity.org.`
 
@@ -446,7 +448,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Created adapter for TeraChem.
 - Exposed general purpose computing for any subprocess with `FileAdaptor`
 
-[unreleased]: https://github.com/atomsforhumanity/qccompute/compare/0.13.2...HEAD
+[unreleased]: https://github.com/atomsforhumanity/qccompute/compare/0.13.3...HEAD
+[0.13.3]: https://github.com/atomsforhumanity/qccompute/releases/tag/0.13.3
 [0.13.2]: https://github.com/atomsforhumanity/qccompute/releases/tag/0.13.2
 [0.13.1]: https://github.com/atomsforhumanity/qccompute/releases/tag/0.13.1
 [0.13.0]: https://github.com/atomsforhumanity/qccompute/releases/tag/0.13.0

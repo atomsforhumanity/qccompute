@@ -29,7 +29,3 @@ result = compute("terachem", prog_input, collect_files=True)
 The `compute` selects the correct program adapter and then calls `adapter.compute()`. The available arguments and keywords for the top level `compute()` function match those shown here:
 
 ::: qccompute.adapters.BaseAdapter.compute
-
-```
-
-```

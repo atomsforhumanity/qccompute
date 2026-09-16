@@ -1,12 +1,10 @@
-
 import numpy as np
 import pytest
 from qcdata import (
     CalcType,
-    DualProgramInput,
-    ProgramArgs,
     ProgramInput,
     ProgramOutput,
+    ProgramSpec,
     SinglePointData,
     Structure,
 )
@@ -43,41 +41,41 @@ def water():
 def prog_input_factory(hydrogen):
     """Return a factory that creates ProgramInput instances with specified calctypes."""
 
-    def create_program_input(calctype):
+    def create_program_input(calctype, program="test"):
         return ProgramInput(
+            program=program,
             structure=hydrogen,
             calctype=calctype,
-            # Integration tests depend up this model; do not change
             model={"method": "hf", "basis": "sto-3g"},
-            # Tests depend upon these keywords; do not change
-            keywords={
-                "purify": "no",
-                "some-bool": False,
-            },
+            keywords={"purify": "no", "some-bool": False},
         )
 
     return create_program_input
 
 
 @pytest.fixture(scope="function")
-def dual_prog_input_factory(hydrogen):
-    def create_dual_prog_input(calctype):
-        return DualProgramInput(
+def nested_input_factory(hydrogen):
+    def create_nested_input(calctype):
+        return ProgramInput(
+            program="geometric",
             calctype=calctype,
             structure=hydrogen,
-            subprogram="test",
-            subprogram_args=ProgramArgs(
-                model={"method": "hf", "basis": "sto-3g"},
-            ),
+            subprograms=[
+                ProgramSpec(
+                    calctype="gradient",
+                    model={"method": "hf", "basis": "sto-3g"},
+                    program="test",
+                )
+            ],
         )
 
-    return create_dual_prog_input
+    return create_nested_input
 
 
 @pytest.fixture
 def results(prog_input_factory):
     """Create ProgramOutput object"""
-    sp_inp_energy = prog_input_factory("energy")
+    sp_inp_energy = prog_input_factory("energy", program="test")
     energy = 1.0
     n_atoms = len(sp_inp_energy.structure.symbols)
     gradient = np.arange(n_atoms * 3).reshape(n_atoms, 3)
@@ -87,12 +85,13 @@ def results(prog_input_factory):
         input_data=sp_inp_energy,
         success=True,
         logs="program standard out...",
-        data={
+        results={
+            "provenance": {"program": "qcdata-test-suite"},
             "energy": energy,
             "gradient": gradient,
             "hessian": hessian,
         },
-        provenance={"program": "qcdata-test-suite", "scratch_dir": "/tmp/qcdata"},
+        execution={"scratch_dir": "/tmp/qcdata"},
         extras={"some_extra": 1},
     )
 
@@ -107,7 +106,9 @@ def test_adapter():
         def compute_data(
             self, input_data, update_func=None, update_interval=None, **kwargs
         ):
-            return SinglePointData(energy=0.0), "Some stdout."
+            return SinglePointData(
+                provenance={"program": "test"}, energy=0.0
+            ), "Some stdout."
 
         def program_version(self, stdout: str | None = None) -> str:
             return "v1.0.0"

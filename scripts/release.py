@@ -116,6 +116,7 @@ def main():
 
     original_pyproject = Path("pyproject.toml").read_text()
     original_changelog = Path("CHANGELOG.md").read_text()
+    original_lockfile = Path("uv.lock").read_text()
 
     repo_url = get_repo_url()
     update_version_in_pyproject(version)
@@ -127,6 +128,15 @@ def main():
         Path("pyproject.toml").write_text(original_pyproject)
         Path("CHANGELOG.md").write_text(original_changelog)
         sys.exit(1)
+    try:
+        # Resolve the release version before committing or publishing a tag.
+        subprocess.run(["uv", "lock"], check=True)
+    except Exception:
+        print("Reverting release preparation...")
+        Path("pyproject.toml").write_text(original_pyproject)
+        Path("CHANGELOG.md").write_text(original_changelog)
+        Path("uv.lock").write_text(original_lockfile)
+        raise
     run_git_commands(version)
 
 

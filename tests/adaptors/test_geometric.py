@@ -1,11 +1,10 @@
 import pytest
 from qcdata import (
     CalcType,
-    DualProgramInput,
     OptimizationData,
-    ProgramArgs,
     ProgramInput,
     ProgramOutput,
+    ProgramSpec,
     SinglePointData,
 )
 
@@ -43,9 +42,9 @@ def test_ensure_geometric():
         (CalcType.optimization, False),
     ],
 )
-def test_update_input_data(calctype, expected, dual_prog_input_factory):
+def test_update_input_data(calctype, expected, nested_input_factory):
     adapter = GeometricAdapter()
-    prog_input = dual_prog_input_factory(calctype)
+    prog_input = nested_input_factory(calctype)
     adapter._update_input_data(prog_input)
     assert prog_input.keywords["transition"] is expected
 
@@ -65,12 +64,16 @@ def test_qcdata_geometric_engine_exception_handling(
     test_adapter, hydrogen, results, mocker
 ):
     adapter = GeometricAdapter()  # Just for using helper methods below
-    QCIOGeometricEngine = adapter._geometric_engine()
+    QCComputeGeometricEngine = adapter._geometric_engine()
     geometric_hydrogen = adapter._create_geometric_molecule(hydrogen)
 
-    engine = QCIOGeometricEngine(
+    engine = QCComputeGeometricEngine(
         test_adapter,
-        ProgramArgs(**{"model": {"method": "hf", "basis": "sto-3g"}}),
+        ProgramSpec(
+            calctype="gradient",
+            program="test",
+            **{"model": {"method": "hf", "basis": "sto-3g"}},
+        ),
         hydrogen,
         geometric_hydrogen,
     )
@@ -100,11 +103,17 @@ def test_qcdata_geometric_engine_exception_handling(
         engine.calc_new(coords)
 
     assert excinfo.value.data == OptimizationData(
-        trajectory=[results, po_failure]
+        provenance={
+            "program": "geometric",
+            "program_version": adapter.program_version(),
+        },
+        trajectory=[results, po_failure],
     )
 
 
-def test_geometric_exceptions_converted_to_qccompute_exceptions(mocker, dual_prog_input_factory):
+def test_geometric_exceptions_converted_to_qccompute_exceptions(
+    mocker, nested_input_factory
+):
     adapter = GeometricAdapter()
 
     # cause .optimizeGeometry to raise a geomeTRIC exception
@@ -113,28 +122,30 @@ def test_geometric_exceptions_converted_to_qccompute_exceptions(mocker, dual_pro
         side_effect=adapter.geometric.errors.Error("Some geomeTRIC exception."),
     )
 
-    prog_input = dual_prog_input_factory(CalcType.optimization)
+    prog_input = nested_input_factory(CalcType.optimization)
     with pytest.raises(ExternalProgramError):
         adapter.compute_data(prog_input, propagate_wfn=False)
 
 
 def test_compute_data_does_not_mutate_input_keywords(mocker, hydrogen):
     adapter = GeometricAdapter()
-    prog_input = DualProgramInput(
+    prog_input = ProgramInput(
+        program="geometric",
         calctype=CalcType.optimization,
         structure=hydrogen,
-        subprogram="test",
-        subprogram_args=ProgramArgs(
-            model={"method": "hf", "basis": "sto-3g"},
-        ),
         keywords={
             "check": 3,
             "constraints": {
-                "freeze": [
-                    {"type": "distance", "indices": [0, 1], "value": 1.4},
-                ],
+                "freeze": [{"type": "distance", "indices": [0, 1], "value": 1.4}]
             },
         },
+        subprograms=[
+            ProgramSpec(
+                calctype="gradient",
+                model={"method": "hf", "basis": "sto-3g"},
+                program="test",
+            )
+        ],
     )
     original = prog_input.model_copy(deep=True)
 
@@ -164,6 +175,80 @@ def test_compute_data_does_not_mutate_input_keywords(mocker, hydrogen):
 
     data, logs = adapter.compute_data(prog_input, propagate_wfn=False)
 
-    assert data == OptimizationData(trajectory=[])
+    assert data == OptimizationData(
+        provenance={
+            "program": "geometric",
+            "program_version": adapter.program_version(),
+        },
+        trajectory=[],
+    )
     assert logs == ""
     assert prog_input == original
+
+
+def test_gradient_child_spec_is_bound_without_losing_fields(
+    test_adapter, hydrogen, mocker, tmp_path, monkeypatch
+):
+    import numpy as np
+
+    monkeypatch.chdir(tmp_path)
+    adapter = GeometricAdapter()
+    child = ProgramSpec.model_validate(
+        {
+            "program": "test",
+            "calctype": "gradient",
+            "model": {"method": "hf", "basis": "sto-3g"},
+            "keywords": {"threshold": 1e-6},
+            "files": {"native.in": "input"},
+            "cmdline_args": ["--threads", "2"],
+            "extras": {"label": "child"},
+            "subprograms": [{"program": "other", "calctype": "energy"}],
+        }
+    )
+
+    def compute_child(input_data, **kwargs):
+        return ProgramOutput(
+            input_data=input_data,
+            success=True,
+            results=SinglePointData(
+                provenance={"program": "test"}, energy=-1.0, gradient=np.zeros((2, 3))
+            ),
+        )
+
+    compute_mock = mocker.patch.object(
+        test_adapter, "compute", side_effect=compute_child
+    )
+    engine = adapter._geometric_engine()(
+        test_adapter,
+        child,
+        hydrogen,
+        adapter._create_geometric_molecule(hydrogen),
+        structures={"reference": hydrogen},
+    )
+    result = engine.calc_new(hydrogen.geometry.flatten())
+    bound = compute_mock.call_args.args[0]
+    for field in (
+        "program",
+        "calctype",
+        "model",
+        "keywords",
+        "files",
+        "cmdline_args",
+        "extras",
+        "subprograms",
+    ):
+        assert getattr(bound, field) == getattr(child, field)
+    assert bound.structures == {"reference": hydrogen}
+    assert result["energy"] == -1.0
+    assert len(engine.qcdata_trajectory) == 1
+
+
+def test_missing_gradient_child_is_an_input_error(hydrogen):
+    input_data = ProgramInput.model_validate(
+        {"program": "geometric", "calctype": "optimization", "structure": hydrogen}
+    )
+    output = GeometricAdapter().compute(input_data, raise_exc=False)
+    assert not output.success
+    assert isinstance(output.results, OptimizationData)
+    assert output.results.trajectory == []
+    assert "gradient" in output.traceback

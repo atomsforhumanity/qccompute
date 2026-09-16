@@ -5,7 +5,7 @@ from pathlib import Path
 import qccodec
 from qccodec import exceptions as qccodec_exceptions
 from qccodec.parsers.orca import parse_version
-from qcdata import CalcType, ProgramInput, SinglePointData
+from qcdata import CalcType, OptimizationData, ProgramInput, SinglePointData
 
 from qccompute.exceptions import (
     AdapterInputError,
@@ -17,7 +17,7 @@ from .base import ProgramAdapter
 from .utils import execute_subprocess
 
 
-class OrcaAdapter(ProgramAdapter[ProgramInput, SinglePointData]):
+class OrcaAdapter(ProgramAdapter[ProgramInput, SinglePointData | OptimizationData]):
     """Adapter for Orca."""
 
     supported_calctypes = [
@@ -29,7 +29,7 @@ class OrcaAdapter(ProgramAdapter[ProgramInput, SinglePointData]):
     ]
     program = "orca"
 
-    def program_version(self, stdout: str | None = None) -> str:
+    def program_version(self, stdout: str | None = None) -> str | None:
         """Get the program version.
 
         Args:
@@ -38,10 +38,12 @@ class OrcaAdapter(ProgramAdapter[ProgramInput, SinglePointData]):
         Returns:
             The program version.
         """
+        if not stdout:
+            return None
         try:
             return parse_version(stdout)
         except qccodec_exceptions.ParserError:
-            return "Could not parse version"
+            return None
 
     def compute_data(
         self,
@@ -49,7 +51,7 @@ class OrcaAdapter(ProgramAdapter[ProgramInput, SinglePointData]):
         update_func: Callable | None = None,
         update_interval: float | None = None,
         **kwargs,
-    ) -> tuple[SinglePointData, str]:
+    ) -> tuple[SinglePointData | OptimizationData, str]:
         """Execute Orca on the given input.
 
         Args:
@@ -63,7 +65,7 @@ class OrcaAdapter(ProgramAdapter[ProgramInput, SinglePointData]):
         """
         # Construct TeraChem native input files
         try:
-            native_input = qccodec.encode(input_data, self.program)
+            native_input = qccodec.encode(input_data)
         except qccodec.exceptions.EncoderError as e:
             raise AdapterInputError(program=self.program) from e
 
@@ -79,9 +81,19 @@ class OrcaAdapter(ProgramAdapter[ProgramInput, SinglePointData]):
         full_orca_path = shutil.which(self.program)
         if full_orca_path is None:
             raise ProgramNotFoundError(program=self.program)
-        stdout = execute_subprocess(
-            full_orca_path, [input_filename], update_func, update_interval
-        )
+        execution_error: ExternalProgramError | None = None
+        try:
+            stdout = execute_subprocess(
+                full_orca_path,
+                [input_filename, *input_data.cmdline_args],
+                update_func,
+                update_interval,
+            )
+        except ProgramNotFoundError:
+            raise  # Nothing ran, so there are no program artifacts to decode.
+        except ExternalProgramError as exc:
+            execution_error = exc
+            stdout = exc.logs or ""
 
         # Parse output
         try:
@@ -91,12 +103,20 @@ class OrcaAdapter(ProgramAdapter[ProgramInput, SinglePointData]):
                 stdout=stdout,
                 directory=Path.cwd(),
                 input_data=input_data,
+                failed=execution_error is not None,
             )
         except qccodec_exceptions.ParserError as e:
+            if execution_error is not None:
+                execution_error.data = e.data
+                raise execution_error from e
             raise ExternalProgramError(
                 program="qccodec",
                 message="Failed to parse Orca output.",
+                data=e.data,
                 logs=stdout,
                 original_exception=e,
             ) from e
+        if execution_error is not None:
+            execution_error.data = results
+            raise execution_error
         return results, stdout

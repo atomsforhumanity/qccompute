@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [unreleased]
 
+- Require published `qcdata>=0.19.0` and `qccodec>=0.12.0`; remove temporary sibling source overrides and refactor-branch CI checkouts.
+- Regenerate `uv.lock` before release commits and tags, restoring release preparation files if dependency resolution fails.
+
+- Use qcdata’s shared data-type lookup and preserve partial scientific values on failed executions.
+- Bind geomeTRIC child specifications with `ProgramInput.from_spec()` and decode failed native executions before returning their outputs.
+
+### Breaking changes for qcdata 0.19.0 and qccodec 0.12.0
+
+- `compute(input_data)` selects the executor from `input_data.program`; `compute_args(program, structure, ...)` remains the convenience constructor.
+- Use `ProgramInput` with recursive `ProgramSpec` children for orchestration. geomeTRIC selects its gradient child with `get_subprogram("gradient")` and does not require its own model.
+- Scientific values live at `output.results`, producer identity/version at `output.results.provenance`, and runtime information at `output.execution`.
+- Failures retain the scientific data type appropriate to the requested calculation, even when empty. File-only execution returns `FileData`.
+- Wavefunction propagation returns a new input. Deprecated exception `.results` and stdout keyword aliases were removed; use `.prog_output`, `collect_logs`, and `print_logs`.
+- TeraChem FE/PBS reports an intentional incompatibility error for `tcpb==0.16.0`; that dependency needs its own migration.
+- QCEngine integration uses the current Pydantic-compatible QCEngine/QCElemental releases.
+
+
 ## [0.13.3] - 2026-08-26
 
 - Updated GitHub references from `coltonbh` to `atomsforhumanity`.

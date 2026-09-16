@@ -25,19 +25,7 @@ with capture_logs(...) as logs_io:
     # Continue with the rest of the calculation
 ```
 
-- Because the numpy arrays (e.g., `Structure.geometry` or `SinglePointData.hessian`) are only typeable down to `np.typing.NDarray[dtype]` their shapes cannot be statically type checked. For importantly, because `SinglePointData.data` is `Optional` and so are the `.energy`, `.gradient.` and `.hessian` values, I have to add assert statements like this to make this code type safe. I may want to consider using Generics or TypeVars to make this more type safe by having `SinglePointResult` be generic over the type of data it contains to guarantee that the data are not `None` and that the values are not `None`. For now I'll live with the assert statements and the `SinglePointResult`/`ProgramOutput` validators to guarantee the data is correct. Going with `# type: ignore` for now since I know these values will exist due to `Pydantic` validation.
-
-  ```python
-  for i, (forward, backward) in enumerate(zip_longest(*[iter(gradients)] * 2)):
-      assert forward.data is not None, "Missing data object"  # mypy
-      assert backward.data is not None, "Missing data object"  # mypy
-      assert forward.data.gradient is not None, "Missing gradient value"  # mypy
-      assert backward.data.gradient is not None, "Missing gradient value"  # mypy
-      val = (forward.data.gradient - backward.data.gradient) / (dh * 2)
-      hessian[i] = val.flatten()
-  ```
-
-## Publishing Checklist
+- `ProgramOutput.results` always contains the data type required by its input, including on failure. Individual scientific values can still be `None`, so algorithms that consume energies or gradients must check successful completion and the required values. Producer identity and version live on `results.provenance`; execution details live on `output.execution`.
 
 - Update `CHANGELOG.md`
 - Bump version in `pyproject.toml`

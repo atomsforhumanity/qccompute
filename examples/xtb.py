@@ -18,6 +18,7 @@ structure = Structure(
 
 # Define the program input
 prog_input = ProgramInput(
+    program="xtb",
     structure=structure,
     calctype=CalcType.energy,
     model={"method": "GFN2xTB"},  # type: ignore
@@ -25,5 +26,5 @@ prog_input = ProgramInput(
 )
 
 
-prog_output = compute("xtb", prog_input)
+prog_output = compute(prog_input)
 print(prog_output)

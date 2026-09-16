@@ -6,11 +6,11 @@ from pathlib import Path
 import numpy as np
 from qcdata import (
     CalcType,
-    DualProgramInput,
     OptimizationData,
-    ProgramArgs,
     ProgramInput,
     ProgramOutput,
+    ProgramSpec,
+    Provenance,
     SinglePointData,
     Structure,
 )
@@ -27,10 +27,11 @@ from .base import ProgramAdapter
 from .utils import capture_logs
 
 
-class GeometricAdapter(ProgramAdapter[DualProgramInput, OptimizationData]):
+class GeometricAdapter(ProgramAdapter[ProgramInput, OptimizationData]):
     """Adapter for geomeTRIC."""
 
     program = "geometric"
+    requires_model = False
     supported_calctypes = [CalcType.optimization, CalcType.transition_state]
     """Supported calculation types."""
 
@@ -74,7 +75,7 @@ class GeometricAdapter(ProgramAdapter[DualProgramInput, OptimizationData]):
 
     def compute_data(
         self,
-        input_data: DualProgramInput,
+        input_data: ProgramInput,
         update_func: Callable | None = None,
         update_interval: float | None = None,
         propagate_wfn: bool = True,
@@ -83,7 +84,7 @@ class GeometricAdapter(ProgramAdapter[DualProgramInput, OptimizationData]):
         """Compute the requested calculation.
 
         Args:
-            input_data: The qcdata DualProgramInput object for a computation.
+            input_data: The qcdata ProgramInput object for a computation.
             propagate_wfn: Whether to propagate the wavefunction between steps of the
                 optimization.
         """
@@ -91,13 +92,16 @@ class GeometricAdapter(ProgramAdapter[DualProgramInput, OptimizationData]):
         # operate on an internal copy and preserve the caller's original input object.
         input_data = input_data.model_copy(deep=True)
 
+        try:
+            gradient_spec = input_data.get_subprogram(CalcType.gradient)
+        except ValueError as exc:
+            raise AdapterInputError(self.program, str(exc)) from exc
+
         # Update the input object based on its calctype
         self._update_input_data(input_data)
         geometric_molecule = self._create_geometric_molecule(input_data.structure)
         internal_coords_sys = self._setup_coords(input_data, geometric_molecule)
-        qcdata_adapter = get_adapter(
-            input_data.subprogram, input_data, qcng_fallback=True
-        )
+        qcdata_adapter = get_adapter(gradient_spec.program, qcng_fallback=True)
         optimizer = self._construct_optimizer(
             input_data,
             geometric_molecule,
@@ -113,24 +117,42 @@ class GeometricAdapter(ProgramAdapter[DualProgramInput, OptimizationData]):
         with capture_logs("geometric", update_func, update_interval) as (_, log_string):
             try:
                 optimizer.optimizeGeometry()
+            except QCComputeBaseError as exc:
+                raise ExternalProgramError(
+                    program=self.program,
+                    message="A child calculation failed during geomeTRIC optimization.",
+                    logs=log_string.getvalue(),
+                    data=exc.data,
+                    original_exception=exc,
+                ) from exc
             except self.geometric.errors.Error as e:
                 raise ExternalProgramError(
                     program=self.program,
                     message="geomeTRIC optimization failed. See the traceback above for details.",
+                    logs=log_string.getvalue(),
+                    data=OptimizationData(
+                        provenance=Provenance(
+                            program=self.program, program_version=self.program_version()
+                        ),
+                        trajectory=optimizer.engine.qcdata_trajectory,
+                    ),
                 ) from e
 
         return (
             OptimizationData(
+                provenance=Provenance(
+                    program=self.program, program_version=self.program_version()
+                ),
                 trajectory=optimizer.engine.qcdata_trajectory,
             ),
             log_string.getvalue(),
         )
 
-    def _update_input_data(self, input_data: DualProgramInput) -> None:
+    def _update_input_data(self, input_data: ProgramInput) -> None:
         """Update the input_data based on its calctype
 
         Args:
-            input_data: The qcdata DualProgramInput object for a computation.
+            input_data: The qcdata ProgramInput object for a computation.
 
         Returns:
             None. The input_data is updated in place.
@@ -170,7 +192,7 @@ class GeometricAdapter(ProgramAdapter[DualProgramInput, OptimizationData]):
         """Construct the geomeTRIC optimizer object
 
         Args:
-            input_data: The qcdata DualProgramInput object for a computation.
+            input_data: The qcdata ProgramInput object for a computation.
             geometric_molecule: The geomeTRIC Molecule object.
             internal_coords_sys: The geomeTRIC internal coordinate system.
             qcdata_adapter: The qccompute adapter for the subprogram.
@@ -184,12 +206,13 @@ class GeometricAdapter(ProgramAdapter[DualProgramInput, OptimizationData]):
             internal_coords_sys,
             engine=self._geometric_engine()(
                 qcdata_adapter,
-                input_data.subprogram_args,
+                input_data.get_subprogram(CalcType.gradient),
                 input_data.structure,
                 geometric_molecule,
                 propagate_wfn,
                 update_func,
                 update_interval,
+                structures=input_data.structures,
             ),
             dirname=Path.cwd(),
             # Must declare xyzout here to avoid a bug in geomeTRIC
@@ -204,7 +227,7 @@ class GeometricAdapter(ProgramAdapter[DualProgramInput, OptimizationData]):
         """Setup the internal coordinate system.
 
         Args:
-            input_data: The qcdata DualProgramInput object for a computation.
+            input_data: The qcdata ProgramInput object for a computation.
             geometric_structure: The geomeTRIC Structure object.
 
         Returns:
@@ -249,23 +272,29 @@ class GeometricAdapter(ProgramAdapter[DualProgramInput, OptimizationData]):
     def _geometric_engine(self):
         """Return the qccompute geomeTRIC engine class."""
 
+        provenance = Provenance(
+            program=self.program, program_version=self.program_version()
+        )
+
         class QCComputeGeometricEngine(self.geometric.engine.Engine):
             """QCCompute Engine for Geometric"""
 
             def __init__(
                 self,
                 qcdata_adapter: ProgramAdapter,
-                qcdata_program_args: ProgramArgs,
+                qcdata_program_spec: ProgramSpec,
                 qcdata_structure: Structure,
                 geometric_structure,
                 propagate_wfn: bool = False,
                 update_func: Callable | None = None,
                 update_interval: float | None = None,
+                structures: dict[str, Structure] | None = None,
             ):
                 super().__init__(geometric_structure)
                 self.qcdata_adapter = qcdata_adapter
-                self.qcdata_program_args = qcdata_program_args
+                self.qcdata_program_spec = qcdata_program_spec
                 self.qcdata_structure = qcdata_structure
+                self.qcdata_structures = structures or {}
                 self.propagate_wfn = propagate_wfn
                 self.qcdata_trajectory: list[ProgramOutput] = []
                 self.update_func = update_func
@@ -284,10 +313,10 @@ class GeometricAdapter(ProgramAdapter[DualProgramInput, OptimizationData]):
                 structure = Structure(
                     **{**self.qcdata_structure.model_dump(), "geometry": coords}
                 )
-                program_input = ProgramInput(
-                    calctype=CalcType.gradient,
-                    structure=structure,
-                    **self.qcdata_program_args.model_dump(),
+                program_input = ProgramInput.from_spec(
+                    self.qcdata_program_spec,
+                    structure,
+                    structures=self.qcdata_structures,
                 )
 
                 # Propagate wavefunction
@@ -296,7 +325,7 @@ class GeometricAdapter(ProgramAdapter[DualProgramInput, OptimizationData]):
                     and self.propagate_wfn
                     and hasattr(self.qcdata_adapter, "propagate_wfn")
                 ):
-                    self.qcdata_adapter.propagate_wfn(
+                    program_input = self.qcdata_adapter.propagate_wfn(
                         self.qcdata_trajectory[-1], program_input
                     )
 
@@ -315,7 +344,9 @@ class GeometricAdapter(ProgramAdapter[DualProgramInput, OptimizationData]):
                     if e.prog_output:  # For mypy
                         # Append error output
                         self.qcdata_trajectory.append(e.prog_output)
-                    data = OptimizationData(trajectory=self.qcdata_trajectory)
+                    data = OptimizationData(
+                        provenance=provenance, trajectory=self.qcdata_trajectory
+                    )
                     e.data = data
                     # TODO: Add args/kwargs update for Celery serialization?
                     # Maybe not because .data is folded into e.prog_output in
@@ -326,15 +357,14 @@ class GeometricAdapter(ProgramAdapter[DualProgramInput, OptimizationData]):
                     self.qcdata_trajectory.append(results)
 
                 assert (  # for mypy
-                    results.data is not None
-                    and results.data.energy is not None
-                    and results.data.gradient is not None
-                    and isinstance(results.data.gradient, np.ndarray)
+                    results.results.energy is not None
+                    and results.results.gradient is not None
+                    and isinstance(results.results.gradient, np.ndarray)
                 )
                 return {
-                    "energy": results.data.energy,
+                    "energy": results.results.energy,
                     # geomeTRIC requires 1D array
-                    "gradient": results.data.gradient.flatten(),
+                    "gradient": results.results.gradient.flatten(),
                 }
 
         return QCComputeGeometricEngine

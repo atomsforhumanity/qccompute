@@ -7,13 +7,17 @@ import qccodec
 from qccodec.parsers.crest import parse_version
 from qcdata import (
     CalcType,
-    ConformerSearchResults,
-    OptimizationResults,
+    ConformerSearchData,
+    OptimizationData,
     ProgramInput,
     SinglePointData,
 )
 
-from qccompute.exceptions import AdapterInputError, ExternalProgramError
+from qccompute.exceptions import (
+    AdapterInputError,
+    ExternalProgramError,
+    ProgramNotFoundError,
+)
 
 from .base import ProgramAdapter
 from .utils import execute_subprocess
@@ -22,7 +26,7 @@ from .utils import execute_subprocess
 class CRESTAdapter(
     ProgramAdapter[
         ProgramInput,
-        SinglePointData | OptimizationResults | ConformerSearchResults,
+        SinglePointData | OptimizationData | ConformerSearchData,
     ]
 ):
     """Adapter for CREST.
@@ -57,7 +61,7 @@ class CRESTAdapter(
     """Supported calculation types."""
     program = "crest"
 
-    def program_version(self, stdout: str | None = None) -> str:
+    def program_version(self, stdout: str | None = None) -> str | None:
         """Get the program version.
 
         Args:
@@ -68,7 +72,10 @@ class CRESTAdapter(
         """
         if not stdout:
             stdout = execute_subprocess(self.program, ["--version"])
-        return parse_version(stdout)
+        try:
+            return parse_version(stdout)
+        except qccodec.exceptions.ParserError:
+            return None
 
     def compute_data(
         self,
@@ -77,7 +84,7 @@ class CRESTAdapter(
         update_interval: float | None = None,
         collect_rotamers: bool = False,
         **kwargs,
-    ) -> tuple[SinglePointData | OptimizationResults | ConformerSearchResults, str]:
+    ) -> tuple[SinglePointData | OptimizationData | ConformerSearchData, str]:
         """Execute CREST on the given input.
 
         Args:
@@ -88,11 +95,11 @@ class CRESTAdapter(
                 False since rotamers are usually not of interest and there will be many.
 
         Returns:
-            A tuple of ConformerSearchResults and the stdout str.
+            A tuple of ConformerSearchData and the stdout str.
         """
         # Create CREST native input files
         try:
-            native_inp = qccodec.encode(input_data, self.program)
+            native_inp = qccodec.encode(input_data)
         except qccodec.exceptions.EncoderError as e:
             raise AdapterInputError(program=self.program) from e
 
@@ -102,15 +109,25 @@ class CRESTAdapter(
         struct_file.write_text(native_inp.geometry_file)
 
         # Execute CREST
-        stdout = execute_subprocess(
-            self.program, [inp_file.name], update_func, update_interval
-        )
+        execution_error: ExternalProgramError | None = None
+        try:
+            stdout = execute_subprocess(
+                self.program,
+                [inp_file.name, *input_data.cmdline_args],
+                update_func,
+                update_interval,
+            )
+        except ProgramNotFoundError:
+            raise  # Nothing ran, so there are no program artifacts to decode.
+        except ExternalProgramError as exc:
+            execution_error = exc
+            stdout = exc.logs or ""
 
         # CREST does not exit with a non-zero exit code on failure
-        if "FAILED" in stdout:
-            raise ExternalProgramError(
+        if "FAILED" in stdout and execution_error is None:
+            execution_error = ExternalProgramError(
                 program=self.program,
-                message=f"CREST calculation failed. See the stdout for more information.",
+                message="CREST calculation failed. See the stdout for more information.",
                 logs=stdout,
             )
 
@@ -122,8 +139,12 @@ class CRESTAdapter(
                 stdout=stdout,
                 directory=".",
                 input_data=input_data,
+                failed=execution_error is not None,
             )
         except qccodec.exceptions.ParserError as e:
+            if execution_error is not None:
+                execution_error.data = e.data
+                raise execution_error from e
             raise ExternalProgramError(
                 program="qccodec",
                 message="Failed to parse CREST output.",
@@ -132,4 +153,7 @@ class CRESTAdapter(
                 original_exception=e,
             ) from e
 
+        if execution_error is not None:
+            execution_error.data = results
+            raise execution_error
         return results, stdout

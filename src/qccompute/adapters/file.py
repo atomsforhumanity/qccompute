@@ -1,13 +1,13 @@
 from collections.abc import Callable
 
-from qcdata import FileInput, Files
+from qcdata import FileData, FileInput, Provenance
 
 from qccompute.adapters.base import BaseAdapter
 
 from .utils import execute_subprocess
 
 
-class FileAdapter(BaseAdapter[FileInput, Files]):
+class FileAdapter(BaseAdapter[FileInput, FileData]):
     """adapter for running a program on files."""
 
     def __init__(self, program: str) -> None:
@@ -24,7 +24,7 @@ class FileAdapter(BaseAdapter[FileInput, Files]):
         update_func: Callable | None = None,
         update_interval: float | None = None,
         **kwargs,
-    ) -> tuple[Files, str]:
+    ) -> tuple[FileData, str]:
         """Compute the given program on the given files.
 
         Args:
@@ -34,8 +34,8 @@ class FileAdapter(BaseAdapter[FileInput, Files]):
             update_func.
 
         Returns:
-            Tuple of a `Files` object and the program output string for a
-            computation. The returned `Files` instance is initially empty and
+            Tuple of a `FileData` object and the program output string for a
+            computation. The returned `FileData` instance is initially empty and
             will be populated with file data by the :meth:`.compute` method.
 
         Raises:
@@ -45,5 +45,5 @@ class FileAdapter(BaseAdapter[FileInput, Files]):
         stdout = execute_subprocess(
             self.program, input_data.cmdline_args, update_func, update_interval
         )
-        # Files will be added to this object by the .compute() method
-        return Files(), stdout
+        # FileData will be added to this object by the .compute() method
+        return FileData(provenance=Provenance(program=self.program)), stdout

@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [unreleased]
 
+## [0.14.0] - 2026-09-16
+
 - Require published `qcdata>=0.19.0` and `qccodec>=0.12.0`; remove temporary sibling source overrides and refactor-branch CI checkouts.
 - Regenerate `uv.lock` before release commits and tags, restoring release preparation files if dependency resolution fails.
 
@@ -465,7 +467,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Created adapter for TeraChem.
 - Exposed general purpose computing for any subprocess with `FileAdaptor`
 
-[unreleased]: https://github.com/atomsforhumanity/qccompute/compare/0.13.3...HEAD
+[unreleased]: https://github.com/atomsforhumanity/qccompute/compare/0.14.0...HEAD
+[0.14.0]: https://github.com/atomsforhumanity/qccompute/releases/tag/0.14.0
 [0.13.3]: https://github.com/atomsforhumanity/qccompute/releases/tag/0.13.3
 [0.13.2]: https://github.com/atomsforhumanity/qccompute/releases/tag/0.13.2
 [0.13.1]: https://github.com/atomsforhumanity/qccompute/releases/tag/0.13.1

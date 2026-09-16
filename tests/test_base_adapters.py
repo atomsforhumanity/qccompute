@@ -73,7 +73,7 @@ def test_adapters_raise_error_if_calctype_not_supported(prog_input_factory):
         def compute_data(self, *args, **kwargs):
             pass
 
-    gradient_input = prog_input_factory("gradient")
+    gradient_input = prog_input_factory("gradient", program="test")
     with pytest.raises(AdapterInputError):
         TestAdapter().compute(gradient_input)
 
@@ -87,7 +87,7 @@ def test_data_added_to_results_object_if_exception_contains_it(
 
     def raise_error(*args, **kwargs):
         raise ExternalProgramError(
-            program="terachem", logs="some stdout", data=results.data
+            program="terachem", logs="some stdout", data=results.results
         )
 
     mocker.patch.object(
@@ -95,20 +95,22 @@ def test_data_added_to_results_object_if_exception_contains_it(
         "compute_data",
         side_effect=raise_error,
     )
-    energy_input = prog_input_factory("energy")
+    energy_input = prog_input_factory("energy", program="test")
 
     # Check that the exception object contains the results
     with pytest.raises(ExternalProgramError) as excinfo:
         test_adapter.compute(energy_input, raise_exc=True)
-    assert excinfo.value.data == results.data
+    assert excinfo.value.data == results.results
 
     # If no raise_exc=False, the results are added to the ProgramOutput
     computed_results = test_adapter.compute(energy_input, raise_exc=False)
     assert isinstance(computed_results, ProgramOutput)
-    assert computed_results.data == results.data
+    assert computed_results.results == results.results
 
 
-def test_results_object_added_to_exception(prog_input_factory, mocker, results, test_adapter):
+def test_results_object_added_to_exception(
+    prog_input_factory, mocker, results, test_adapter
+):
     """Test that exceptions contain the ProgramOutput object."""
     test_adapter = registry["test"]()
 
@@ -116,7 +118,7 @@ def test_results_object_added_to_exception(prog_input_factory, mocker, results, 
         raise ExternalProgramError(
             program="terachem",
             logs="some stdout",
-            data=results.data,
+            data=results.results,
         )
 
     mocker.patch.object(
@@ -124,7 +126,7 @@ def test_results_object_added_to_exception(prog_input_factory, mocker, results, 
         "compute_data",
         side_effect=raise_error,
     )
-    energy_input = prog_input_factory("energy")
+    energy_input = prog_input_factory("energy", program="test")
 
     # Check that the exception object contains the results
     with pytest.raises(ExternalProgramError) as excinfo:
@@ -132,7 +134,6 @@ def test_results_object_added_to_exception(prog_input_factory, mocker, results, 
 
     assert isinstance(excinfo.value.prog_output, ProgramOutput)
     assert excinfo.value.prog_output.success is False
-    assert excinfo.value.results is excinfo.value.prog_output
     # NOTE: CHECK WITH BIGCHEM
     assert isinstance(excinfo.value.args[-1], SinglePointData)
 
@@ -147,7 +148,7 @@ def test_stdout_collected_with_failed_execution(
         raise ExternalProgramError(
             program="terachem",
             logs="some stdout",
-            data=results.data,
+            data=results.results,
         )
 
     mocker.patch.object(
@@ -155,7 +156,7 @@ def test_stdout_collected_with_failed_execution(
         "compute_data",
         side_effect=raise_error,
     )
-    energy_input = prog_input_factory("energy")
+    energy_input = prog_input_factory("energy", program="test")
 
     # Check that the exception object contains the results
     with pytest.raises(ExternalProgramError) as excinfo:
@@ -166,10 +167,28 @@ def test_stdout_collected_with_failed_execution(
     # Added to ProgramOutput
     assert excinfo.value.prog_output.logs == "some stdout"
     # Added to exception
-    assert excinfo.value.data == results.data
+    assert excinfo.value.data == results.results
 
 
 def test_collect_wfn_raises_adapter_input_error_if_not_implemented(test_adapter):
     """Test that collect_wfn raises an AdapterInputError if not implemented."""
     with pytest.raises(AdapterInputError):
         test_adapter.collect_wfn()
+
+
+def test_parsed_producer_is_preserved(test_adapter, prog_input_factory, mocker):
+    from qcdata import SinglePointData
+
+    data = SinglePointData.model_validate(
+        {
+            "provenance": {"program": "actual-engine", "program_version": "2.0"},
+            "energy": -1.0,
+        }
+    )
+    mocker.patch.object(test_adapter, "compute_data", return_value=(data, "logs"))
+    version_lookup = mocker.spy(test_adapter, "program_version")
+    output = test_adapter.compute(prog_input_factory("energy"))
+    assert output.input_data.program == "test"
+    assert output.results.provenance == data.provenance
+    assert output.execution.wall_time is not None
+    version_lookup.assert_not_called()

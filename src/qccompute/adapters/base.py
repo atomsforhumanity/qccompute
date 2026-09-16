@@ -9,20 +9,18 @@ from qcdata import (
     Data,
     DataType,
     FileInput,
-    Files,
     InputType,
+    ProgramInput,
     ProgramOutput,
-    StructuredInputs,
 )
 from qcdata.helper_types import StrOrPath
 
 from qccompute.exceptions import (
     AdapterInputError,
-    ProgramNotFoundError,
     QCComputeBaseError,
 )
 
-from .utils import construct_provenance, tmpdir
+from .utils import construct_execution, empty_results, tmpdir
 
 __all__ = ["BaseAdapter", "registry"]
 
@@ -44,6 +42,10 @@ class BaseAdapter(ABC, Generic[InputType, DataType]):
     # more efficient than writing to disk.
     uses_files = True
     program: str  # All subclasses must define this attribute.
+
+    @property
+    def producer_program(self) -> str:
+        return getattr(self, "external_program", self.program)
 
     def program_version(self, stdout: str | None) -> str | None:
         """Return program version. Adapters should override this method.
@@ -95,7 +97,7 @@ class BaseAdapter(ABC, Generic[InputType, DataType]):
 
         Args:
             input_data: A qcdata input object for a computation. E.g. A FileInput,
-                ProgramInput or DualProgramInput.
+                ProgramInput.
             scratch_dir: The scratch directory for the program. If None, a new directory
                 is created in the system default temporary directory. If rm_scratch_dir
                 is True this directory will be deleted after the program finishes.
@@ -152,16 +154,22 @@ class BaseAdapter(ABC, Generic[InputType, DataType]):
             # Define outputs
             prog_output_dict: dict[str, Any] = {}
             logs: str | None = None
-            data: Data
+            data: Data = empty_results(input_data, self.producer_program)
             exc: QCComputeBaseError | None = None
             program_version: str | None = None
 
             start = time()
             try:
-                # Validate input object
+                # Dispatch and the recorded request must agree.
+                expected_program = getattr(self, "external_program", self.program)
+                if input_data.program != expected_program:
+                    raise AdapterInputError(
+                        self.program,
+                        f"Input requests {input_data.program!r}, not {expected_program!r}.",
+                    )
                 self.validate_input(input_data)
 
-                # Execute the program. data will be Files for FileInput
+                # Execute the program. data will be FileData for FileInput
                 data, logs = self.compute_data(
                     input_data,
                     update_func,
@@ -169,18 +177,22 @@ class BaseAdapter(ABC, Generic[InputType, DataType]):
                     propagate_wfn=propagate_wfn,
                     **adapter_kwargs,
                 )
-                # None value covers FileInput case
                 prog_output_dict["success"] = True
 
                 # Optionally collect wavefunction file
                 if collect_wfn and not collect_files:
-                    data.files.update(self.collect_wfn())
+                    data = type(data).model_validate(
+                        {
+                            **data.model_dump(),
+                            "files": {**data.files, **self.collect_wfn()},
+                        }
+                    )
 
             except QCComputeBaseError as e:
                 exc = e
                 prog_output_dict["success"] = False
                 # Any half-completed data
-                data = getattr(e, "data") or Files()
+                data = e.data if e.data is not None else data
                 logs = getattr(e, "logs", logs) or logs
                 # For mypy because e.logs is not of a known type
                 logs = str(logs) if logs is not None else None
@@ -188,21 +200,28 @@ class BaseAdapter(ABC, Generic[InputType, DataType]):
 
             wall_time = time() - start
 
-            # Check for parsed version in extras at default location
-            program_version = data.extras.get("program_version")
-            if not program_version:
+            # Parsed producer metadata is authoritative. Fill an unknown version only
+            # when the adapter can provide it; version lookup must not mask failure.
+            if (
+                data.provenance.program_version is None
+                and data.provenance.program == self.producer_program
+                and (logs or prog_output_dict["success"])
+            ):
                 try:
                     program_version = self.program_version(logs)
-                except ProgramNotFoundError:
-                    pass  # program_version = None set above
-
-            # Construct Provenance object
-            provenance = construct_provenance(
-                self.program,
-                program_version,
-                final_scratch_dir,
-                wall_time,
-            )
+                except QCComputeBaseError:
+                    program_version = None
+                if program_version:
+                    data = type(data).model_validate(
+                        {
+                            **data.model_dump(),
+                            "provenance": {
+                                **data.provenance.model_dump(),
+                                "program_version": program_version,
+                            },
+                        }
+                    )
+            execution = construct_execution(final_scratch_dir, wall_time)
 
             # Always collect for failures; otherwise obey collect_logs
             logs = logs if not prog_output_dict["success"] or collect_logs else None
@@ -212,15 +231,15 @@ class BaseAdapter(ABC, Generic[InputType, DataType]):
                 {
                     "input_data": input_data,
                     "logs": logs,
-                    "data": data,
-                    "provenance": provenance,
+                    "results": data,
+                    "execution": execution,
                 }
             )
-            prog_output = ProgramOutput[InputType, DataType](**prog_output_dict)
+            prog_output = ProgramOutput(**prog_output_dict)
 
             # Collect files generated by the program
             if self.uses_files and (collect_files or type(input_data) is FileInput):
-                prog_output.data.add_files(
+                prog_output.results.add_files(
                     final_scratch_dir,
                     recursive=True,
                     exclude=list(input_data.files.keys()),
@@ -251,6 +270,8 @@ class BaseAdapter(ABC, Generic[InputType, DataType]):
 class ProgramAdapter(BaseAdapter, Generic[InputType, DataType]):
     """Base adapter for all program adapters (all but FileAdaptor)."""
 
+    requires_model = True
+
     supported_calctypes: list[
         CalcType
     ]  # All subclasses must specify supported calctypes
@@ -275,7 +296,7 @@ class ProgramAdapter(BaseAdapter, Generic[InputType, DataType]):
             )
 
     @abstractmethod
-    def program_version(self, stdout: str | None) -> str:
+    def program_version(self, stdout: str | None) -> str | None:
         """Get the version of the program.
 
         Args:
@@ -297,7 +318,7 @@ class ProgramAdapter(BaseAdapter, Generic[InputType, DataType]):
         """All ProgramAdapters must return a DataType."""
         raise NotImplementedError
 
-    def validate_input(self, input_data: StructuredInputs) -> None:
+    def validate_input(self, input_data: ProgramInput) -> None:
         """Validate the input object for compatibility with the adapter.
 
         Args:
@@ -306,6 +327,10 @@ class ProgramAdapter(BaseAdapter, Generic[InputType, DataType]):
         Raises:
             AdapterInputError: If the input object's calctype is not supported.
         """
+        if self.requires_model and input_data.model is None:
+            raise AdapterInputError(
+                self.program, "This program requires a scientific model."
+            )
         if input_data.calctype not in self.supported_calctypes:
             raise AdapterInputError(
                 program=self.program,

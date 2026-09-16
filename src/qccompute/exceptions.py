@@ -1,6 +1,5 @@
 """Experimental exception hierarchy. This may be too complex and unhelpful for now"""
 
-
 from qcdata import Data, ProgramOutput
 
 
@@ -26,11 +25,6 @@ class QCComputeBaseError(Exception):
         super().__init__(message, prog_output, data)
         self.prog_output = prog_output
         self.data = data
-
-    @property
-    def results(self) -> ProgramOutput | None:
-        """Backward-compatible alias for prog_output."""
-        return self.prog_output
 
     def __str__(self):
         # Only the message is shown in the string representation.

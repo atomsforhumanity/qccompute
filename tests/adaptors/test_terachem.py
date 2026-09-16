@@ -28,9 +28,7 @@ def test_get_version_stdout(mocker):
     """Test get_version method."""
     adapter = TeraChemAdapter()
     # Create a mock for parse_version_string
-    mock_parse_version = mocker.patch(
-        "qccompute.adapters.terachem.parse_version"
-    )
+    mock_parse_version = mocker.patch("qccompute.adapters.terachem.parse_version")
 
     adapter.program_version("some stdout data")
 
@@ -40,7 +38,7 @@ def test_get_version_stdout(mocker):
 
 def test_propagate_wfn(prog_input_factory, results):
     """Test propagate_wavefunction method."""
-    prog_input_factory_inst = prog_input_factory("energy")
+    prog_input_factory_inst = prog_input_factory("energy", program="terachem")
     adapter = TeraChemAdapter()
 
     # Raises error if output does not contain wavefunction data
@@ -52,28 +50,30 @@ def test_propagate_wfn(prog_input_factory, results):
     scr_dir = f"scr.{scr_postfix}"
 
     # Add restricted wavefunction data to output
-    results.data.files[f"{scr_dir}/c0"] = "some file"
-    adapter.propagate_wfn(results, prog_input_factory_inst)
-    assert prog_input_factory_inst.files["c0"] == "some file"
-    assert prog_input_factory_inst.keywords["guess"] == "c0"
-    results.data.files.pop(f"{scr_dir}/c0")  # Remove c0 from output
+    results.results.files[f"{scr_dir}/c0"] = "some file"
+    updated_input = adapter.propagate_wfn(results, prog_input_factory_inst)
+    assert not prog_input_factory_inst.files
+    assert updated_input.files["c0"] == "some file"
+    assert updated_input.keywords["guess"] == "c0"
+    results.results.files.pop(f"{scr_dir}/c0")  # Remove c0 from output
 
     # Add unrestricted wavefunction data to output
-    prog_input_factory_inst = prog_input_factory("energy")
-    results.data.files[f"{scr_dir}/ca0"] = "some alpha file"
-    results.data.files[f"{scr_dir}/cb0"] = "some beta file"
-    adapter.propagate_wfn(results, prog_input_factory_inst)
-    assert prog_input_factory_inst.files["ca0"] == "some alpha file"
-    assert prog_input_factory_inst.files["cb0"] == "some beta file"
-    assert prog_input_factory_inst.keywords["guess"] == "ca0 cb0"
+    prog_input_factory_inst = prog_input_factory("energy", program="terachem")
+    results.results.files[f"{scr_dir}/ca0"] = "some alpha file"
+    results.results.files[f"{scr_dir}/cb0"] = "some beta file"
+    updated_input = adapter.propagate_wfn(results, prog_input_factory_inst)
+    assert not prog_input_factory_inst.files
+    assert updated_input.files["ca0"] == "some alpha file"
+    assert updated_input.files["cb0"] == "some beta file"
+    assert updated_input.keywords["guess"] == "ca0 cb0"
 
     # Assert error raised if only alpha or beta wavefunction data is present
-    results.data.files.pop(f"{scr_dir}/cb0")
+    results.results.files.pop(f"{scr_dir}/cb0")
     with pytest.raises(AdapterInputError):
         adapter.propagate_wfn(results, prog_input_factory_inst)
 
-    results.data.files.pop(f"{scr_dir}/ca0")
-    results.data.files[f"{scr_dir}/cb0"] = "some beta file"
+    results.results.files.pop(f"{scr_dir}/ca0")
+    results.results.files[f"{scr_dir}/cb0"] = "some beta file"
     with pytest.raises(AdapterInputError):
         adapter.propagate_wfn(results, prog_input_factory_inst)
 

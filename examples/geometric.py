@@ -3,7 +3,7 @@
 Constraints docs: https://geometric.readthedocs.io/en/latest/constraints.html
 """
 
-from qcdata import DualProgramInput, Structure
+from qcdata import ProgramInput, ProgramSpec, Structure
 
 from qccompute import compute, exceptions
 
@@ -14,14 +14,20 @@ h2 = Structure(
 )
 
 # Define the program input
-prog_input = DualProgramInput(
+prog_input = ProgramInput(
+    program="geometric",
     calctype="optimization",  # type: ignore
     structure=h2,
-    subprogram="terachem",
-    subprogram_args={  # type: ignore
-        "model": {"method": "HF", "basis": "6-31g"},
-        "keywords": {"purify": "no"},
-    },
+    subprograms=[
+        ProgramSpec.model_validate(
+            {
+                "program": "terachem",
+                "calctype": "gradient",
+                "model": {"method": "HF", "basis": "6-31g"},
+                "keywords": {"purify": "no"},
+            }
+        ),
+    ],
     keywords={
         "check": 3,
         # This is obviously a stupid constraint, but it's just an example to show how
@@ -36,9 +42,7 @@ prog_input = DualProgramInput(
 
 # Run calculation
 try:
-    prog_output = compute(
-        "geometric", prog_input, propagate_wfn=True, rm_scratch_dir=False
-    )
+    prog_output = compute(prog_input, propagate_wfn=True, rm_scratch_dir=False)
 except exceptions.QCComputeBaseError as e:
     # Calculation failed
     prog_output = e.prog_output
@@ -46,18 +50,18 @@ except exceptions.QCComputeBaseError as e:
     # Input data used to generate the calculation
     print(prog_output.input_data)
     # Provenance of generated calculation
-    print(prog_output.provenance)
+    print(prog_output.results.provenance)
     print(prog_output.traceback)
     raise
 
 else:
     # Check results
-    print("Energies:", prog_output.data.energies)
-    print("Structures:", prog_output.data.structures)
-    print("Trajectory:", prog_output.data.trajectory)
+    print("Energies:", prog_output.results.energies)
+    print("Structures:", prog_output.results.structures)
+    print("Trajectory:", prog_output.results.trajectory)
     # Stdout from the program
     print(prog_output.logs)
     # Input data used to generate the calculation
     print(prog_output.input_data)
     # Provenance of generated calculation
-    print(prog_output.provenance)
+    print(prog_output.results.provenance)

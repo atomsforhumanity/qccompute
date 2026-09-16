@@ -16,6 +16,7 @@ structure = Structure(
 
 # Define the program input
 prog_input = ProgramInput(
+    program="terachem",
     structure=h2o,
     calctype="energy",
     model={"method": "hf", "basis": "sto-3g"},
@@ -23,7 +24,7 @@ prog_input = ProgramInput(
 )
 
 # Run the calculation; will return a ProgramOutput or raise an exception
-result = compute("terachem", prog_input, collect_files=True)
+result = compute(prog_input, collect_files=True)
 ```
 
 The `compute` selects the correct program adapter and then calls `adapter.compute()`. The available arguments and keywords for the top level `compute()` function match those shown here:

@@ -2,29 +2,30 @@
 
 import traceback
 from collections.abc import Callable
+from time import time
 from typing import Any
-from warnings import warn
 
 from qcdata import (
     CalcType,
-    DataType,
+    Data,
     Files,
     InputType,
     Model,
     ProgramInput,
     ProgramOutput,
+    ProgramSpec,
     Structure,
 )
 from qcdata.helper_types import StrOrPath
 
 from .adapters import BaseAdapter
-from .exceptions import AdapterNotFoundError, ProgramNotFoundError
+from .adapters.utils import construct_execution, empty_results
+from .exceptions import AdapterError, ProgramNotFoundError
 from .utils import get_adapter, inherit_docstring_from
 
 
 @inherit_docstring_from(BaseAdapter.compute)
 def compute(
-    program: str,
     input_data: InputType,
     *,
     scratch_dir: StrOrPath | None = None,
@@ -39,56 +40,41 @@ def compute(
     propagate_wfn: bool = False,
     qcng_fallback: bool = True,
     **adapter_kwargs,
-) -> ProgramOutput[InputType, DataType]:
+) -> ProgramOutput[InputType, Data]:
     """Use the given program to compute on the given input.
 
     See BaseAdapter.compute for more details.
     """
+    start = time()
     try:
-        adapter = get_adapter(program, input_data, qcng_fallback)
-    except (AdapterNotFoundError, ProgramNotFoundError) as e:
-        # Add ProgramOutput to the exception
-        prog_output = ProgramOutput[type(input_data), Files](  # type: ignore
+        adapter = get_adapter(input_data.program, input_data, qcng_fallback)
+    except (AdapterError, ProgramNotFoundError) as exc:
+        output = ProgramOutput(
             input_data=input_data,
-            data=Files(),
+            results=empty_results(input_data),
             success=False,
-            provenance={"program": program},
+            execution=construct_execution(None, time() - start),
             traceback=traceback.format_exc(),
         )
-        e.prog_output = prog_output
-        e.args = (*e.args, prog_output)
-        raise e
+        exc.prog_output = output
+        if raise_exc:
+            raise
+        return output
 
-    else:
-        if "collect_stdout" in adapter_kwargs:
-            warn(
-                "`collect_stdout` is deprecated; use `collect_logs` instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            collect_logs = adapter_kwargs.pop("collect_stdout")
-        if "print_stdout" in adapter_kwargs:
-            warn(
-                "`print_stdout` is deprecated; use `print_logs` instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            print_logs = adapter_kwargs.pop("print_stdout")
-
-        return adapter.compute(
-            input_data,
-            scratch_dir=scratch_dir,
-            rm_scratch_dir=rm_scratch_dir,
-            collect_logs=collect_logs,
-            collect_files=collect_files,
-            collect_wfn=collect_wfn,
-            update_func=update_func,
-            update_interval=update_interval,
-            print_logs=print_logs,
-            raise_exc=raise_exc,
-            propagate_wfn=propagate_wfn,
-            **adapter_kwargs,
-        )
+    return adapter.compute(
+        input_data,
+        scratch_dir=scratch_dir,
+        rm_scratch_dir=rm_scratch_dir,
+        collect_logs=collect_logs,
+        collect_files=collect_files,
+        collect_wfn=collect_wfn,
+        update_func=update_func,
+        update_interval=update_interval,
+        print_logs=print_logs,
+        raise_exc=raise_exc,
+        propagate_wfn=propagate_wfn,
+        **adapter_kwargs,
+    )
 
 
 def compute_args(
@@ -96,12 +82,15 @@ def compute_args(
     structure: Structure,
     *,
     calctype: str | CalcType,
-    model: dict[str, str] | Model,
+    model: dict[str, str] | Model | None = None,
     keywords: dict[str, Any] | None = None,
     files: dict[str, str | bytes] | Files | None = None,
     extras: dict[str, Any] | None = None,
+    subprograms: list[ProgramSpec] | None = None,
+    structures: dict[str, Structure] | None = None,
+    cmdline_args: list[str] | None = None,
     **kwargs,
-) -> ProgramOutput[InputType, DataType]:
+) -> ProgramOutput[ProgramInput, Data]:
     """Compute function that accepts independent argument for a ProgramInput.
 
     Args:
@@ -112,7 +101,10 @@ def compute_args(
         keywords: The keywords to use for the calculation.
         files: The files to use for the calculation. Either a qcdata.Files object or a
             dict mapping file names to file contents (bytes or str).
-        extras: Extra arguments to pass to the adapter.
+        extras: User metadata saved with the input.
+        subprograms: Recursive specifications for child calculations.
+        structures: Additional complete structures identified by role.
+        cmdline_args: Additional command-line arguments for the program.
         **kwargs: Extra arguments to pass to the compute function.
 
     Returns:
@@ -125,12 +117,16 @@ def compute_args(
         files = files.files
 
     program_input = ProgramInput(
-        calctype=calctype,  # type: ignore
+        program=program,
+        calctype=CalcType(calctype),
         structure=structure,
         model=model,  # type: ignore
         keywords=keywords or {},
         files=files or {},
         extras=extras or {},
+        subprograms=subprograms or [],
+        structures=structures or {},
+        cmdline_args=cmdline_args or [],
     )
 
-    return compute(program, program_input, **kwargs)
+    return compute(program_input, **kwargs)

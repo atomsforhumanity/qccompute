@@ -30,20 +30,11 @@ def test_exception_pickle(results, exc_class, args):
     unpickled = pickle.loads(pickled)
 
     # Assert that the type is preserved.
-    assert (
-        type(unpickled) is exc_class
-    ), f"{exc_class.__name__} type changed after unpickling."
+    assert type(unpickled) is exc_class, (
+        f"{exc_class.__name__} type changed after unpickling."
+    )
 
     for attr in exc_instance.__dict__:
-        assert getattr(unpickled, attr) == getattr(
-            exc_instance, attr
-        ), f"Attribute {attr} changed after unpickling."
-
-
-def test_results_property_is_read_only_alias(results):
-    exc = ExternalProgramError("psi4", prog_output=results)
-
-    assert exc.results == results
-
-    with pytest.raises(AttributeError):
-        exc.results = results
+        assert getattr(unpickled, attr) == getattr(exc_instance, attr), (
+            f"Attribute {attr} changed after unpickling."
+        )

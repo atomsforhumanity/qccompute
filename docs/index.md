@@ -42,6 +42,7 @@ h2o = Structure.open("h2o.xyz")
 
 # Define the program input
 prog_input = ProgramInput(
+    program="terachem",
     structure=h2o,
     calctype="energy",
     model={"method": "hf", "basis": "sto-3g"},
@@ -50,13 +51,13 @@ prog_input = ProgramInput(
 
 # Run the calculation; will return a ProgramOutput or raise an exception
 try:
-    prog_output = compute("terachem", prog_input, collect_files=True)
+    prog_output = compute(prog_input, collect_files=True)
 except ExternalProgramError as e:
     # External QQ program failed in some way
     prog_output = e.prog_output
     prog_output.input_data # Input data used by the QC program
     prog_output.success # Will be False
-    prog_output.data # Any half-computed results before the failure
+    prog_output.results # Any half-computed results before the failure
     prog_output.logs # Logs from the calculation
     prog_output.plogs # Shortcut to print out the logs in human readable format
     prog_output.traceback # Stack trace from the calculation
@@ -66,11 +67,11 @@ else:
     # Calculation succeeded
     prog_output.input_data # Input data used by the QC program
     prog_output.success # Will be True
-    prog_output.data # All structured data and files from the calculation
-    prog_output.data.files # Any files returned by the calculation
+    prog_output.results # All structured data and files from the calculation
+    prog_output.results.files # Any files returned by the calculation
     prog_output.logs # Logs from the calculation
     prog_output.plogs # Shortcut to print out the logs in human readable format
-    prog_output.provenance # Provenance information about the calculation
+    prog_output.results.provenance # Provenance information about the calculation
     prog_output.extras # Any extra information not in the schema
 
 ```
@@ -86,6 +87,7 @@ h2o = Structure.open("h2o.xyz")
 
 # Define the program input
 prog_input = ProgramInput(
+    program="terachem",
     structure=h2o,
     calctype="energy",
     model={"method": "hf", "basis": "sto-3g"},
@@ -93,7 +95,7 @@ prog_input = ProgramInput(
 )
 
 # Run the calculation; will return a ProgramOutput object
-prog_output = compute("terachem", prog_input, collect_files=True, raise_exc=False)
+prog_output = compute(prog_input, collect_files=True, raise_exc=False)
 if not prog_output.success:
     # Same as except block above
 

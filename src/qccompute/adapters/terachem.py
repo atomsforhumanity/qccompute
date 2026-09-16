@@ -4,15 +4,26 @@ from pathlib import Path
 import qccodec
 from qccodec import exceptions as qccodec_exceptions
 from qccodec.parsers.terachem import parse_version
-from qcdata import CalcType, ProgramInput, ProgramOutput, SinglePointData
+from qcdata import (
+    CalcType,
+    OptimizationData,
+    ProgramInput,
+    ProgramOutput,
+    SinglePointData,
+)
 
-from qccompute.exceptions import AdapterError, AdapterInputError, ExternalProgramError
+from qccompute.exceptions import (
+    AdapterError,
+    AdapterInputError,
+    ExternalProgramError,
+    ProgramNotFoundError,
+)
 
 from .base import ProgramAdapter
 from .utils import execute_subprocess
 
 
-class TeraChemAdapter(ProgramAdapter[ProgramInput, SinglePointData]):
+class TeraChemAdapter(ProgramAdapter[ProgramInput, SinglePointData | OptimizationData]):
     """Adapter for TeraChem."""
 
     supported_calctypes = [
@@ -24,7 +35,7 @@ class TeraChemAdapter(ProgramAdapter[ProgramInput, SinglePointData]):
     """Supported calculation types."""
     program = "terachem"
 
-    def program_version(self, stdout: str | None = None) -> str:
+    def program_version(self, stdout: str | None = None) -> str | None:
         """Get the program version.
 
         Args:
@@ -39,22 +50,20 @@ class TeraChemAdapter(ProgramAdapter[ProgramInput, SinglePointData]):
             except qccodec_exceptions.ParserError:
                 # If the version string is not found. Happens when libcuda.so is not
                 # found and TeraChem fails to start. terachem --version will fail too.
-                return "Could not parse version"
+                return None
         else:
             try:
                 return execute_subprocess(self.program, ["--version"])[17:]
             except ExternalProgramError:
-                return "Could not determine version"
+                return None
 
-    # TODO: Need command line options for TeraChem e.g., -g 1 for GPUs MAYBE?
-    # Try using it for a while without and see what roadblocks we run into
     def compute_data(
         self,
         input_data: ProgramInput,
         update_func: Callable | None = None,
         update_interval: float | None = None,
         **kwargs,
-    ) -> tuple[SinglePointData, str]:
+    ) -> tuple[SinglePointData | OptimizationData, str]:
         """Execute TeraChem on the given input.
 
         Args:
@@ -68,7 +77,7 @@ class TeraChemAdapter(ProgramAdapter[ProgramInput, SinglePointData]):
         """
         # Construct TeraChem native input files
         try:
-            native_input = qccodec.encode(input_data, self.program)
+            native_input = qccodec.encode(input_data)
         except qccodec.exceptions.EncoderError as e:
             raise AdapterInputError(program=self.program) from e
 
@@ -78,17 +87,29 @@ class TeraChemAdapter(ProgramAdapter[ProgramInput, SinglePointData]):
         Path(native_input.geometry_filename).write_text(native_input.geometry_file)
 
         # Execute TeraChem
-        stdout = execute_subprocess(
-            self.program, [input_filename], update_func, update_interval
-        )
+        execution_error: ExternalProgramError | None = None
+        try:
+            stdout = execute_subprocess(
+                self.program,
+                [input_filename, *input_data.cmdline_args],
+                update_func,
+                update_interval,
+            )
+        except ProgramNotFoundError:
+            raise  # Nothing ran, so there are no program artifacts to decode.
+        except ExternalProgramError as exc:
+            execution_error = exc
+            stdout = exc.logs or ""
 
         # Get the scratch output directory
         parent = Path.cwd()
         # TeraChem creates a directory named scr<xyz_filename> in the current working
         scr_dir = next(parent.glob("scr*"), None)
-        if scr_dir is None:
-            raise ExternalProgramError(
-                self.program, f"TeraChem did not create a 'scr' directory in {parent}."
+        if scr_dir is None and execution_error is None:
+            execution_error = ExternalProgramError(
+                self.program,
+                f"TeraChem did not create a 'scr' directory in {parent}.",
+                logs=stdout,
             )
 
         # Parse output
@@ -99,14 +120,22 @@ class TeraChemAdapter(ProgramAdapter[ProgramInput, SinglePointData]):
                 stdout=stdout,
                 directory=scr_dir,
                 input_data=input_data,
+                failed=execution_error is not None,
             )
         except qccodec_exceptions.ParserError as e:
+            if execution_error is not None:
+                execution_error.data = e.data
+                raise execution_error from e
             raise ExternalProgramError(
                 program="qccodec",
                 message="Failed to parse TeraChem output.",
+                data=e.data,
                 logs=stdout,
                 original_exception=e,
             ) from e
+        if execution_error is not None:
+            execution_error.data = results
+            raise execution_error
         return results, stdout
 
     def collect_wfn(self) -> dict[str, str | bytes]:
@@ -134,7 +163,7 @@ class TeraChemAdapter(ProgramAdapter[ProgramInput, SinglePointData]):
         self,
         output: ProgramOutput[ProgramInput, SinglePointData],
         program_input: ProgramInput,
-    ) -> None:
+    ) -> ProgramInput:
         """Propagate the wavefunction from the previous calculation.
 
         Args:
@@ -142,13 +171,15 @@ class TeraChemAdapter(ProgramAdapter[ProgramInput, SinglePointData]):
             program_input: The ProgramInput object on which to place the wavefunction data.
 
         Returns:
-            None. Modifies the program_input object in place.
+            A new input containing the propagated wavefunction and guess keyword.
         """
+
+        values = program_input.model_dump()
 
         # Wavefunction filenames
         suffixes = ("c0", "ca0", "cb0")
         matches = {}
-        for k, v in output.data.files.items():
+        for k, v in output.results.files.items():
             for suffix in suffixes:
                 if k.endswith(suffix):
                     matches[suffix] = v
@@ -162,11 +193,13 @@ class TeraChemAdapter(ProgramAdapter[ProgramInput, SinglePointData]):
         # Load wavefunction data onto ProgramInput object
 
         if "c0" in matches:
-            program_input.files["c0"] = matches["c0"]
-            program_input.keywords["guess"] = "c0"
+            values["files"]["c0"] = matches["c0"]
+            values["keywords"]["guess"] = "c0"
 
         else:  # ca0_bytes and cb0_bytes
             assert "ca0" in matches and "cb0" in matches  # for mypy
-            program_input.files["ca0"] = matches["ca0"]
-            program_input.files["cb0"] = matches["cb0"]
-            program_input.keywords["guess"] = "ca0 cb0"
+            values["files"]["ca0"] = matches["ca0"]
+            values["files"]["cb0"] = matches["cb0"]
+            values["keywords"]["guess"] = "ca0 cb0"
+
+        return ProgramInput.model_validate(values)

@@ -17,7 +17,15 @@ from io import StringIO
 from pathlib import Path
 from time import time
 
-from qcdata import Provenance
+from qcdata import (
+    Data,
+    ExecutionInfo,
+    FileData,
+    Inputs,
+    ProgramInput,
+    Provenance,
+    get_data_type,
+)
 from qcdata.helper_types import StrOrPath
 
 from qccompute.exceptions import ExternalProgramError, ProgramNotFoundError
@@ -223,42 +231,28 @@ def capture_sys_stdout():
             os.close(r)
 
 
-def construct_provenance(
-    program: str,
-    version: str | None,
-    scratch_dir: Path,
-    wall_time: float,
-) -> Provenance:
-    """Construct a provenance object for a calculation.
-
-    Args:
-        program: The program used for the calculation.
-        version: The program version.
-        scratch_dir: The working directory of the calculation.
-        wall_time: The wall time of the calculation in seconds.
-        stdout: The stdout of the calculation.
-
-    Returns:
-        The Provenance object.
-    """
-
-    return Provenance(
-        program=program,
-        program_version=version,
+def construct_execution(scratch_dir: Path | None, wall_time: float) -> ExecutionInfo:
+    """Record runtime information independently of scientific producer identity."""
+    return ExecutionInfo(
         scratch_dir=scratch_dir,
         wall_time=round(wall_time, 6),
-        # TODO: Possibly add psutil.virtual_memory().total and then wrap these calls in
-        # @lru_cache so that for quick calculations we don't have to call these
-        # functions every time.
         hostname=platform.node(),
-        hostcpus=os.cpu_count(),
+        host_cpu=os.cpu_count(),
     )
 
 
+def empty_results(input_data: Inputs, program: str | None = None) -> Data:
+    """Create correctly typed empty data when a calculation cannot produce values."""
+    data_type: type[Data] = (
+        get_data_type(input_data.calctype)
+        if isinstance(input_data, ProgramInput)
+        else FileData
+    )
+    return data_type(provenance=Provenance(program=program or input_data.program))
+
+
 @contextmanager
-def tmpdir(
-    mkdir: bool = True, directory: StrOrPath | None = None, rmdir: bool = True
-):
+def tmpdir(mkdir: bool = True, directory: StrOrPath | None = None, rmdir: bool = True):
     """Context manager for a temporary directory.
 
     Args:

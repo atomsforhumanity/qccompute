@@ -13,7 +13,7 @@ repos:
     rev: v1.4.0
     hooks:
       - id: detect-secrets
-        stages: [commit]
+        stages: [pre-commit]
         exclude: uv.lock
   - repo: https://github.com/charliermarsh/ruff-pre-commit
     # Ruff version.
@@ -21,14 +21,14 @@ repos:
     hooks:
       - id: ruff
         args: [--fix, --exit-non-zero-on-fix]
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.15.0
+  - repo: local
     hooks:
       - id: mypy
-        args: [.]
+        name: mypy
+        entry: uv run mypy .
+        language: system
+        types: [python]
         pass_filenames: false
-        additional_dependencies:
-          [pydantic>=2.0.0, qcdata>=0.17.0, types-toml]
   - repo: https://github.com/crate-ci/typos
     rev: v1.24.5
     hooks:
@@ -37,7 +37,7 @@ repos:
     hooks:
       - id: tests
         name: tests
-        stages: [push]
+        stages: [pre-push]
         language: system
         entry: uv run pytest
         types: [python]

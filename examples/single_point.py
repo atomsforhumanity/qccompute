@@ -16,6 +16,7 @@ structure = Structure(
 
 # Define the program input
 prog_input = ProgramInput(
+    program="terachem",
     structure=structure,
     # Can be "energy", "gradient", "hessian"
     calctype="energy",  # type: ignore
@@ -26,13 +27,13 @@ prog_input = ProgramInput(
 # Run the calculation
 try:
     # prog_output is a ProgramOutput instance
-    prog_output = compute("terachem", prog_input, collect_files=True)
+    prog_output = compute(prog_input, collect_files=True)
 except exceptions.QCComputeBaseError as e:
     prog_output = e.prog_output
     print(prog_output.logs)
     print(f"Success: {prog_output.success}")  # False
     print(prog_output.input_data)  # Input data used to generate the calculation
-    print(prog_output.provenance)  # Provenance of generated calculation
+    print(prog_output.results.provenance)  # Provenance of generated calculation
     print(prog_output.traceback)  # or output.ptraceback for short
     raise
 
@@ -40,9 +41,9 @@ else:
     # Check results
     print(prog_output.logs)
     print(f"Success: {prog_output.success}")  # True
-    print("output.data: ", prog_output.data)
-    print("output.data.energy:", prog_output.data.energy)
-    print("output.data.gradient:", prog_output.data.gradient)
-    print("output.data.hessian:", prog_output.data.hessian)
+    print("output.results: ", prog_output.results)
+    print("output.results.energy:", prog_output.results.energy)
+    print("output.results.gradient:", prog_output.results.gradient)
+    print("output.results.hessian:", prog_output.results.hessian)
     print(prog_output.input_data)  # Input data used to generate the calculation
-    print(prog_output.provenance)  # Provenance of generated calculation
+    print(prog_output.results.provenance)  # Provenance of generated calculation

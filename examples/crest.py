@@ -16,6 +16,7 @@ structure = Structure(
 
 # Define the program input
 prog_input = ProgramInput(
+    program="crest",
     structure=structure,
     calctype="conformer_search",  # type: ignore
     model={"method": "gfnff"},  # type: ignore
@@ -25,15 +26,13 @@ prog_input = ProgramInput(
 # Run the calculation
 try:
     # prog_output is a ProgramOutput instance
-    prog_output = compute(
-        "crest", prog_input, collect_files=True, collect_rotamers=False
-    )
+    prog_output = compute(prog_input, collect_files=True, collect_rotamers=False)
 except exceptions.QCComputeBaseError as e:
     prog_output = e.prog_output
     print(prog_output.logs)
     print(f"Success: {prog_output.success}")  # False
     print(prog_output.input_data)  # Input data used to generate the calculation
-    print(prog_output.provenance)  # Provenance of generated calculation
+    print(prog_output.results.provenance)  # Provenance of generated calculation
     print(prog_output.traceback)  # or output.ptraceback for short
     raise
 
@@ -41,11 +40,11 @@ else:
     # Check results
     print(prog_output.logs)
     print(f"Success: {prog_output.success}")  # True
-    print("output.data: ", prog_output.data)
-    print("output.data.conformer_energies:", prog_output.data.conformer_energies)
+    print("output.results: ", prog_output.results)
+    print("output.results.conformer_energies:", prog_output.results.conformer_energies)
     print(
-        "output.data.conformer_energies_relative:",
-        prog_output.data.conformer_energies_relative,
+        "output.results.conformer_energies_relative:",
+        prog_output.results.conformer_energies_relative,
     )
     print(prog_output.input_data)  # Input data used to generate the calculation
-    print(prog_output.provenance)  # Provenance of generated calculation
+    print(prog_output.results.provenance)  # Provenance of generated calculation

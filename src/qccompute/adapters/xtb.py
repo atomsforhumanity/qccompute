@@ -9,7 +9,7 @@ import os
 from collections.abc import Callable
 
 import numpy as np
-from qcdata import CalcType, ProgramInput, SinglePointData, Wavefunction
+from qcdata import CalcType, ProgramInput, Provenance, SinglePointData, Wavefunction
 
 from qccompute.exceptions import (
     AdapterInputError,
@@ -43,6 +43,7 @@ class XTBAdapter(ProgramAdapter[ProgramInput, SinglePointData]):
     def validate_input(self, input_data: ProgramInput) -> None:
         """Validate the input for xtb-python."""
         super().validate_input(input_data)
+        assert input_data.model is not None
         # Check that xtb supports the method.
         supported_methods = self.xtb.interface.Param.__members__.keys()
         if input_data.model.method not in supported_methods:
@@ -115,6 +116,8 @@ class XTBAdapter(ProgramAdapter[ProgramInput, SinglePointData]):
         Returns:
             A tuple of SinglePointComputedProps and the stdout str.
         """
+        if input_data.model is None:
+            raise AdapterInputError(self.program, "xtb requires a scientific model.")
         try:
             # Create Calculator
             calc = self.xtb.interface.Calculator(
@@ -145,6 +148,9 @@ class XTBAdapter(ProgramAdapter[ProgramInput, SinglePointData]):
         # Collect results
         # TODO: Collect other results xtb produces
         results = SinglePointData(
+            provenance=Provenance(
+                program="xtb", program_version=self.program_version()
+            ),
             energy=res.get_energy(),
             gradient=res.get_gradient(),
             scf_dipole_moment=res.get_dipole(),

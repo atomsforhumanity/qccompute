@@ -979,6 +979,7 @@
 
 <span class="c1"># Define the program input</span>
 <span class="n">prog_input</span> <span class="o">=</span> <span class="n">ProgramInput</span><span class="p">(</span>
+    <span class="n">program</span><span class="o">=</span><span class="s2">&quot;terachem&quot;</span><span class="p">,</span>
     <span class="n">structure</span><span class="o">=</span><span class="n">h2o</span><span class="p">,</span>
     <span class="n">calctype</span><span class="o">=</span><span class="s2">&quot;energy&quot;</span><span class="p">,</span>
     <span class="n">model</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;method&quot;</span><span class="p">:</span> <span class="s2">&quot;hf&quot;</span><span class="p">,</span> <span class="s2">&quot;basis&quot;</span><span class="p">:</span> <span class="s2">&quot;sto-3g&quot;</span><span class="p">},</span>
@@ -987,13 +988,13 @@
 
 <span class="c1"># Run the calculation; will return a ProgramOutput or raise an exception</span>
 <span class="k">try</span><span class="p">:</span>
-    <span class="n">prog_output</span> <span class="o">=</span> <span class="n">compute</span><span class="p">(</span><span class="s2">&quot;terachem&quot;</span><span class="p">,</span> <span class="n">prog_input</span><span class="p">,</span> <span class="n">collect_files</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">prog_output</span> <span class="o">=</span> <span class="n">compute</span><span class="p">(</span><span class="n">prog_input</span><span class="p">,</span> <span class="n">collect_files</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 <span class="k">except</span> <span class="n">ExternalProgramError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
     <span class="c1"># External QQ program failed in some way</span>
     <span class="n">prog_output</span> <span class="o">=</span> <span class="n">e</span><span class="o">.</span><span class="n">prog_output</span>
     <span class="n">prog_output</span><span class="o">.</span><span class="n">input_data</span> <span class="c1"># Input data used by the QC program</span>
     <span class="n">prog_output</span><span class="o">.</span><span class="n">success</span> <span class="c1"># Will be False</span>
-    <span class="n">prog_output</span><span class="o">.</span><span class="n">data</span> <span class="c1"># Any half-computed results before the failure</span>
+    <span class="n">prog_output</span><span class="o">.</span><span class="n">results</span> <span class="c1"># Any half-computed results before the failure</span>
     <span class="n">prog_output</span><span class="o">.</span><span class="n">logs</span> <span class="c1"># Logs from the calculation</span>
     <span class="n">prog_output</span><span class="o">.</span><span class="n">plogs</span> <span class="c1"># Shortcut to print out the logs in human readable format</span>
     <span class="n">prog_output</span><span class="o">.</span><span class="n">traceback</span> <span class="c1"># Stack trace from the calculation</span>
@@ -1003,11 +1004,11 @@
     <span class="c1"># Calculation succeeded</span>
     <span class="n">prog_output</span><span class="o">.</span><span class="n">input_data</span> <span class="c1"># Input data used by the QC program</span>
     <span class="n">prog_output</span><span class="o">.</span><span class="n">success</span> <span class="c1"># Will be True</span>
-    <span class="n">prog_output</span><span class="o">.</span><span class="n">data</span> <span class="c1"># All structured data and files from the calculation</span>
-    <span class="n">prog_output</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">files</span> <span class="c1"># Any files returned by the calculation</span>
+    <span class="n">prog_output</span><span class="o">.</span><span class="n">results</span> <span class="c1"># All structured data and files from the calculation</span>
+    <span class="n">prog_output</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">files</span> <span class="c1"># Any files returned by the calculation</span>
     <span class="n">prog_output</span><span class="o">.</span><span class="n">logs</span> <span class="c1"># Logs from the calculation</span>
     <span class="n">prog_output</span><span class="o">.</span><span class="n">plogs</span> <span class="c1"># Shortcut to print out the logs in human readable format</span>
-    <span class="n">prog_output</span><span class="o">.</span><span class="n">provenance</span> <span class="c1"># Provenance information about the calculation</span>
+    <span class="n">prog_output</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">provenance</span> <span class="c1"># Provenance information about the calculation</span>
     <span class="n">prog_output</span><span class="o">.</span><span class="n">extras</span> <span class="c1"># Any extra information not in the schema</span>
 </code></pre></div>
 <p>One may also call <code>compute(..., raise_exc=False)</code> to return a <code>ProgramOutput</code> object rather than raising an exception when a calculation fails. This may allow easier handling of failures in some cases.</p>
@@ -1019,6 +1020,7 @@
 
 <span class="c1"># Define the program input</span>
 <span class="n">prog_input</span> <span class="o">=</span> <span class="n">ProgramInput</span><span class="p">(</span>
+    <span class="n">program</span><span class="o">=</span><span class="s2">&quot;terachem&quot;</span><span class="p">,</span>
     <span class="n">structure</span><span class="o">=</span><span class="n">h2o</span><span class="p">,</span>
     <span class="n">calctype</span><span class="o">=</span><span class="s2">&quot;energy&quot;</span><span class="p">,</span>
     <span class="n">model</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;method&quot;</span><span class="p">:</span> <span class="s2">&quot;hf&quot;</span><span class="p">,</span> <span class="s2">&quot;basis&quot;</span><span class="p">:</span> <span class="s2">&quot;sto-3g&quot;</span><span class="p">},</span>
@@ -1026,7 +1028,7 @@
 <span class="p">)</span>
 
 <span class="c1"># Run the calculation; will return a ProgramOutput object</span>
-<span class="n">prog_output</span> <span class="o">=</span> <span class="n">compute</span><span class="p">(</span><span class="s2">&quot;terachem&quot;</span><span class="p">,</span> <span class="n">prog_input</span><span class="p">,</span> <span class="n">collect_files</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">raise_exc</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+<span class="n">prog_output</span> <span class="o">=</span> <span class="n">compute</span><span class="p">(</span><span class="n">prog_input</span><span class="p">,</span> <span class="n">collect_files</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">raise_exc</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
 <span class="k">if</span> <span class="ow">not</span> <span class="n">prog_output</span><span class="o">.</span><span class="n">success</span><span class="p">:</span>
     <span class="c1"># Same as except block above</span>
 

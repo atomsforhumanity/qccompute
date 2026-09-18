@@ -1060,9 +1060,11 @@
 <span class="normal">50</span>
 <span class="normal">51</span>
 <span class="normal">52</span>
-<span class="normal">53</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">validate_input</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">input_data</span><span class="p">:</span> <span class="n">ProgramInput</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="normal">53</span>
+<span class="normal">54</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">validate_input</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">input_data</span><span class="p">:</span> <span class="n">ProgramInput</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Validate the input for xtb-python.&quot;&quot;&quot;</span>
     <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">validate_input</span><span class="p">(</span><span class="n">input_data</span><span class="p">)</span>
+    <span class="k">assert</span> <span class="n">input_data</span><span class="o">.</span><span class="n">model</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
     <span class="c1"># Check that xtb supports the method.</span>
     <span class="n">supported_methods</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">xtb</span><span class="o">.</span><span class="n">interface</span><span class="o">.</span><span class="n">Param</span><span class="o">.</span><span class="n">__members__</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>
     <span class="k">if</span> <span class="n">input_data</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">method</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">supported_methods</span><span class="p">:</span>
@@ -1144,8 +1146,7 @@
 
             <details class="quote">
               <summary>Source code in <code>src/qccompute/adapters/xtb.py</code></summary>
-              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">55</span>
-<span class="normal">56</span>
+              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">56</span>
 <span class="normal">57</span>
 <span class="normal">58</span>
 <span class="normal">59</span>
@@ -1156,7 +1157,8 @@
 <span class="normal">64</span>
 <span class="normal">65</span>
 <span class="normal">66</span>
-<span class="normal">67</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">program_version</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">stdout</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="normal">67</span>
+<span class="normal">68</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">program_version</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">stdout</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Get the program version.</span>
 
 <span class="sd">    Args:</span>
@@ -1271,8 +1273,7 @@ update_func.</p>
 
             <details class="quote">
               <summary>Source code in <code>src/qccompute/adapters/xtb.py</code></summary>
-              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">100</span>
-<span class="normal">101</span>
+              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">101</span>
 <span class="normal">102</span>
 <span class="normal">103</span>
 <span class="normal">104</span>
@@ -1327,7 +1328,13 @@ update_func.</p>
 <span class="normal">153</span>
 <span class="normal">154</span>
 <span class="normal">155</span>
-<span class="normal">156</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">compute_data</span><span class="p">(</span>
+<span class="normal">156</span>
+<span class="normal">157</span>
+<span class="normal">158</span>
+<span class="normal">159</span>
+<span class="normal">160</span>
+<span class="normal">161</span>
+<span class="normal">162</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">compute_data</span><span class="p">(</span>
     <span class="bp">self</span><span class="p">,</span>
     <span class="n">input_data</span><span class="p">:</span> <span class="n">ProgramInput</span><span class="p">,</span>
     <span class="n">update_func</span><span class="p">:</span> <span class="n">Callable</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
@@ -1345,6 +1352,8 @@ update_func.</p>
 <span class="sd">    Returns:</span>
 <span class="sd">        A tuple of SinglePointComputedProps and the stdout str.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">input_data</span><span class="o">.</span><span class="n">model</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">AdapterInputError</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">program</span><span class="p">,</span> <span class="s2">&quot;xtb requires a scientific model.&quot;</span><span class="p">)</span>
     <span class="k">try</span><span class="p">:</span>
         <span class="c1"># Create Calculator</span>
         <span class="n">calc</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">xtb</span><span class="o">.</span><span class="n">interface</span><span class="o">.</span><span class="n">Calculator</span><span class="p">(</span>
@@ -1375,6 +1384,9 @@ update_func.</p>
     <span class="c1"># Collect results</span>
     <span class="c1"># TODO: Collect other results xtb produces</span>
     <span class="n">results</span> <span class="o">=</span> <span class="n">SinglePointData</span><span class="p">(</span>
+        <span class="n">provenance</span><span class="o">=</span><span class="n">Provenance</span><span class="p">(</span>
+            <span class="n">program</span><span class="o">=</span><span class="s2">&quot;xtb&quot;</span><span class="p">,</span> <span class="n">program_version</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">program_version</span><span class="p">()</span>
+        <span class="p">),</span>
         <span class="n">energy</span><span class="o">=</span><span class="n">res</span><span class="o">.</span><span class="n">get_energy</span><span class="p">(),</span>
         <span class="n">gradient</span><span class="o">=</span><span class="n">res</span><span class="o">.</span><span class="n">get_gradient</span><span class="p">(),</span>
         <span class="n">scf_dipole_moment</span><span class="o">=</span><span class="n">res</span><span class="o">.</span><span class="n">get_dipole</span><span class="p">(),</span>
@@ -1417,6 +1429,7 @@ update_func.</p>
 
 <span class="c1"># Define the program input</span>
 <span class="n">prog_input</span> <span class="o">=</span> <span class="n">ProgramInput</span><span class="p">(</span>
+    <span class="n">program</span><span class="o">=</span><span class="s2">&quot;xtb&quot;</span><span class="p">,</span>
     <span class="n">structure</span><span class="o">=</span><span class="n">structure</span><span class="p">,</span>
     <span class="n">calctype</span><span class="o">=</span><span class="n">CalcType</span><span class="o">.</span><span class="n">energy</span><span class="p">,</span>
     <span class="n">model</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;method&quot;</span><span class="p">:</span> <span class="s2">&quot;GFN2xTB&quot;</span><span class="p">},</span>  <span class="c1"># type: ignore</span>
@@ -1424,7 +1437,7 @@ update_func.</p>
 <span class="p">)</span>
 
 
-<span class="n">prog_output</span> <span class="o">=</span> <span class="n">compute</span><span class="p">(</span><span class="s2">&quot;xtb&quot;</span><span class="p">,</span> <span class="n">prog_input</span><span class="p">)</span>
+<span class="n">prog_output</span> <span class="o">=</span> <span class="n">compute</span><span class="p">(</span><span class="n">prog_input</span><span class="p">)</span>
 <span class="nb">print</span><span class="p">(</span><span class="n">prog_output</span><span class="p">)</span>
 </code></pre></div>
 

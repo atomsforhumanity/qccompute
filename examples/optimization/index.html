@@ -896,7 +896,7 @@
 <span class="sd">Constraints docs: https://geometric.readthedocs.io/en/latest/constraints.html</span>
 <span class="sd">&quot;&quot;&quot;</span>
 
-<span class="kn">from</span><span class="w"> </span><span class="nn">qcdata</span><span class="w"> </span><span class="kn">import</span> <span class="n">DualProgramInput</span><span class="p">,</span> <span class="n">Structure</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">qcdata</span><span class="w"> </span><span class="kn">import</span> <span class="n">ProgramInput</span><span class="p">,</span> <span class="n">ProgramSpec</span><span class="p">,</span> <span class="n">Structure</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">qccompute</span><span class="w"> </span><span class="kn">import</span> <span class="n">compute</span><span class="p">,</span> <span class="n">exceptions</span>
 
@@ -907,14 +907,20 @@
 <span class="p">)</span>
 
 <span class="c1"># Define the program input</span>
-<span class="n">prog_input</span> <span class="o">=</span> <span class="n">DualProgramInput</span><span class="p">(</span>
+<span class="n">prog_input</span> <span class="o">=</span> <span class="n">ProgramInput</span><span class="p">(</span>
+    <span class="n">program</span><span class="o">=</span><span class="s2">&quot;geometric&quot;</span><span class="p">,</span>
     <span class="n">calctype</span><span class="o">=</span><span class="s2">&quot;optimization&quot;</span><span class="p">,</span>  <span class="c1"># type: ignore</span>
     <span class="n">structure</span><span class="o">=</span><span class="n">h2</span><span class="p">,</span>
-    <span class="n">subprogram</span><span class="o">=</span><span class="s2">&quot;terachem&quot;</span><span class="p">,</span>
-    <span class="n">subprogram_args</span><span class="o">=</span><span class="p">{</span>  <span class="c1"># type: ignore</span>
-        <span class="s2">&quot;model&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;method&quot;</span><span class="p">:</span> <span class="s2">&quot;HF&quot;</span><span class="p">,</span> <span class="s2">&quot;basis&quot;</span><span class="p">:</span> <span class="s2">&quot;6-31g&quot;</span><span class="p">},</span>
-        <span class="s2">&quot;keywords&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;purify&quot;</span><span class="p">:</span> <span class="s2">&quot;no&quot;</span><span class="p">},</span>
-    <span class="p">},</span>
+    <span class="n">subprograms</span><span class="o">=</span><span class="p">[</span>
+        <span class="n">ProgramSpec</span><span class="o">.</span><span class="n">model_validate</span><span class="p">(</span>
+            <span class="p">{</span>
+                <span class="s2">&quot;program&quot;</span><span class="p">:</span> <span class="s2">&quot;terachem&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;calctype&quot;</span><span class="p">:</span> <span class="s2">&quot;gradient&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;model&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;method&quot;</span><span class="p">:</span> <span class="s2">&quot;HF&quot;</span><span class="p">,</span> <span class="s2">&quot;basis&quot;</span><span class="p">:</span> <span class="s2">&quot;6-31g&quot;</span><span class="p">},</span>
+                <span class="s2">&quot;keywords&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;purify&quot;</span><span class="p">:</span> <span class="s2">&quot;no&quot;</span><span class="p">},</span>
+            <span class="p">}</span>
+        <span class="p">),</span>
+    <span class="p">],</span>
     <span class="n">keywords</span><span class="o">=</span><span class="p">{</span>
         <span class="s2">&quot;check&quot;</span><span class="p">:</span> <span class="mi">3</span><span class="p">,</span>
         <span class="c1"># This is obviously a stupid constraint, but it&#39;s just an example to show how</span>
@@ -929,9 +935,7 @@
 
 <span class="c1"># Run calculation</span>
 <span class="k">try</span><span class="p">:</span>
-    <span class="n">prog_output</span> <span class="o">=</span> <span class="n">compute</span><span class="p">(</span>
-        <span class="s2">&quot;geometric&quot;</span><span class="p">,</span> <span class="n">prog_input</span><span class="p">,</span> <span class="n">propagate_wfn</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">rm_scratch_dir</span><span class="o">=</span><span class="kc">False</span>
-    <span class="p">)</span>
+    <span class="n">prog_output</span> <span class="o">=</span> <span class="n">compute</span><span class="p">(</span><span class="n">prog_input</span><span class="p">,</span> <span class="n">propagate_wfn</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">rm_scratch_dir</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
 <span class="k">except</span> <span class="n">exceptions</span><span class="o">.</span><span class="n">QCComputeBaseError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
     <span class="c1"># Calculation failed</span>
     <span class="n">prog_output</span> <span class="o">=</span> <span class="n">e</span><span class="o">.</span><span class="n">prog_output</span>
@@ -939,21 +943,21 @@
     <span class="c1"># Input data used to generate the calculation</span>
     <span class="nb">print</span><span class="p">(</span><span class="n">prog_output</span><span class="o">.</span><span class="n">input_data</span><span class="p">)</span>
     <span class="c1"># Provenance of generated calculation</span>
-    <span class="nb">print</span><span class="p">(</span><span class="n">prog_output</span><span class="o">.</span><span class="n">provenance</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">prog_output</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">provenance</span><span class="p">)</span>
     <span class="nb">print</span><span class="p">(</span><span class="n">prog_output</span><span class="o">.</span><span class="n">traceback</span><span class="p">)</span>
     <span class="k">raise</span>
 
 <span class="k">else</span><span class="p">:</span>
     <span class="c1"># Check results</span>
-    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Energies:&quot;</span><span class="p">,</span> <span class="n">prog_output</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">energies</span><span class="p">)</span>
-    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Structures:&quot;</span><span class="p">,</span> <span class="n">prog_output</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">structures</span><span class="p">)</span>
-    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Trajectory:&quot;</span><span class="p">,</span> <span class="n">prog_output</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">trajectory</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Energies:&quot;</span><span class="p">,</span> <span class="n">prog_output</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">energies</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Structures:&quot;</span><span class="p">,</span> <span class="n">prog_output</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">structures</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Trajectory:&quot;</span><span class="p">,</span> <span class="n">prog_output</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">trajectory</span><span class="p">)</span>
     <span class="c1"># Stdout from the program</span>
     <span class="nb">print</span><span class="p">(</span><span class="n">prog_output</span><span class="o">.</span><span class="n">logs</span><span class="p">)</span>
     <span class="c1"># Input data used to generate the calculation</span>
     <span class="nb">print</span><span class="p">(</span><span class="n">prog_output</span><span class="o">.</span><span class="n">input_data</span><span class="p">)</span>
     <span class="c1"># Provenance of generated calculation</span>
-    <span class="nb">print</span><span class="p">(</span><span class="n">prog_output</span><span class="o">.</span><span class="n">provenance</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">prog_output</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">provenance</span><span class="p">)</span>
 </code></pre></div>
 <h2 id="terachem">TeraChem<a class="headerlink" href="#terachem" title="Permanent link">&para;</a></h2>
 <div class="language-python highlight"><pre><span></span><code><span class="sd">&quot;&quot;&quot;Example of how to run an optimization calculation with TeraChem using qccompute.&quot;&quot;&quot;</span>
@@ -976,6 +980,7 @@
 
 <span class="c1"># Define the program input</span>
 <span class="n">prog_input</span> <span class="o">=</span> <span class="n">ProgramInput</span><span class="p">(</span>
+    <span class="n">program</span><span class="o">=</span><span class="s2">&quot;terachem&quot;</span><span class="p">,</span>
     <span class="n">structure</span><span class="o">=</span><span class="n">structure</span><span class="p">,</span>
     <span class="c1"># Can be &quot;energy&quot;, &quot;gradient&quot;, &quot;hessian&quot;, &quot;optimization&quot;, &quot;transition_state&quot;</span>
     <span class="n">calctype</span><span class="o">=</span><span class="s2">&quot;optimization&quot;</span><span class="p">,</span>  <span class="c1"># type: ignore</span>
@@ -986,13 +991,13 @@
 <span class="c1"># Run the calculation</span>
 <span class="k">try</span><span class="p">:</span>
     <span class="c1"># prog_output is a ProgramOutput instance</span>
-    <span class="n">prog_output</span> <span class="o">=</span> <span class="n">compute</span><span class="p">(</span><span class="s2">&quot;terachem&quot;</span><span class="p">,</span> <span class="n">prog_input</span><span class="p">,</span> <span class="n">collect_files</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">prog_output</span> <span class="o">=</span> <span class="n">compute</span><span class="p">(</span><span class="n">prog_input</span><span class="p">,</span> <span class="n">collect_files</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 <span class="k">except</span> <span class="n">exceptions</span><span class="o">.</span><span class="n">QCComputeBaseError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
     <span class="n">prog_output</span> <span class="o">=</span> <span class="n">e</span><span class="o">.</span><span class="n">prog_output</span>
     <span class="nb">print</span><span class="p">(</span><span class="n">prog_output</span><span class="o">.</span><span class="n">logs</span><span class="p">)</span>
     <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Success: </span><span class="si">{</span><span class="n">prog_output</span><span class="o">.</span><span class="n">success</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>  <span class="c1"># False</span>
     <span class="nb">print</span><span class="p">(</span><span class="n">prog_output</span><span class="o">.</span><span class="n">input_data</span><span class="p">)</span>  <span class="c1"># Input data used to generate the calculation</span>
-    <span class="nb">print</span><span class="p">(</span><span class="n">prog_output</span><span class="o">.</span><span class="n">provenance</span><span class="p">)</span>  <span class="c1"># Provenance of generated calculation</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">prog_output</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">provenance</span><span class="p">)</span>  <span class="c1"># Provenance of generated calculation</span>
     <span class="nb">print</span><span class="p">(</span><span class="n">prog_output</span><span class="o">.</span><span class="n">traceback</span><span class="p">)</span>  <span class="c1"># or output.ptraceback for short</span>
     <span class="k">raise</span>
 
@@ -1000,12 +1005,12 @@
     <span class="c1"># Check results</span>
     <span class="nb">print</span><span class="p">(</span><span class="n">prog_output</span><span class="o">.</span><span class="n">logs</span><span class="p">)</span>
     <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Success: </span><span class="si">{</span><span class="n">prog_output</span><span class="o">.</span><span class="n">success</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>  <span class="c1"># True</span>
-    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;output.data: &quot;</span><span class="p">,</span> <span class="n">prog_output</span><span class="o">.</span><span class="n">data</span><span class="p">)</span>
-    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;output.data.energies:&quot;</span><span class="p">,</span> <span class="n">prog_output</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">energies</span><span class="p">)</span>
-    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;output.data.structures:&quot;</span><span class="p">,</span> <span class="n">prog_output</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">structures</span><span class="p">)</span>
-    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;output.data.final_structure:&quot;</span><span class="p">,</span> <span class="n">prog_output</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">final_structure</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;output.results: &quot;</span><span class="p">,</span> <span class="n">prog_output</span><span class="o">.</span><span class="n">results</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;output.results.energies:&quot;</span><span class="p">,</span> <span class="n">prog_output</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">energies</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;output.results.structures:&quot;</span><span class="p">,</span> <span class="n">prog_output</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">structures</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;output.results.final_structure:&quot;</span><span class="p">,</span> <span class="n">prog_output</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">final_structure</span><span class="p">)</span>
     <span class="nb">print</span><span class="p">(</span><span class="n">prog_output</span><span class="o">.</span><span class="n">input_data</span><span class="p">)</span>  <span class="c1"># Input data used to generate the calculation</span>
-    <span class="nb">print</span><span class="p">(</span><span class="n">prog_output</span><span class="o">.</span><span class="n">provenance</span><span class="p">)</span>  <span class="c1"># Provenance of generated calculation</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">prog_output</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">provenance</span><span class="p">)</span>  <span class="c1"># Provenance of generated calculation</span>
 </code></pre></div>
 
 

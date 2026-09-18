@@ -888,6 +888,7 @@
 
 <span class="c1"># Define the program input</span>
 <span class="n">prog_input</span> <span class="o">=</span> <span class="n">ProgramInput</span><span class="p">(</span>
+    <span class="n">program</span><span class="o">=</span><span class="s2">&quot;terachem&quot;</span><span class="p">,</span>
     <span class="n">structure</span><span class="o">=</span><span class="n">h2o</span><span class="p">,</span>
     <span class="n">calctype</span><span class="o">=</span><span class="s2">&quot;energy&quot;</span><span class="p">,</span>
     <span class="n">model</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;method&quot;</span><span class="p">:</span> <span class="s2">&quot;hf&quot;</span><span class="p">,</span> <span class="s2">&quot;basis&quot;</span><span class="p">:</span> <span class="s2">&quot;sto-3g&quot;</span><span class="p">},</span>
@@ -895,7 +896,7 @@
 <span class="p">)</span>
 
 <span class="c1"># Run the calculation; will return a ProgramOutput or raise an exception</span>
-<span class="n">result</span> <span class="o">=</span> <span class="n">compute</span><span class="p">(</span><span class="s2">&quot;terachem&quot;</span><span class="p">,</span> <span class="n">prog_input</span><span class="p">,</span> <span class="n">collect_files</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">compute</span><span class="p">(</span><span class="n">prog_input</span><span class="p">,</span> <span class="n">collect_files</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 </code></pre></div>
 <p>The <code>compute</code> selects the correct program adapter and then calls <code>adapter.compute()</code>. The available arguments and keywords for the top level <code>compute()</code> function match those shown here:</p>
 
@@ -933,7 +934,7 @@
             <td>
               <div class="doc-md-description">
                 <p>A qcdata input object for a computation. E.g. A FileInput,
-ProgramInput or DualProgramInput.</p>
+ProgramInput.</p>
               </div>
             </td>
             <td>
@@ -1159,7 +1160,7 @@ is implemented for the program in qccompute or qcengine).</p>
           </tr>
           <tr class="doc-section-item">
             <td>
-                  <code><span title="qccompute.exceptions.ProgramNotFoundError">ProgramNotFoundError</span></code>
+                  <code><span title="ProgramNotFoundError">ProgramNotFoundError</span></code>
             </td>
             <td>
               <div class="doc-md-description">
@@ -1204,9 +1205,7 @@ or not available on the $PATH.</p>
 
             <details class="quote">
               <summary>Source code in <code>src/qccompute/adapters/base.py</code></summary>
-              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 78</span>
-<span class="normal"> 79</span>
-<span class="normal"> 80</span>
+              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 80</span>
 <span class="normal"> 81</span>
 <span class="normal"> 82</span>
 <span class="normal"> 83</span>
@@ -1361,7 +1360,26 @@ or not available on the $PATH.</p>
 <span class="normal">232</span>
 <span class="normal">233</span>
 <span class="normal">234</span>
-<span class="normal">235</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">compute</span><span class="p">(</span>
+<span class="normal">235</span>
+<span class="normal">236</span>
+<span class="normal">237</span>
+<span class="normal">238</span>
+<span class="normal">239</span>
+<span class="normal">240</span>
+<span class="normal">241</span>
+<span class="normal">242</span>
+<span class="normal">243</span>
+<span class="normal">244</span>
+<span class="normal">245</span>
+<span class="normal">246</span>
+<span class="normal">247</span>
+<span class="normal">248</span>
+<span class="normal">249</span>
+<span class="normal">250</span>
+<span class="normal">251</span>
+<span class="normal">252</span>
+<span class="normal">253</span>
+<span class="normal">254</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">compute</span><span class="p">(</span>
     <span class="bp">self</span><span class="p">,</span>
     <span class="n">input_data</span><span class="p">:</span> <span class="n">InputType</span><span class="p">,</span>
     <span class="o">*</span><span class="p">,</span>
@@ -1381,7 +1399,7 @@ or not available on the $PATH.</p>
 
 <span class="sd">    Args:</span>
 <span class="sd">        input_data: A qcdata input object for a computation. E.g. A FileInput,</span>
-<span class="sd">            ProgramInput or DualProgramInput.</span>
+<span class="sd">            ProgramInput.</span>
 <span class="sd">        scratch_dir: The scratch directory for the program. If None, a new directory</span>
 <span class="sd">            is created in the system default temporary directory. If rm_scratch_dir</span>
 <span class="sd">            is True this directory will be deleted after the program finishes.</span>
@@ -1438,16 +1456,22 @@ or not available on the $PATH.</p>
         <span class="c1"># Define outputs</span>
         <span class="n">prog_output_dict</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
         <span class="n">logs</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
-        <span class="n">data</span><span class="p">:</span> <span class="n">Data</span>
+        <span class="n">data</span><span class="p">:</span> <span class="n">Data</span> <span class="o">=</span> <span class="n">empty_results</span><span class="p">(</span><span class="n">input_data</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">producer_program</span><span class="p">)</span>
         <span class="n">exc</span><span class="p">:</span> <span class="n">QCComputeBaseError</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
         <span class="n">program_version</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
 
         <span class="n">start</span> <span class="o">=</span> <span class="n">time</span><span class="p">()</span>
         <span class="k">try</span><span class="p">:</span>
-            <span class="c1"># Validate input object</span>
+            <span class="c1"># Dispatch and the recorded request must agree.</span>
+            <span class="n">expected_program</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;external_program&quot;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">program</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">input_data</span><span class="o">.</span><span class="n">program</span> <span class="o">!=</span> <span class="n">expected_program</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">AdapterInputError</span><span class="p">(</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">program</span><span class="p">,</span>
+                    <span class="sa">f</span><span class="s2">&quot;Input requests </span><span class="si">{</span><span class="n">input_data</span><span class="o">.</span><span class="n">program</span><span class="si">!r}</span><span class="s2">, not </span><span class="si">{</span><span class="n">expected_program</span><span class="si">!r}</span><span class="s2">.&quot;</span><span class="p">,</span>
+                <span class="p">)</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">validate_input</span><span class="p">(</span><span class="n">input_data</span><span class="p">)</span>
 
-            <span class="c1"># Execute the program. data will be Files for FileInput</span>
+            <span class="c1"># Execute the program. data will be FileData for FileInput</span>
             <span class="n">data</span><span class="p">,</span> <span class="n">logs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">compute_data</span><span class="p">(</span>
                 <span class="n">input_data</span><span class="p">,</span>
                 <span class="n">update_func</span><span class="p">,</span>
@@ -1455,18 +1479,22 @@ or not available on the $PATH.</p>
                 <span class="n">propagate_wfn</span><span class="o">=</span><span class="n">propagate_wfn</span><span class="p">,</span>
                 <span class="o">**</span><span class="n">adapter_kwargs</span><span class="p">,</span>
             <span class="p">)</span>
-            <span class="c1"># None value covers FileInput case</span>
             <span class="n">prog_output_dict</span><span class="p">[</span><span class="s2">&quot;success&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
 
             <span class="c1"># Optionally collect wavefunction file</span>
             <span class="k">if</span> <span class="n">collect_wfn</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">collect_files</span><span class="p">:</span>
-                <span class="n">data</span><span class="o">.</span><span class="n">files</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">collect_wfn</span><span class="p">())</span>
+                <span class="n">data</span> <span class="o">=</span> <span class="nb">type</span><span class="p">(</span><span class="n">data</span><span class="p">)</span><span class="o">.</span><span class="n">model_validate</span><span class="p">(</span>
+                    <span class="p">{</span>
+                        <span class="o">**</span><span class="n">data</span><span class="o">.</span><span class="n">model_dump</span><span class="p">(),</span>
+                        <span class="s2">&quot;files&quot;</span><span class="p">:</span> <span class="p">{</span><span class="o">**</span><span class="n">data</span><span class="o">.</span><span class="n">files</span><span class="p">,</span> <span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">collect_wfn</span><span class="p">()},</span>
+                    <span class="p">}</span>
+                <span class="p">)</span>
 
         <span class="k">except</span> <span class="n">QCComputeBaseError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
             <span class="n">exc</span> <span class="o">=</span> <span class="n">e</span>
             <span class="n">prog_output_dict</span><span class="p">[</span><span class="s2">&quot;success&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span>
             <span class="c1"># Any half-completed data</span>
-            <span class="n">data</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">e</span><span class="p">,</span> <span class="s2">&quot;data&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">Files</span><span class="p">()</span>
+            <span class="n">data</span> <span class="o">=</span> <span class="n">e</span><span class="o">.</span><span class="n">data</span> <span class="k">if</span> <span class="n">e</span><span class="o">.</span><span class="n">data</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">data</span>
             <span class="n">logs</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">e</span><span class="p">,</span> <span class="s2">&quot;logs&quot;</span><span class="p">,</span> <span class="n">logs</span><span class="p">)</span> <span class="ow">or</span> <span class="n">logs</span>
             <span class="c1"># For mypy because e.logs is not of a known type</span>
             <span class="n">logs</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">logs</span><span class="p">)</span> <span class="k">if</span> <span class="n">logs</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span>
@@ -1474,21 +1502,28 @@ or not available on the $PATH.</p>
 
         <span class="n">wall_time</span> <span class="o">=</span> <span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">start</span>
 
-        <span class="c1"># Check for parsed version in extras at default location</span>
-        <span class="n">program_version</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">extras</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;program_version&quot;</span><span class="p">)</span>
-        <span class="k">if</span> <span class="ow">not</span> <span class="n">program_version</span><span class="p">:</span>
+        <span class="c1"># Parsed producer metadata is authoritative. Fill an unknown version only</span>
+        <span class="c1"># when the adapter can provide it; version lookup must not mask failure.</span>
+        <span class="k">if</span> <span class="p">(</span>
+            <span class="n">data</span><span class="o">.</span><span class="n">provenance</span><span class="o">.</span><span class="n">program_version</span> <span class="ow">is</span> <span class="kc">None</span>
+            <span class="ow">and</span> <span class="n">data</span><span class="o">.</span><span class="n">provenance</span><span class="o">.</span><span class="n">program</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">producer_program</span>
+            <span class="ow">and</span> <span class="p">(</span><span class="n">logs</span> <span class="ow">or</span> <span class="n">prog_output_dict</span><span class="p">[</span><span class="s2">&quot;success&quot;</span><span class="p">])</span>
+        <span class="p">):</span>
             <span class="k">try</span><span class="p">:</span>
                 <span class="n">program_version</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">program_version</span><span class="p">(</span><span class="n">logs</span><span class="p">)</span>
-            <span class="k">except</span> <span class="n">ProgramNotFoundError</span><span class="p">:</span>
-                <span class="k">pass</span>  <span class="c1"># program_version = None set above</span>
-
-        <span class="c1"># Construct Provenance object</span>
-        <span class="n">provenance</span> <span class="o">=</span> <span class="n">construct_provenance</span><span class="p">(</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">program</span><span class="p">,</span>
-            <span class="n">program_version</span><span class="p">,</span>
-            <span class="n">final_scratch_dir</span><span class="p">,</span>
-            <span class="n">wall_time</span><span class="p">,</span>
-        <span class="p">)</span>
+            <span class="k">except</span> <span class="n">QCComputeBaseError</span><span class="p">:</span>
+                <span class="n">program_version</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="k">if</span> <span class="n">program_version</span><span class="p">:</span>
+                <span class="n">data</span> <span class="o">=</span> <span class="nb">type</span><span class="p">(</span><span class="n">data</span><span class="p">)</span><span class="o">.</span><span class="n">model_validate</span><span class="p">(</span>
+                    <span class="p">{</span>
+                        <span class="o">**</span><span class="n">data</span><span class="o">.</span><span class="n">model_dump</span><span class="p">(),</span>
+                        <span class="s2">&quot;provenance&quot;</span><span class="p">:</span> <span class="p">{</span>
+                            <span class="o">**</span><span class="n">data</span><span class="o">.</span><span class="n">provenance</span><span class="o">.</span><span class="n">model_dump</span><span class="p">(),</span>
+                            <span class="s2">&quot;program_version&quot;</span><span class="p">:</span> <span class="n">program_version</span><span class="p">,</span>
+                        <span class="p">},</span>
+                    <span class="p">}</span>
+                <span class="p">)</span>
+        <span class="n">execution</span> <span class="o">=</span> <span class="n">construct_execution</span><span class="p">(</span><span class="n">final_scratch_dir</span><span class="p">,</span> <span class="n">wall_time</span><span class="p">)</span>
 
         <span class="c1"># Always collect for failures; otherwise obey collect_logs</span>
         <span class="n">logs</span> <span class="o">=</span> <span class="n">logs</span> <span class="k">if</span> <span class="ow">not</span> <span class="n">prog_output_dict</span><span class="p">[</span><span class="s2">&quot;success&quot;</span><span class="p">]</span> <span class="ow">or</span> <span class="n">collect_logs</span> <span class="k">else</span> <span class="kc">None</span>
@@ -1498,15 +1533,15 @@ or not available on the $PATH.</p>
             <span class="p">{</span>
                 <span class="s2">&quot;input_data&quot;</span><span class="p">:</span> <span class="n">input_data</span><span class="p">,</span>
                 <span class="s2">&quot;logs&quot;</span><span class="p">:</span> <span class="n">logs</span><span class="p">,</span>
-                <span class="s2">&quot;data&quot;</span><span class="p">:</span> <span class="n">data</span><span class="p">,</span>
-                <span class="s2">&quot;provenance&quot;</span><span class="p">:</span> <span class="n">provenance</span><span class="p">,</span>
+                <span class="s2">&quot;results&quot;</span><span class="p">:</span> <span class="n">data</span><span class="p">,</span>
+                <span class="s2">&quot;execution&quot;</span><span class="p">:</span> <span class="n">execution</span><span class="p">,</span>
             <span class="p">}</span>
         <span class="p">)</span>
-        <span class="n">prog_output</span> <span class="o">=</span> <span class="n">ProgramOutput</span><span class="p">[</span><span class="n">InputType</span><span class="p">,</span> <span class="n">DataType</span><span class="p">](</span><span class="o">**</span><span class="n">prog_output_dict</span><span class="p">)</span>
+        <span class="n">prog_output</span> <span class="o">=</span> <span class="n">ProgramOutput</span><span class="p">(</span><span class="o">**</span><span class="n">prog_output_dict</span><span class="p">)</span>
 
         <span class="c1"># Collect files generated by the program</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">uses_files</span> <span class="ow">and</span> <span class="p">(</span><span class="n">collect_files</span> <span class="ow">or</span> <span class="nb">type</span><span class="p">(</span><span class="n">input_data</span><span class="p">)</span> <span class="ow">is</span> <span class="n">FileInput</span><span class="p">):</span>
-            <span class="n">prog_output</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">add_files</span><span class="p">(</span>
+            <span class="n">prog_output</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">add_files</span><span class="p">(</span>
                 <span class="n">final_scratch_dir</span><span class="p">,</span>
                 <span class="n">recursive</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
                 <span class="n">exclude</span><span class="o">=</span><span class="nb">list</span><span class="p">(</span><span class="n">input_data</span><span class="o">.</span><span class="n">files</span><span class="o">.</span><span class="n">keys</span><span class="p">()),</span>

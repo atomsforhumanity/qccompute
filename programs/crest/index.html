@@ -1024,7 +1024,7 @@ still valid because they are translationally invariant.</p>
 
 
 <h3 id="qccompute.adapters.crest.CRESTAdapter.program_version" class="doc doc-heading">
-<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <code class="highlight language-python"><span class="n">program_version</span><span class="p">(</span><span class="n">stdout</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span></code>
+<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <code class="highlight language-python"><span class="n">program_version</span><span class="p">(</span><span class="n">stdout</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span></code>
 
 <a href="#qccompute.adapters.crest.CRESTAdapter.program_version" class="headerlink" title="Permanent link">&para;</a></h3>
 
@@ -1074,7 +1074,7 @@ still valid because they are translationally invariant.</p>
       <tbody>
           <tr class="doc-section-item">
             <td>
-                  <code><span title="str">str</span></code>
+                  <code><span title="str">str</span> | None</code>
             </td>
             <td>
               <div class="doc-md-description">
@@ -1087,18 +1087,21 @@ still valid because they are translationally invariant.</p>
 
             <details class="quote">
               <summary>Source code in <code>src/qccompute/adapters/crest.py</code></summary>
-              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">60</span>
-<span class="normal">61</span>
-<span class="normal">62</span>
-<span class="normal">63</span>
-<span class="normal">64</span>
+              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">64</span>
 <span class="normal">65</span>
 <span class="normal">66</span>
 <span class="normal">67</span>
 <span class="normal">68</span>
 <span class="normal">69</span>
 <span class="normal">70</span>
-<span class="normal">71</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">program_version</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">stdout</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="normal">71</span>
+<span class="normal">72</span>
+<span class="normal">73</span>
+<span class="normal">74</span>
+<span class="normal">75</span>
+<span class="normal">76</span>
+<span class="normal">77</span>
+<span class="normal">78</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">program_version</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">stdout</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Get the program version.</span>
 
 <span class="sd">    Args:</span>
@@ -1109,7 +1112,10 @@ still valid because they are translationally invariant.</p>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="n">stdout</span><span class="p">:</span>
         <span class="n">stdout</span> <span class="o">=</span> <span class="n">execute_subprocess</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">program</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;--version&quot;</span><span class="p">])</span>
-    <span class="k">return</span> <span class="n">parse_version</span><span class="p">(</span><span class="n">stdout</span><span class="p">)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">parse_version</span><span class="p">(</span><span class="n">stdout</span><span class="p">)</span>
+    <span class="k">except</span> <span class="n">qccodec</span><span class="o">.</span><span class="n">exceptions</span><span class="o">.</span><span class="n">ParserError</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -1120,7 +1126,7 @@ still valid because they are translationally invariant.</p>
 
 
 <h3 id="qccompute.adapters.crest.CRESTAdapter.compute_data" class="doc doc-heading">
-<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <code class="highlight language-python"><span class="n">compute_data</span><span class="p">(</span><span class="n">input_data</span><span class="p">:</span> <span class="n">ProgramInput</span><span class="p">,</span> <span class="n">update_func</span><span class="p">:</span> <span class="n">Callable</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">update_interval</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">collect_rotamers</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">SinglePointData</span> <span class="o">|</span> <span class="n">OptimizationResults</span> <span class="o">|</span> <span class="n">ConformerSearchResults</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span></code>
+<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <code class="highlight language-python"><span class="n">compute_data</span><span class="p">(</span><span class="n">input_data</span><span class="p">:</span> <span class="n">ProgramInput</span><span class="p">,</span> <span class="n">update_func</span><span class="p">:</span> <span class="n">Callable</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">update_interval</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">collect_rotamers</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">SinglePointData</span> <span class="o">|</span> <span class="n">OptimizationData</span> <span class="o">|</span> <span class="n">ConformerSearchData</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span></code>
 
 <a href="#qccompute.adapters.crest.CRESTAdapter.compute_data" class="headerlink" title="Permanent link">&para;</a></h3>
 
@@ -1213,11 +1219,11 @@ False since rotamers are usually not of interest and there will be many.</p>
       <tbody>
           <tr class="doc-section-item">
             <td>
-                  <code><span title="tuple">tuple</span>[<span title="qcdata.SinglePointData">SinglePointData</span> | <span title="qcdata.OptimizationResults">OptimizationResults</span> | <span title="qcdata.ConformerSearchResults">ConformerSearchResults</span>, <span title="str">str</span>]</code>
+                  <code><span title="tuple">tuple</span>[<span title="qcdata.SinglePointData">SinglePointData</span> | <span title="qcdata.OptimizationData">OptimizationData</span> | <span title="qcdata.ConformerSearchData">ConformerSearchData</span>, <span title="str">str</span>]</code>
             </td>
             <td>
               <div class="doc-md-description">
-                <p>A tuple of ConformerSearchResults and the stdout str.</p>
+                <p>A tuple of ConformerSearchData and the stdout str.</p>
               </div>
             </td>
           </tr>
@@ -1226,14 +1232,7 @@ False since rotamers are usually not of interest and there will be many.</p>
 
             <details class="quote">
               <summary>Source code in <code>src/qccompute/adapters/crest.py</code></summary>
-              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 73</span>
-<span class="normal"> 74</span>
-<span class="normal"> 75</span>
-<span class="normal"> 76</span>
-<span class="normal"> 77</span>
-<span class="normal"> 78</span>
-<span class="normal"> 79</span>
-<span class="normal"> 80</span>
+              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 80</span>
 <span class="normal"> 81</span>
 <span class="normal"> 82</span>
 <span class="normal"> 83</span>
@@ -1288,14 +1287,38 @@ False since rotamers are usually not of interest and there will be many.</p>
 <span class="normal">132</span>
 <span class="normal">133</span>
 <span class="normal">134</span>
-<span class="normal">135</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">compute_data</span><span class="p">(</span>
+<span class="normal">135</span>
+<span class="normal">136</span>
+<span class="normal">137</span>
+<span class="normal">138</span>
+<span class="normal">139</span>
+<span class="normal">140</span>
+<span class="normal">141</span>
+<span class="normal">142</span>
+<span class="normal">143</span>
+<span class="normal">144</span>
+<span class="normal">145</span>
+<span class="normal">146</span>
+<span class="normal">147</span>
+<span class="normal">148</span>
+<span class="normal">149</span>
+<span class="normal">150</span>
+<span class="normal">151</span>
+<span class="normal">152</span>
+<span class="normal">153</span>
+<span class="normal">154</span>
+<span class="normal">155</span>
+<span class="normal">156</span>
+<span class="normal">157</span>
+<span class="normal">158</span>
+<span class="normal">159</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">compute_data</span><span class="p">(</span>
     <span class="bp">self</span><span class="p">,</span>
     <span class="n">input_data</span><span class="p">:</span> <span class="n">ProgramInput</span><span class="p">,</span>
     <span class="n">update_func</span><span class="p">:</span> <span class="n">Callable</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
     <span class="n">update_interval</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
     <span class="n">collect_rotamers</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
     <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
-<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">SinglePointData</span> <span class="o">|</span> <span class="n">OptimizationResults</span> <span class="o">|</span> <span class="n">ConformerSearchResults</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">SinglePointData</span> <span class="o">|</span> <span class="n">OptimizationData</span> <span class="o">|</span> <span class="n">ConformerSearchData</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Execute CREST on the given input.</span>
 
 <span class="sd">    Args:</span>
@@ -1306,11 +1329,11 @@ False since rotamers are usually not of interest and there will be many.</p>
 <span class="sd">            False since rotamers are usually not of interest and there will be many.</span>
 
 <span class="sd">    Returns:</span>
-<span class="sd">        A tuple of ConformerSearchResults and the stdout str.</span>
+<span class="sd">        A tuple of ConformerSearchData and the stdout str.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="c1"># Create CREST native input files</span>
     <span class="k">try</span><span class="p">:</span>
-        <span class="n">native_inp</span> <span class="o">=</span> <span class="n">qccodec</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="n">input_data</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">program</span><span class="p">)</span>
+        <span class="n">native_inp</span> <span class="o">=</span> <span class="n">qccodec</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="n">input_data</span><span class="p">)</span>
     <span class="k">except</span> <span class="n">qccodec</span><span class="o">.</span><span class="n">exceptions</span><span class="o">.</span><span class="n">EncoderError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
         <span class="k">raise</span> <span class="n">AdapterInputError</span><span class="p">(</span><span class="n">program</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">program</span><span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">e</span>
 
@@ -1320,15 +1343,25 @@ False since rotamers are usually not of interest and there will be many.</p>
     <span class="n">struct_file</span><span class="o">.</span><span class="n">write_text</span><span class="p">(</span><span class="n">native_inp</span><span class="o">.</span><span class="n">geometry_file</span><span class="p">)</span>
 
     <span class="c1"># Execute CREST</span>
-    <span class="n">stdout</span> <span class="o">=</span> <span class="n">execute_subprocess</span><span class="p">(</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">program</span><span class="p">,</span> <span class="p">[</span><span class="n">inp_file</span><span class="o">.</span><span class="n">name</span><span class="p">],</span> <span class="n">update_func</span><span class="p">,</span> <span class="n">update_interval</span>
-    <span class="p">)</span>
+    <span class="n">execution_error</span><span class="p">:</span> <span class="n">ExternalProgramError</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">stdout</span> <span class="o">=</span> <span class="n">execute_subprocess</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">program</span><span class="p">,</span>
+            <span class="p">[</span><span class="n">inp_file</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="o">*</span><span class="n">input_data</span><span class="o">.</span><span class="n">cmdline_args</span><span class="p">],</span>
+            <span class="n">update_func</span><span class="p">,</span>
+            <span class="n">update_interval</span><span class="p">,</span>
+        <span class="p">)</span>
+    <span class="k">except</span> <span class="n">ProgramNotFoundError</span><span class="p">:</span>
+        <span class="k">raise</span>  <span class="c1"># Nothing ran, so there are no program artifacts to decode.</span>
+    <span class="k">except</span> <span class="n">ExternalProgramError</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+        <span class="n">execution_error</span> <span class="o">=</span> <span class="n">exc</span>
+        <span class="n">stdout</span> <span class="o">=</span> <span class="n">exc</span><span class="o">.</span><span class="n">logs</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span>
 
     <span class="c1"># CREST does not exit with a non-zero exit code on failure</span>
-    <span class="k">if</span> <span class="s2">&quot;FAILED&quot;</span> <span class="ow">in</span> <span class="n">stdout</span><span class="p">:</span>
-        <span class="k">raise</span> <span class="n">ExternalProgramError</span><span class="p">(</span>
+    <span class="k">if</span> <span class="s2">&quot;FAILED&quot;</span> <span class="ow">in</span> <span class="n">stdout</span> <span class="ow">and</span> <span class="n">execution_error</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">execution_error</span> <span class="o">=</span> <span class="n">ExternalProgramError</span><span class="p">(</span>
             <span class="n">program</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">program</span><span class="p">,</span>
-            <span class="n">message</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;CREST calculation failed. See the stdout for more information.&quot;</span><span class="p">,</span>
+            <span class="n">message</span><span class="o">=</span><span class="s2">&quot;CREST calculation failed. See the stdout for more information.&quot;</span><span class="p">,</span>
             <span class="n">logs</span><span class="o">=</span><span class="n">stdout</span><span class="p">,</span>
         <span class="p">)</span>
 
@@ -1340,8 +1373,12 @@ False since rotamers are usually not of interest and there will be many.</p>
             <span class="n">stdout</span><span class="o">=</span><span class="n">stdout</span><span class="p">,</span>
             <span class="n">directory</span><span class="o">=</span><span class="s2">&quot;.&quot;</span><span class="p">,</span>
             <span class="n">input_data</span><span class="o">=</span><span class="n">input_data</span><span class="p">,</span>
+            <span class="n">failed</span><span class="o">=</span><span class="n">execution_error</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">,</span>
         <span class="p">)</span>
     <span class="k">except</span> <span class="n">qccodec</span><span class="o">.</span><span class="n">exceptions</span><span class="o">.</span><span class="n">ParserError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">execution_error</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">execution_error</span><span class="o">.</span><span class="n">data</span> <span class="o">=</span> <span class="n">e</span><span class="o">.</span><span class="n">data</span>
+            <span class="k">raise</span> <span class="n">execution_error</span> <span class="kn">from</span><span class="w"> </span><span class="nn">e</span>
         <span class="k">raise</span> <span class="n">ExternalProgramError</span><span class="p">(</span>
             <span class="n">program</span><span class="o">=</span><span class="s2">&quot;qccodec&quot;</span><span class="p">,</span>
             <span class="n">message</span><span class="o">=</span><span class="s2">&quot;Failed to parse CREST output.&quot;</span><span class="p">,</span>
@@ -1350,6 +1387,9 @@ False since rotamers are usually not of interest and there will be many.</p>
             <span class="n">original_exception</span><span class="o">=</span><span class="n">e</span><span class="p">,</span>
         <span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">e</span>
 
+    <span class="k">if</span> <span class="n">execution_error</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">execution_error</span><span class="o">.</span><span class="n">data</span> <span class="o">=</span> <span class="n">results</span>
+        <span class="k">raise</span> <span class="n">execution_error</span>
     <span class="k">return</span> <span class="n">results</span><span class="p">,</span> <span class="n">stdout</span>
 </code></pre></div></td></tr></table></div>
             </details>

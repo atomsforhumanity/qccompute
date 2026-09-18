@@ -610,6 +610,15 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#recursive-program-input" class="md-nav__link">
+    <span class="md-ellipsis">
+      Recursive program input
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -917,6 +926,15 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#recursive-program-input" class="md-nav__link">
+    <span class="md-ellipsis">
+      Recursive program input
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -955,8 +973,7 @@
 
                   <details class="quote">
                     <summary>Source code in <code>src/qccompute/adapters/geometric.py</code></summary>
-                    <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">37</span>
-<span class="normal">38</span>
+                    <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">38</span>
 <span class="normal">39</span>
 <span class="normal">40</span>
 <span class="normal">41</span>
@@ -978,7 +995,8 @@
 <span class="normal">57</span>
 <span class="normal">58</span>
 <span class="normal">59</span>
-<span class="normal">60</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="normal">60</span>
+<span class="normal">61</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
     <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
     <span class="c1"># Check that geomeTRIC is installed</span>
     <span class="bp">self</span><span class="o">.</span><span class="n">geometric</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ensure_geometric_installed</span><span class="p">()</span>
@@ -1054,9 +1072,9 @@
 
             <details class="quote">
               <summary>Source code in <code>src/qccompute/adapters/geometric.py</code></summary>
-              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">71</span>
-<span class="normal">72</span>
-<span class="normal">73</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">program_version</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">72</span>
+<span class="normal">73</span>
+<span class="normal">74</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">program_version</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Get the program version.&quot;&quot;&quot;</span>
     <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">geometric</span><span class="o">.</span><span class="n">__version__</span>
 </code></pre></div></td></tr></table></div>
@@ -1069,7 +1087,7 @@
 
 
 <h3 id="qccompute.adapters.geometric.GeometricAdapter.compute_data" class="doc doc-heading">
-<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <code class="highlight language-python"><span class="n">compute_data</span><span class="p">(</span><span class="n">input_data</span><span class="p">:</span> <span class="n">DualProgramInput</span><span class="p">,</span> <span class="n">update_func</span><span class="p">:</span> <span class="n">Callable</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">update_interval</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">propagate_wfn</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">OptimizationData</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span></code>
+<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <code class="highlight language-python"><span class="n">compute_data</span><span class="p">(</span><span class="n">input_data</span><span class="p">:</span> <span class="n">ProgramInput</span><span class="p">,</span> <span class="n">update_func</span><span class="p">:</span> <span class="n">Callable</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">update_interval</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">propagate_wfn</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">OptimizationData</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span></code>
 
 <a href="#qccompute.adapters.geometric.GeometricAdapter.compute_data" class="headerlink" title="Permanent link">&para;</a></h3>
 
@@ -1093,11 +1111,11 @@
           <tr class="doc-section-item">
             <td><code>input_data</code></td>
             <td>
-                  <code><span title="qcdata.DualProgramInput">DualProgramInput</span></code>
+                  <code><span title="qcdata.ProgramInput">ProgramInput</span></code>
             </td>
             <td>
               <div class="doc-md-description">
-                <p>The qcdata DualProgramInput object for a computation.</p>
+                <p>The qcdata ProgramInput object for a computation.</p>
               </div>
             </td>
             <td>
@@ -1124,8 +1142,7 @@ optimization.</p>
 
             <details class="quote">
               <summary>Source code in <code>src/qccompute/adapters/geometric.py</code></summary>
-              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 75</span>
-<span class="normal"> 76</span>
+              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 76</span>
 <span class="normal"> 77</span>
 <span class="normal"> 78</span>
 <span class="normal"> 79</span>
@@ -1176,9 +1193,31 @@ optimization.</p>
 <span class="normal">124</span>
 <span class="normal">125</span>
 <span class="normal">126</span>
-<span class="normal">127</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">compute_data</span><span class="p">(</span>
+<span class="normal">127</span>
+<span class="normal">128</span>
+<span class="normal">129</span>
+<span class="normal">130</span>
+<span class="normal">131</span>
+<span class="normal">132</span>
+<span class="normal">133</span>
+<span class="normal">134</span>
+<span class="normal">135</span>
+<span class="normal">136</span>
+<span class="normal">137</span>
+<span class="normal">138</span>
+<span class="normal">139</span>
+<span class="normal">140</span>
+<span class="normal">141</span>
+<span class="normal">142</span>
+<span class="normal">143</span>
+<span class="normal">144</span>
+<span class="normal">145</span>
+<span class="normal">146</span>
+<span class="normal">147</span>
+<span class="normal">148</span>
+<span class="normal">149</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">compute_data</span><span class="p">(</span>
     <span class="bp">self</span><span class="p">,</span>
-    <span class="n">input_data</span><span class="p">:</span> <span class="n">DualProgramInput</span><span class="p">,</span>
+    <span class="n">input_data</span><span class="p">:</span> <span class="n">ProgramInput</span><span class="p">,</span>
     <span class="n">update_func</span><span class="p">:</span> <span class="n">Callable</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
     <span class="n">update_interval</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
     <span class="n">propagate_wfn</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
@@ -1187,7 +1226,7 @@ optimization.</p>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Compute the requested calculation.</span>
 
 <span class="sd">    Args:</span>
-<span class="sd">        input_data: The qcdata DualProgramInput object for a computation.</span>
+<span class="sd">        input_data: The qcdata ProgramInput object for a computation.</span>
 <span class="sd">        propagate_wfn: Whether to propagate the wavefunction between steps of the</span>
 <span class="sd">            optimization.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
@@ -1195,13 +1234,16 @@ optimization.</p>
     <span class="c1"># operate on an internal copy and preserve the caller&#39;s original input object.</span>
     <span class="n">input_data</span> <span class="o">=</span> <span class="n">input_data</span><span class="o">.</span><span class="n">model_copy</span><span class="p">(</span><span class="n">deep</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">gradient_spec</span> <span class="o">=</span> <span class="n">input_data</span><span class="o">.</span><span class="n">get_subprogram</span><span class="p">(</span><span class="n">CalcType</span><span class="o">.</span><span class="n">gradient</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">AdapterInputError</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">program</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">exc</span><span class="p">))</span> <span class="kn">from</span><span class="w"> </span><span class="nn">exc</span>
+
     <span class="c1"># Update the input object based on its calctype</span>
     <span class="bp">self</span><span class="o">.</span><span class="n">_update_input_data</span><span class="p">(</span><span class="n">input_data</span><span class="p">)</span>
     <span class="n">geometric_molecule</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_create_geometric_molecule</span><span class="p">(</span><span class="n">input_data</span><span class="o">.</span><span class="n">structure</span><span class="p">)</span>
     <span class="n">internal_coords_sys</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_setup_coords</span><span class="p">(</span><span class="n">input_data</span><span class="p">,</span> <span class="n">geometric_molecule</span><span class="p">)</span>
-    <span class="n">qcdata_adapter</span> <span class="o">=</span> <span class="n">get_adapter</span><span class="p">(</span>
-        <span class="n">input_data</span><span class="o">.</span><span class="n">subprogram</span><span class="p">,</span> <span class="n">input_data</span><span class="p">,</span> <span class="n">qcng_fallback</span><span class="o">=</span><span class="kc">True</span>
-    <span class="p">)</span>
+    <span class="n">qcdata_adapter</span> <span class="o">=</span> <span class="n">get_adapter</span><span class="p">(</span><span class="n">gradient_spec</span><span class="o">.</span><span class="n">program</span><span class="p">,</span> <span class="n">qcng_fallback</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
     <span class="n">optimizer</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_construct_optimizer</span><span class="p">(</span>
         <span class="n">input_data</span><span class="p">,</span>
         <span class="n">geometric_molecule</span><span class="p">,</span>
@@ -1217,14 +1259,32 @@ optimization.</p>
     <span class="k">with</span> <span class="n">capture_logs</span><span class="p">(</span><span class="s2">&quot;geometric&quot;</span><span class="p">,</span> <span class="n">update_func</span><span class="p">,</span> <span class="n">update_interval</span><span class="p">)</span> <span class="k">as</span> <span class="p">(</span><span class="n">_</span><span class="p">,</span> <span class="n">log_string</span><span class="p">):</span>
         <span class="k">try</span><span class="p">:</span>
             <span class="n">optimizer</span><span class="o">.</span><span class="n">optimizeGeometry</span><span class="p">()</span>
+        <span class="k">except</span> <span class="n">QCComputeBaseError</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">ExternalProgramError</span><span class="p">(</span>
+                <span class="n">program</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">program</span><span class="p">,</span>
+                <span class="n">message</span><span class="o">=</span><span class="s2">&quot;A child calculation failed during geomeTRIC optimization.&quot;</span><span class="p">,</span>
+                <span class="n">logs</span><span class="o">=</span><span class="n">log_string</span><span class="o">.</span><span class="n">getvalue</span><span class="p">(),</span>
+                <span class="n">data</span><span class="o">=</span><span class="n">exc</span><span class="o">.</span><span class="n">data</span><span class="p">,</span>
+                <span class="n">original_exception</span><span class="o">=</span><span class="n">exc</span><span class="p">,</span>
+            <span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">exc</span>
         <span class="k">except</span> <span class="bp">self</span><span class="o">.</span><span class="n">geometric</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">Error</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
             <span class="k">raise</span> <span class="n">ExternalProgramError</span><span class="p">(</span>
                 <span class="n">program</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">program</span><span class="p">,</span>
                 <span class="n">message</span><span class="o">=</span><span class="s2">&quot;geomeTRIC optimization failed. See the traceback above for details.&quot;</span><span class="p">,</span>
+                <span class="n">logs</span><span class="o">=</span><span class="n">log_string</span><span class="o">.</span><span class="n">getvalue</span><span class="p">(),</span>
+                <span class="n">data</span><span class="o">=</span><span class="n">OptimizationData</span><span class="p">(</span>
+                    <span class="n">provenance</span><span class="o">=</span><span class="n">Provenance</span><span class="p">(</span>
+                        <span class="n">program</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">program</span><span class="p">,</span> <span class="n">program_version</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">program_version</span><span class="p">()</span>
+                    <span class="p">),</span>
+                    <span class="n">trajectory</span><span class="o">=</span><span class="n">optimizer</span><span class="o">.</span><span class="n">engine</span><span class="o">.</span><span class="n">qcdata_trajectory</span><span class="p">,</span>
+                <span class="p">),</span>
             <span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">e</span>
 
     <span class="k">return</span> <span class="p">(</span>
         <span class="n">OptimizationData</span><span class="p">(</span>
+            <span class="n">provenance</span><span class="o">=</span><span class="n">Provenance</span><span class="p">(</span>
+                <span class="n">program</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">program</span><span class="p">,</span> <span class="n">program_version</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">program_version</span><span class="p">()</span>
+            <span class="p">),</span>
             <span class="n">trajectory</span><span class="o">=</span><span class="n">optimizer</span><span class="o">.</span><span class="n">engine</span><span class="o">.</span><span class="n">qcdata_trajectory</span><span class="p">,</span>
         <span class="p">),</span>
         <span class="n">log_string</span><span class="o">.</span><span class="n">getvalue</span><span class="p">(),</span>
@@ -1241,7 +1301,31 @@ optimization.</p>
 
     </div>
 
-</div>
+</div><h2 id="recursive-program-input">Recursive program input<a class="headerlink" href="#recursive-program-input" title="Permanent link">&para;</a></h2>
+<div class="language-python highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">qcdata</span><span class="w"> </span><span class="kn">import</span> <span class="n">ProgramInput</span><span class="p">,</span> <span class="n">ProgramSpec</span><span class="p">,</span> <span class="n">Structure</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">qccompute</span><span class="w"> </span><span class="kn">import</span> <span class="n">compute</span>
+
+<span class="n">structure</span> <span class="o">=</span> <span class="n">Structure</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="s2">&quot;molecule.xyz&quot;</span><span class="p">)</span>
+<span class="n">input_data</span> <span class="o">=</span> <span class="n">ProgramInput</span><span class="p">(</span>
+    <span class="n">program</span><span class="o">=</span><span class="s2">&quot;geometric&quot;</span><span class="p">,</span>
+    <span class="n">calctype</span><span class="o">=</span><span class="s2">&quot;optimization&quot;</span><span class="p">,</span>
+    <span class="n">structure</span><span class="o">=</span><span class="n">structure</span><span class="p">,</span>
+    <span class="n">keywords</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;maxiter&quot;</span><span class="p">:</span> <span class="mi">250</span><span class="p">},</span>
+    <span class="n">subprograms</span><span class="o">=</span><span class="p">[</span>
+        <span class="n">ProgramSpec</span><span class="p">(</span>
+            <span class="n">program</span><span class="o">=</span><span class="s2">&quot;terachem&quot;</span><span class="p">,</span>
+            <span class="n">calctype</span><span class="o">=</span><span class="s2">&quot;gradient&quot;</span><span class="p">,</span>
+            <span class="n">model</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;method&quot;</span><span class="p">:</span> <span class="s2">&quot;wb97x-d3&quot;</span><span class="p">,</span> <span class="s2">&quot;basis&quot;</span><span class="p">:</span> <span class="s2">&quot;def2-svp&quot;</span><span class="p">},</span>
+        <span class="p">),</span>
+    <span class="p">],</span>
+<span class="p">)</span>
+<span class="n">output</span> <span class="o">=</span> <span class="n">compute</span><span class="p">(</span><span class="n">input_data</span><span class="p">)</span>
+<span class="n">output</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">final_structure</span>
+<span class="n">output</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">trajectory</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">provenance</span>  <span class="c1"># Gradient producer</span>
+<span class="n">output</span><span class="o">.</span><span class="n">execution</span><span class="o">.</span><span class="n">wall_time</span>  <span class="c1"># Optimizer execution time</span>
+</code></pre></div>
+<p>Each child has its own model, keywords, native files, command-line arguments, and
+metadata. Additional role-named structures are passed to child calculations.</p>
 
 
 

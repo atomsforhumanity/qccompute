@@ -826,20 +826,22 @@
 
 <span class="c1"># Create a FileInput object for TeraChem</span>
 <span class="n">file_input</span> <span class="o">=</span> <span class="n">FileInput</span><span class="p">(</span>
-    <span class="n">files</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;tc.in&quot;</span><span class="p">:</span> <span class="n">inp_file</span><span class="p">,</span> <span class="s2">&quot;coords.xyz&quot;</span><span class="p">:</span> <span class="n">xyz_str</span><span class="p">},</span> <span class="n">cmdline_args</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;tc.in&quot;</span><span class="p">]</span>
+    <span class="n">program</span><span class="o">=</span><span class="s2">&quot;terachem&quot;</span><span class="p">,</span>
+    <span class="n">files</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;tc.in&quot;</span><span class="p">:</span> <span class="n">inp_file</span><span class="p">,</span> <span class="s2">&quot;coords.xyz&quot;</span><span class="p">:</span> <span class="n">xyz_str</span><span class="p">},</span>
+    <span class="n">cmdline_args</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;tc.in&quot;</span><span class="p">],</span>
 <span class="p">)</span>
 
 <span class="c1"># This will write the files to disk in a temporary directory and then run</span>
 <span class="c1"># &quot;terachem tc.in&quot; in that directory.</span>
-<span class="n">prog_output</span> <span class="o">=</span> <span class="n">compute</span><span class="p">(</span><span class="s2">&quot;terachem&quot;</span><span class="p">,</span> <span class="n">file_input</span><span class="p">,</span> <span class="n">print_logs</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="n">prog_output</span> <span class="o">=</span> <span class="n">compute</span><span class="p">(</span><span class="n">file_input</span><span class="p">,</span> <span class="n">print_logs</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 
 <span class="c1"># Data</span>
 <span class="n">prog_output</span><span class="o">.</span><span class="n">logs</span>
 <span class="n">prog_output</span><span class="o">.</span><span class="n">input_data</span>
-<span class="n">prog_output</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">files</span>  <span class="c1"># Has all the files terachem creates</span>
-<span class="n">prog_output</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">files</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>  <span class="c1"># Print out file names</span>
+<span class="n">prog_output</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">files</span>  <span class="c1"># Has all the files terachem creates</span>
+<span class="n">prog_output</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">files</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>  <span class="c1"># Print out file names</span>
 <span class="c1"># Saves all outputs with the exact structure produced by the QC program</span>
-<span class="n">prog_output</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">save_files</span><span class="p">(</span><span class="s2">&quot;to/this/directory&quot;</span><span class="p">)</span>
+<span class="n">prog_output</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">save_files</span><span class="p">(</span><span class="s2">&quot;to/this/directory&quot;</span><span class="p">)</span>
 </code></pre></div>
 
 

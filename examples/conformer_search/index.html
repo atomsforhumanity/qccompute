@@ -828,6 +828,7 @@
 
 <span class="c1"># Define the program input</span>
 <span class="n">prog_input</span> <span class="o">=</span> <span class="n">ProgramInput</span><span class="p">(</span>
+    <span class="n">program</span><span class="o">=</span><span class="s2">&quot;crest&quot;</span><span class="p">,</span>
     <span class="n">structure</span><span class="o">=</span><span class="n">structure</span><span class="p">,</span>
     <span class="n">calctype</span><span class="o">=</span><span class="s2">&quot;conformer_search&quot;</span><span class="p">,</span>  <span class="c1"># type: ignore</span>
     <span class="n">model</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;method&quot;</span><span class="p">:</span> <span class="s2">&quot;gfnff&quot;</span><span class="p">},</span>  <span class="c1"># type: ignore</span>
@@ -837,15 +838,13 @@
 <span class="c1"># Run the calculation</span>
 <span class="k">try</span><span class="p">:</span>
     <span class="c1"># prog_output is a ProgramOutput instance</span>
-    <span class="n">prog_output</span> <span class="o">=</span> <span class="n">compute</span><span class="p">(</span>
-        <span class="s2">&quot;crest&quot;</span><span class="p">,</span> <span class="n">prog_input</span><span class="p">,</span> <span class="n">collect_files</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">collect_rotamers</span><span class="o">=</span><span class="kc">False</span>
-    <span class="p">)</span>
+    <span class="n">prog_output</span> <span class="o">=</span> <span class="n">compute</span><span class="p">(</span><span class="n">prog_input</span><span class="p">,</span> <span class="n">collect_files</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">collect_rotamers</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
 <span class="k">except</span> <span class="n">exceptions</span><span class="o">.</span><span class="n">QCComputeBaseError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
     <span class="n">prog_output</span> <span class="o">=</span> <span class="n">e</span><span class="o">.</span><span class="n">prog_output</span>
     <span class="nb">print</span><span class="p">(</span><span class="n">prog_output</span><span class="o">.</span><span class="n">logs</span><span class="p">)</span>
     <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Success: </span><span class="si">{</span><span class="n">prog_output</span><span class="o">.</span><span class="n">success</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>  <span class="c1"># False</span>
     <span class="nb">print</span><span class="p">(</span><span class="n">prog_output</span><span class="o">.</span><span class="n">input_data</span><span class="p">)</span>  <span class="c1"># Input data used to generate the calculation</span>
-    <span class="nb">print</span><span class="p">(</span><span class="n">prog_output</span><span class="o">.</span><span class="n">provenance</span><span class="p">)</span>  <span class="c1"># Provenance of generated calculation</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">prog_output</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">provenance</span><span class="p">)</span>  <span class="c1"># Provenance of generated calculation</span>
     <span class="nb">print</span><span class="p">(</span><span class="n">prog_output</span><span class="o">.</span><span class="n">traceback</span><span class="p">)</span>  <span class="c1"># or output.ptraceback for short</span>
     <span class="k">raise</span>
 
@@ -853,14 +852,14 @@
     <span class="c1"># Check results</span>
     <span class="nb">print</span><span class="p">(</span><span class="n">prog_output</span><span class="o">.</span><span class="n">logs</span><span class="p">)</span>
     <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Success: </span><span class="si">{</span><span class="n">prog_output</span><span class="o">.</span><span class="n">success</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>  <span class="c1"># True</span>
-    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;output.data: &quot;</span><span class="p">,</span> <span class="n">prog_output</span><span class="o">.</span><span class="n">data</span><span class="p">)</span>
-    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;output.data.conformer_energies:&quot;</span><span class="p">,</span> <span class="n">prog_output</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">conformer_energies</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;output.results: &quot;</span><span class="p">,</span> <span class="n">prog_output</span><span class="o">.</span><span class="n">results</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;output.results.conformer_energies:&quot;</span><span class="p">,</span> <span class="n">prog_output</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">conformer_energies</span><span class="p">)</span>
     <span class="nb">print</span><span class="p">(</span>
-        <span class="s2">&quot;output.data.conformer_energies_relative:&quot;</span><span class="p">,</span>
-        <span class="n">prog_output</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">conformer_energies_relative</span><span class="p">,</span>
+        <span class="s2">&quot;output.results.conformer_energies_relative:&quot;</span><span class="p">,</span>
+        <span class="n">prog_output</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">conformer_energies_relative</span><span class="p">,</span>
     <span class="p">)</span>
     <span class="nb">print</span><span class="p">(</span><span class="n">prog_output</span><span class="o">.</span><span class="n">input_data</span><span class="p">)</span>  <span class="c1"># Input data used to generate the calculation</span>
-    <span class="nb">print</span><span class="p">(</span><span class="n">prog_output</span><span class="o">.</span><span class="n">provenance</span><span class="p">)</span>  <span class="c1"># Provenance of generated calculation</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">prog_output</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">provenance</span><span class="p">)</span>  <span class="c1"># Provenance of generated calculation</span>
 </code></pre></div>
 
 

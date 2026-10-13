@@ -1,26 +1,37 @@
+"""Tests and fixtures for test xtb."""
+
+from importlib.util import find_spec
+
 import numpy as np
 import pytest
-from qcdata import ProgramInput, Structure
+from qcdata import CalcType, Model, ProgramInput, SinglePointData, Structure
 
 from qccompute import compute
-from tests.conftest import skipif_program_not_available
 
 
 @pytest.mark.integration
-@skipif_program_not_available("xtb")
-def test_xtb():
+@pytest.mark.skipif(find_spec("xtb") is None, reason="xtb-python is not installed")
+def test_xtb() -> None:
+    """Test xtb."""
     input_data = ProgramInput(
         program="xtb",
         structure=Structure(
             symbols=["O", "H", "H"],
-            geometry=[[0.0, 0.0, 0.0], [0.524, 1.687, 0.48], [1.146, -0.45, -1.354]],
+            geometry=np.array(
+                [[0.0, 0.0, 0.0], [0.524, 1.687, 0.48], [1.146, -0.45, -1.354]]
+            ),
         ),
-        calctype="gradient",
-        model={"method": "GFN2xTB"},
+        calctype=CalcType.gradient,
+        model=Model(method="GFN2xTB"),
         keywords={},
     )
 
-    output = compute(input_data)
+    output = compute(input_data, environment={"OMP_NUM_THREADS": "1"})
+    assert output.logs is not None
+    assert isinstance(output.results, SinglePointData)
+    assert output.results.energy is not None
+    assert output.results.gradient is not None
+    assert "total charge" in output.logs
     assert np.isclose(output.results.energy, -5.070218272184619, atol=1e-6)
     assert np.allclose(
         output.results.gradient,

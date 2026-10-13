@@ -1,3 +1,4 @@
-The QCEngine Adapter enables calculations using all [QCEngine supported programs](https://molssi.github.io/QCEngine/program_overview.html). This engine is used as a fallback for when `qccompute` does not have an `Adapter` of its own for a given program. Using QCEngine as a fallback can be deactivated by passing `qcng_fallback=False` to `qccompute.compute()`.
+Program-specific translation and Python bindings live in `qccodec.codecs.qcengine`.
+Use `qccompute.compute(input_data)` to execute a calculation.
 
-::: qccompute.adapters.qcengine.QCEngineAdapter
+QCEngine is an optional fallback. Disable it with `qcng_fallback=False`. Install `qccompute[qcengine]` to use it.

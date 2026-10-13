@@ -3,7 +3,7 @@
 Constraints docs: https://geometric.readthedocs.io/en/latest/constraints.html
 """
 
-from qcdata import ProgramInput, ProgramSpec, Structure
+from qcdata import OptimizationData, ProgramInput, ProgramSpec, Structure
 
 from qccompute import compute, exceptions
 
@@ -19,13 +19,11 @@ prog_input = ProgramInput(
     calctype="optimization",  # type: ignore
     structure=h2,
     subprograms=[
-        ProgramSpec.model_validate(
-            {
-                "program": "terachem",
-                "calctype": "gradient",
-                "model": {"method": "HF", "basis": "6-31g"},
-                "keywords": {"purify": "no"},
-            }
+        ProgramSpec(
+            program="terachem",
+            calctype="gradient",
+            model={"method": "HF", "basis": "6-31g"},
+            keywords={"purify": "no"},
         ),
     ],
     keywords={
@@ -45,6 +43,7 @@ try:
     prog_output = compute(prog_input, propagate_wfn=True, rm_scratch_dir=False)
 except exceptions.QCComputeBaseError as e:
     # Calculation failed
+    assert e.prog_output is not None
     prog_output = e.prog_output
     print(prog_output.logs)
     # Input data used to generate the calculation
@@ -55,6 +54,7 @@ except exceptions.QCComputeBaseError as e:
     raise
 
 else:
+    assert isinstance(prog_output.results, OptimizationData)
     # Check results
     print("Energies:", prog_output.results.energies)
     print("Structures:", prog_output.results.structures)

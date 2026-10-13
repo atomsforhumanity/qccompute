@@ -21,13 +21,13 @@ prog_input = ProgramInput(
     # Can be "energy", "gradient", "hessian"
     calctype="energy",  # type: ignore
     model={"method": "hf", "basis": "sto-3g"},  # type: ignore
-    keywords={"purify": "no"},
+    # keywords={"purify": "no"},
 )
 
 # Run the calculation
 try:
     # prog_output is a ProgramOutput instance
-    prog_output = compute(prog_input, collect_files=True)
+    prog_output = compute(prog_input, collect_files=True, print_logs=True)
 except exceptions.QCComputeBaseError as e:
     prog_output = e.prog_output
     print(prog_output.logs)

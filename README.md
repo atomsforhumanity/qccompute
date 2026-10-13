@@ -126,7 +126,7 @@ prog_output = compute_args(
 )
 ```
 
-The behavior of `compute()` and `compute_args()` can be tuned by passing in keyword arguments like `collect_files` shown above. Arguments can modify which scratch directory location to use, whether to delete or keep the scratch files after a calculation completes, what files to collect from a calculation, whether to stream the program logs in real time as the program executes, and whether to propagate a wavefunction through a series of calculations. Arguments also include hooks for passing in update functions that can be called as a program executes in real time. See the [compute method docstring](https://github.com/atomsforhumanity/qccompute/blob/83868df51d241ffae3497981dfc3c72235319c6e/qccompute/adapters/base.py#L57-L123) for more details.
+The behavior of `compute()` and `compute_args()` can be tuned by passing in keyword arguments like `collect_files` shown above. Arguments can modify which scratch directory location to use, whether to delete or keep the scratch files after a calculation completes, what files to collect from a calculation, whether to stream the program logs in real time as the program executes, and whether to propagate a wavefunction through a series of calculations. Arguments also include hooks for passing in update functions that can be called as a program executes in real time. See the `qccompute.compute` docstring for details.
 
 See the [/examples](https://github.com/atomsforhumanity/qccompute/tree/master/examples) directory for more examples.
 
@@ -166,13 +166,13 @@ If you have any issues with `qccompute` or would like to request a feature, plea
 
 ## Development
 
-qccompute requires published `qcdata>=0.19.0` and `qccodec>=0.12.0`. Run
-`uv sync --all-groups --locked` to install the project and development dependencies;
-no sibling checkouts are needed.
+qccompute requires `qcdata>=0.19.0` and the companion qccodec 0.13 refactor.
+Keep its checkout at `../qccodec` and run `uv sync --all-groups --locked`.
+The temporary editable source override is only for coordinated development.
 
 ### TeraChem FE/PBS dependency
 
-The optional FE/PBS adapters require a separate `tcpb` migration. Published
+The optional FE/PBS codecs require a separate `tcpb` migration. Published
 `tcpb==0.16.0` constructs the old qcdata models internally, so requests now report
 an explicit dependency error (or return a failed `ProgramOutput` when
 `raise_exc=False`). Standard TeraChem subprocess execution uses the migrated
@@ -180,8 +180,65 @@ qccodec parsers and is independent of this limitation.
 
 ### Partial results on execution failure
 
-TeraChem, ORCA, and CREST adapters pass failed executions to
+TeraChem, ORCA, and CREST codecs pass failed executions to
 `qccodec.decode(..., failed=True)` before returning or raising. Available scientific
 values survive in `output.results`. For failures before execution, qccompute uses
 qcdata's shared type lookup to construct empty results and identifies the intended
 scientific producer in provenance. Unknown program versions remain `None`.
+
+
+## Execution with codecs
+
+`compute(input_data)` and `compute_args(...)` retain their scalar interfaces.
+`compute(input_data, codec=my_codec)` additionally accepts an external object or module
+with `encode(input_data)` and `decode(input_data, native_output)`. No registration or
+qccompute changes are required. Built-ins are resolved by `input_data.program` in qccodec.
+
+qccompute stages files and calls one of two functions: `run_subprocess` or `run_python`.
+qccodec owns supported calculation types, argument translation, command construction,
+parsing, producer metadata, and native Python API wrappers. The Adapter classes and
+`get_adapter()` have been removed. Existing Adapter-named exception classes remain
+available for compatibility; raised exceptions retain `.prog_output` and partial data.
+
+```python
+result = qccompute.compute(
+    input_data,
+    environment={"OMP_NUM_THREADS": "8"},
+    # codec=my_codec,  # Optional local integration
+)
+```
+
+Invocation environment defaults override inherited values, and explicit `environment=`
+overrides take precedence over both. Subprocess overrides are local to the child; the parent working directory
+is unchanged. Python execution temporarily changes environment, working directory, and
+output streams under a reentrant lock. This does not isolate unrelated threads or reset
+already initialized native libraries. Use separate processes for independent Python
+calculations, and set import-time environment values before a library is initialized.
+Subprocess callbacks stream `(all_logs, new_logs)` and receive remaining output at exit.
+Python callbacks receive captured logs after invocation, when stream redirection has
+been restored. Python capture merges Python streams, declared loggers, and native
+writes to stdout/stderr file descriptors into one log. `update_interval` applies
+only to subprocess execution. xTB receives `OMP_NUM_THREADS=1` before its lazy
+library import, and CREST receives the same setting in its child environment.
+
+Each calculation owns its workspace until decoding and file retention finish. As in
+the previous API, `scratch_dir` is the exact calculation directory and
+`rm_scratch_dir=True` deletes it. Use a distinct directory for each concurrent call.
+`collect_files=False` affects retained output files, not the files available to parsers.
+Logs remain attached on failure, even with `collect_logs=False`. The output is
+finalized after cleanup; a cleanup or retention error adds diagnostics without
+replacing an earlier calculation failure.
+
+geomeTRIC executes child calculations synchronously through an injected callback, with
+a separate workspace and ProgramOutput for each child. `propagate_wfn=True` requests
+restart-file retention and the child codec's restart translation. No backend or batch
+API is introduced by this refactor.
+
+For coordinated development of these unreleased changes, keep the companion qccodec
+checkout at `../qccodec`; `uv sync` uses the editable source declared in pyproject.toml.
+Published qccompute packages require qccodec 0.13 or newer. Remove the temporary uv
+source override once that companion release is available.
+
+Subprocess output merges stderr into stdout, preserving their observed ordering in
+`ProgramOutput.logs`. Updates are line-based with a final callback for remaining
+output; the interval is minimum spacing, not a heartbeat. Subprocess stdin is closed.

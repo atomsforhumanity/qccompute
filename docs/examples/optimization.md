@@ -1,7 +1,7 @@
 ## geomeTRIC
 
 ```python
-{!examples/geometric.py!}
+{!examples/geometric_optimization.py!}
 ```
 
 ## TeraChem

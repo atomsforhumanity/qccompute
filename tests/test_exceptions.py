@@ -1,8 +1,12 @@
+"""Tests and fixtures for test exceptions."""
+
 import pickle
 
 import pytest
+from qcdata import ProgramInput, ProgramOutput, SinglePointData
 
 from qccompute.exceptions import (
+    AdapterError,
     AdapterInputError,
     AdapterNotFoundError,
     ExternalProgramError,
@@ -18,8 +22,12 @@ test_data = [
 
 
 @pytest.mark.parametrize("exc_class,args", test_data)
-def test_exception_pickle(results, exc_class, args):
-    # Instantiate the exception.
+def test_exception_pickle(
+    results: ProgramOutput[ProgramInput, SinglePointData],
+    exc_class: type[AdapterError],
+    args: tuple[str],
+) -> None:
+    """Preserve exception attributes across process boundaries."""
     exc_instance = exc_class(*args)
 
     # Append ProgramOutput

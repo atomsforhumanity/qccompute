@@ -1,228 +1,474 @@
-"""Many of these tests are really testing the BaseAdapter.compute() method because I
-refactored the compute() method to be in the BaseAdapter class. This works for now.
-"""
+"""Verify the complete lifecycle independently of scientific executables."""
 
+from __future__ import annotations
+
+import pickle
+import sys
 from collections.abc import Callable
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
+from qccodec import (
+    CodecDefinition,
+    NativeInput,
+    NativeOutput,
+    PythonInput,
+    SubprocessInput,
+)
+from qccodec.exceptions import EncoderError, ParserError
 from qcdata import (
-    ConformerSearchData,
-    FileData,
+    CalcType,
     FileInput,
-    Files,
-    OptimizationData,
     ProgramInput,
     ProgramOutput,
-    ScanData,
     SinglePointData,
+    StructuredData,
+    get_data_type,
 )
 
-from qccompute.adapters import registry
+from qccompute import compute, compute_args
 from qccompute.exceptions import (
     AdapterInputError,
-    AdapterNotFoundError,
+    ExternalProgramError,
+    ProgramNotFoundError,
     QCComputeBaseError,
 )
-from qccompute.main import compute, compute_args
 
 
-def test_file_adapter_works_inside_top_level_compute_function():
-    # Create FileInput
-    file_inp = FileInput(program="python", cmdline_args=["hello_world.py"])
-    file_inp.files["hello_world.py"] = "print('hello world')"
-    prog_out = compute(file_inp)
-    assert isinstance(prog_out, ProgramOutput)
-    assert prog_out.logs == "hello world\n"
-    assert isinstance(prog_out.results, FileData)
-    assert prog_out.results.provenance.program == "python"
-    assert prog_out.execution.wall_time is not None
-
-
-def test_compute_raises_adapter_not_found_error(prog_input_factory):
-    """Test that compute raises an AdapterNotFoundError if the adapter is not
-    found."""
-    energy_inp = prog_input_factory("energy", program="not-a-real-program")
-    with pytest.raises(AdapterNotFoundError):
-        # Will check qccompute and qcng
-        compute(energy_inp)
-
-
-def test_compute_raises_adapter_not_found_error_no_qcng_fallback(prog_input_factory):
-    """Test that compute raises an AdapterNotFoundError if the adapter is not
-    found."""
-    energy_inp = prog_input_factory("energy", program="not-a-real-program")
-    with pytest.raises(AdapterNotFoundError):
-        compute(energy_inp, qcng_fallback=False)
-
-
-def test_print_logs(test_adapter, prog_input_factory, mocker):
-    energy_inp = prog_input_factory("energy", program="test")
-
-    spy = mocker.spy(type(test_adapter), "compute_data")
-
-    compute(energy_inp)
-    assert spy.call_args.args[2] is None  # update_func
-    compute(energy_inp, print_logs=True)
-    assert isinstance(spy.call_args.args[2], Callable)  # update_func passed
-    assert isinstance(spy.call_args.args[3], float)  # update_interval passed
-
-
-def test_update_func_preferred_over_print_logs(
-    test_adapter, prog_input_factory, mocker
-):
-    energy_inp = prog_input_factory("energy", program="test")
-
-    spy = mocker.spy(type(test_adapter), "compute_data")
-
-    def update_func(stdout, stderr):
-        pass
-
-    compute(energy_inp, update_func=update_func, print_logs=True)
-    assert spy.call_args.args[2] == update_func  # update_func passed
-    assert spy.call_args.args[3] is None
-
-
-def test_compute_uses_files_if_adaptor_uses_files_set(prog_input_factory):
-    """Test that compute writes files if the adaptor has uses_files set to True."""
-
-    # Set adapter.uses_files is True by default
-    energy_inp = prog_input_factory("energy", program="test")
-    filename, contents = "hello_world.py", "print('hello world')"
-    energy_inp.files[filename] = contents
-
-    result = compute(energy_inp, rm_scratch_dir=False)
-    with open(Path(result.execution.scratch_dir) / filename) as f:
-        assert f.read() == contents
-
-
-def test_compute_does_not_uses_files_if_adaptor_uses_files_set(prog_input_factory):
-    """Test that compute writes files if the adaptor has uses_files set to True."""
-
-    # Set adapter.uses_files to False
-    adapter = registry["test"]
-    adapter.uses_files = False
-
-    energy_inp = prog_input_factory("energy", program="test")
-    filename, contents = "hello_world.py", "print('hello world')"
-    energy_inp.files[filename] = contents
-    with pytest.raises(AdapterInputError):
-        compute(energy_inp, rm_scratch_dir=False)
-
-
-def test_compute_raises_exception_if_program_fails_raise_exec_true(prog_input_factory):
-    """Test that compute raises an exception if the program fails."""
-    opt_input = prog_input_factory("optimization", program="test")
-
-    with pytest.raises(AdapterInputError):
-        compute(opt_input, raise_exc=True)
-
-
-def test_compute_does_not_raise_exception_if_raise_exec_false(
-    prog_input_factory, mocker
-):
-    """Test that compute does not raise an exception if the program fails."""
-    grad_input = prog_input_factory("energy", program="test")
-    adapter = registry["test"]
-    mocker.patch.object(
-        adapter,
-        "compute_data",
-        side_effect=QCComputeBaseError("Something failed!"),
-    )
-    po = compute(grad_input, raise_exc=False)
-    assert po.success is False
-
-
-def test_qcengine_import_error(mocker, prog_input_factory):
-    """Test that an ImportError is raised when qcengine is not installed."""
-    # Mock sys.modules to simulate qcengine not being installed
-    mocker.patch.dict("sys.modules", {"qcengine": None})
-
-    with pytest.raises(ModuleNotFoundError):
-        # The code that attempts to import qcengine goes here
-        energy_inp = prog_input_factory("energy", program="no-adaptor-for-program")
-        compute(energy_inp, qcng_fallback=True)
-
-
-def test_compute_args(hydrogen, mocker):
-    """Test that compute_args correctly constructs input object and calls compute."""
-    # Spy on top level compute function
-    compute_spy = mocker.patch("qccompute.main.compute")
-    values_dict = {
-        "structure": hydrogen,
-        "calctype": "energy",
-        "model": {"method": "HF", "basis": "sto-3g"},
-        "keywords": {"fake": "things"},
-        "files": {"fake.py": "print('hello world')"},
-        "extras": {"fake": "things"},
-    }
-    compute_args("test", extra_thing=123, **values_dict)
-    compute_spy.assert_called_once_with(
-        ProgramInput(program="test", **values_dict), extra_thing=123
+def local_codec(
+    request: NativeInput,
+    decode: Callable[[ProgramInput, NativeOutput], StructuredData] | None = None,
+) -> SimpleNamespace:
+    """Build a standalone integration without discovery or registration."""
+    return SimpleNamespace(
+        encode=lambda inp: request,
+        decode=decode
+        or (
+            lambda inp, out: SinglePointData.model_validate(
+                {"provenance": {"program": "actual-producer"}, "energy": -1}
+            )
+        ),
     )
 
 
-def test_compute_args_file_object_passed(hydrogen, mocker):
-    """Test that compute_args correctly constructs input object and calls compute."""
-    # Spy on top level compute function
-    compute_spy = mocker.patch("qccompute.main.compute")
-    values_dict = {
-        "structure": hydrogen,
-        "calctype": "energy",
-        "model": {"method": "HF", "basis": "sto-3g"},
-        "keywords": {"fake": "things"},
-        "files": Files(files={"fake.py": "print('hello world')"}),
-        "extras": {"fake": "things"},
-    }
-    compute_args("test", extra_thing=123, **values_dict)
-    # Convert back for ProgramInput instantiation
-    values_dict["files"] = {"fake.py": "print('hello world')"}
-    compute_spy.assert_called_once_with(
-        ProgramInput(program="test", **values_dict), extra_thing=123
+def test_external_python_codec(
+    prog_input_factory: Callable[..., ProgramInput], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """External python codec."""
+
+    def invoke(x: int, *, scale: int) -> int:
+        """Exercise the callable boundary with deterministic native behavior."""
+        print("native logs")
+        return x * scale
+
+    codec = local_codec(
+        PythonInput(invoke, (2,), {"scale": 3}),
+        lambda inp, out: SinglePointData.model_validate(
+            {"provenance": {"program": "external"}, "energy": out.value}
+        ),
+    )
+    monkeypatch.setattr(
+        "qccodec.get_codec",
+        lambda *a, **k: pytest.fail("External codec triggered discovery"),
+    )
+    output = compute(prog_input_factory("energy"), codec=codec)
+    assert isinstance(output.results, SinglePointData)
+    assert output.results.energy == 6
+    assert output.results.provenance.program == "external"
+    assert output.logs == "native logs\n"
+    assert output.execution.scratch_dir is not None
+    assert not output.execution.scratch_dir.exists()
+    assert pickle.loads(pickle.dumps(output)) == output
+
+
+def test_parser_decorator_end_to_end(
+    prog_input_factory: Callable[..., ProgramInput],
+) -> None:
+    """Parser decorator end to end."""
+    definition = CodecDefinition(
+        "test",
+        frozenset({CalcType.energy}),
+        encoder=lambda inp: SubprocessInput((sys.executable, "-c", "print(-2.5)")),
+        iter_files=lambda stdout, directory: [("stdout", stdout)],
     )
 
+    @definition.parser(filetype="stdout", calctypes=[CalcType.energy], target="energy")
+    def energy(contents: str) -> float:
+        """Parse a scalar directly from the supplied native contents."""
+        return float(contents)
 
-@pytest.mark.parametrize(
-    "calctype,data_type",
-    [
-        ("energy", SinglePointData),
-        ("gradient", SinglePointData),
-        ("hessian", SinglePointData),
-        ("optimization", OptimizationData),
-        ("transition_state", OptimizationData),
-        ("conformer_search", ConformerSearchData),
-        ("scan", ScanData),
-    ],
-)
-def test_lookup_failure_retains_requested_data_type(
-    prog_input_factory, calctype, data_type
-):
-    input_data = prog_input_factory(calctype, program="not-a-program")
-    output = compute(input_data, qcng_fallback=False, raise_exc=False)
+    output = compute(prog_input_factory("energy"), codec=definition)
+    assert isinstance(output.results, SinglePointData)
+    assert output.results.energy == -2.5
+
+
+@pytest.mark.parametrize("calctype", list(CalcType))
+def test_lookup_failure_preserves_result_contract(
+    prog_input_factory: Callable[..., ProgramInput], calctype: CalcType
+) -> None:
+    """Lookup failure preserves result contract."""
+    output = compute(
+        prog_input_factory(calctype, program="missing"),
+        qcng_fallback=False,
+        raise_exc=False,
+    )
     assert not output.success
-    assert isinstance(output.results, data_type)
-    assert output.results.provenance.program == input_data.program
-    assert output.results.provenance.program_version is None
-    assert output.execution.wall_time is not None
+    assert type(output.results) is get_data_type(calctype)
     assert ProgramOutput.model_validate_json(output.model_dump_json()) == output
 
 
-def test_leaf_adapter_requires_model(prog_input_factory):
-    input_data = ProgramInput.model_validate(
-        {**prog_input_factory("energy").model_dump(), "model": None}
+def test_failure_recovers_data_logs_and_artifacts(
+    prog_input_factory: Callable[..., ProgramInput], tmp_path: Path
+) -> None:
+    """Failure recovers data logs and artifacts."""
+    request = SubprocessInput(
+        (
+            sys.executable,
+            "-c",
+            "from pathlib import Path; print('partial'); Path('answer').write_text('-3'); raise RuntimeError('failed')",
+        )
     )
-    output = compute(input_data, raise_exc=False)
-    assert not output.success
-    assert isinstance(output.results, SinglePointData)
-    assert "requires a scientific model" in output.traceback
 
+    def decode(inp: ProgramInput, out: NativeOutput) -> SinglePointData:
+        """Interpret the fake native result or deliberately exercise a decoding failure."""
+        assert out.failed
+        assert out.directory is not None
+        return SinglePointData.model_validate(
+            {
+                "provenance": {"program": "test"},
+                "energy": float((out.directory / "answer").read_text()),
+            }
+        )
 
-def test_incompatible_tcpb_returns_actionable_failure(prog_input_factory, mocker):
-    mocker.patch("qccompute.adapters.terachem_fe.importlib.import_module")
-    mocker.patch("qccompute.adapters.terachem_fe.version", return_value="0.16.0")
     output = compute(
-        prog_input_factory("energy", program="terachem-fe"), raise_exc=False
+        prog_input_factory("gradient"),
+        codec=local_codec(request, decode),
+        collect_logs=False,
+        collect_files=True,
+        scratch_dir=tmp_path / "job",
+        raise_exc=False,
     )
-    assert not output.success
     assert isinstance(output.results, SinglePointData)
-    assert "tcpb 0.16.0 constructs legacy qcdata outputs" in output.traceback
+    assert not output.success and output.results.energy == -3
+    assert output.results.files["answer"] == "-3"
+    assert output.logs is not None
+    assert "partial" in output.logs and "failed" in output.logs
+    assert output.execution.scratch_dir is not None
+    assert not output.execution.scratch_dir.exists()
+
+
+def test_parser_error_attaches_partial_output(
+    prog_input_factory: Callable[..., ProgramInput],
+) -> None:
+    """Parser error attaches partial output."""
+    partial = SinglePointData.model_validate(
+        {"provenance": {"program": "test"}, "energy": -1}
+    )
+
+    def decode(inp: ProgramInput, out: NativeOutput) -> SinglePointData:
+        """Interpret the fake native result or deliberately exercise a decoding failure."""
+        raise ParserError("missing gradient", data=partial)
+
+    with pytest.raises(QCComputeBaseError) as raised:
+        compute(
+            prog_input_factory("gradient"),
+            codec=local_codec(PythonInput(lambda: None), decode),
+        )
+    assert raised.value.prog_output is not None
+    assert raised.value.prog_output.results == partial
+    assert raised.value.prog_output is not None
+    assert not raised.value.prog_output.success
+    assert (
+        pickle.loads(pickle.dumps(raised.value)).prog_output == raised.value.prog_output
+    )
+
+
+def test_invalid_success_becomes_failed_output(
+    prog_input_factory: Callable[..., ProgramInput],
+) -> None:
+    """Invalid success becomes failed output."""
+    output = compute(
+        prog_input_factory("gradient"),
+        codec=local_codec(PythonInput(lambda: None)),
+        raise_exc=False,
+    )
+    assert isinstance(output.results, SinglePointData)
+    assert not output.success and output.results.energy == -1
+    assert output.traceback is not None
+    assert "gradient" in output.traceback
+
+
+def test_encoding_and_staging_errors_are_wrapped(
+    prog_input_factory: Callable[..., ProgramInput], tmp_path: Path
+) -> None:
+    """Encoding and staging errors are wrapped."""
+
+    def encode(inp: ProgramInput) -> NativeInput:
+        """Exercise translation failure before invoking any scientific program."""
+        raise EncoderError("bad input")
+
+    output = compute(
+        prog_input_factory("energy"),
+        codec=SimpleNamespace(encode=encode),
+        raise_exc=False,
+    )
+    assert output.traceback is not None
+    assert not output.success and "bad input" in output.traceback
+    request = PythonInput(lambda: None, files={"../escape": "bad"})
+    output = compute(
+        prog_input_factory("energy"),
+        codec=local_codec(request),
+        scratch_dir=tmp_path / "job",
+        raise_exc=False,
+    )
+    assert not output.success and (not (tmp_path / "escape").exists())
+    assert not (tmp_path / "job").exists()
+
+
+def test_file_input_and_compute_args(
+    prog_input_factory: Callable[..., ProgramInput], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """File input and compute args."""
+    inp = FileInput(
+        program=sys.executable,
+        cmdline_args=["hello.py"],
+        files={"hello.py": "print('hello')"},
+    )
+    output = compute(inp)
+    assert output.success and output.logs == "hello\n"
+    captured = []
+    monkeypatch.setattr(
+        "qccompute.main.compute", lambda inp, **kw: captured.append((inp, kw))
+    )
+    source = prog_input_factory("energy")
+    compute_args(
+        "test",
+        source.structure,
+        calctype="energy",
+        model=source.model,
+        environment={"X": "1"},
+    )
+    assert captured[0][0].program == "test"
+    assert captured[0][1] == {"environment": {"X": "1"}}
+
+
+def test_input_files_remain_available_to_decoder(
+    prog_input_factory: Callable[..., ProgramInput],
+) -> None:
+    """Input files remain available to decoder."""
+
+    def decode(inp: ProgramInput, out: NativeOutput) -> SinglePointData:
+        """Interpret the fake native result or deliberately exercise a decoding failure."""
+        assert out.directory is not None
+        assert (out.directory / "nested/file").read_bytes() == b"bytes"
+        return SinglePointData.model_validate(
+            {"provenance": {"program": "test"}, "energy": 1}
+        )
+
+    output = compute(
+        prog_input_factory("energy"),
+        codec=local_codec(
+            PythonInput(lambda: None, files={"nested/file": b"bytes"}), decode
+        ),
+    )
+    assert output.success and (not output.results.files)
+
+
+def test_print_logs_and_retention(
+    prog_input_factory: Callable[..., ProgramInput], capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Print logs and retention."""
+    codec = local_codec(SubprocessInput((sys.executable, "-c", "print('hello')")))
+    output = compute(
+        prog_input_factory("energy"), codec=codec, print_logs=True, collect_logs=False
+    )
+    assert capsys.readouterr().out == "hello\n"
+    assert output.logs is None
+
+
+def test_execution_failure_remains_primary_when_decode_fails(
+    prog_input_factory: Callable[..., ProgramInput],
+) -> None:
+    """Execution failure remains primary when decode fails."""
+    request = SubprocessInput(
+        (sys.executable, "-c", "print('before failure'); exit(9)")
+    )
+
+    def decode(inp: ProgramInput, out: NativeOutput) -> SinglePointData:
+        """Interpret the fake native result or deliberately exercise a decoding failure."""
+        raise ParserError(
+            "truncated artifact",
+            data=SinglePointData.model_validate(
+                {"provenance": {"program": "test"}, "energy": -2}
+            ),
+        )
+
+    output = compute(
+        prog_input_factory("gradient"),
+        codec=local_codec(request, decode),
+        raise_exc=False,
+    )
+    assert isinstance(output.results, SinglePointData)
+    assert not output.success and output.results.energy == -2
+    assert output.traceback is not None
+    assert (
+        "return code 9" in output.traceback and "truncated artifact" in output.traceback
+    )
+
+
+def test_wavefunction_retention_uses_codec_patterns(
+    prog_input_factory: Callable[..., ProgramInput],
+) -> None:
+    """Wavefunction retention uses codec patterns."""
+    from pathlib import Path
+
+    def invoke() -> None:
+        """Exercise the callable boundary with deterministic native behavior."""
+        Path("native").mkdir()
+        Path("native/restart").write_bytes(b"restart")
+
+    request = PythonInput(invoke, wavefunction_files=("native/restart",))
+    output = compute(
+        prog_input_factory("energy"), codec=local_codec(request), collect_wfn=True
+    )
+    assert output.results.files == {"native/restart": b"restart"}
+
+
+def test_missing_match_exception_roundtrip(
+    prog_input_factory: Callable[..., ProgramInput],
+) -> None:
+    """Missing match exception roundtrip."""
+    from qccodec.exceptions import MatchNotFoundError
+
+    def decode(inp: ProgramInput, out: NativeOutput) -> SinglePointData:
+        """Interpret the fake native result or deliberately exercise a decoding failure."""
+        raise MatchNotFoundError("energy", "truncated")
+
+    with pytest.raises(QCComputeBaseError) as raised:
+        compute(
+            prog_input_factory("energy"),
+            codec=local_codec(PythonInput(lambda: None), decode),
+        )
+    restored = pickle.loads(pickle.dumps(raised.value))
+    assert str(restored) == str(raised.value)
+    assert restored.prog_output == raised.value.prog_output
+    assert restored.original_exception.regex == "energy"
+
+
+@pytest.mark.parametrize("during_decode", [False, True])
+@pytest.mark.parametrize("error_type", [FileNotFoundError, ModuleNotFoundError])
+def test_missing_python_file_or_module_preserves_cause(
+    prog_input_factory: Callable[..., ProgramInput],
+    during_decode: bool,
+    error_type: type[Exception],
+) -> None:
+    """Do not infer a missing scientific program from arbitrary Python errors."""
+    original = error_type("missing auxiliary input or parser dependency")
+
+    def fail(*args: object) -> SinglePointData:
+        """Raise the same failure at either side of the decoding boundary."""
+        raise original
+
+    codec = local_codec(
+        PythonInput(lambda: None) if during_decode else PythonInput(fail),
+        fail if during_decode else None,
+    )
+    with pytest.raises(ExternalProgramError) as raised:
+        compute(prog_input_factory("energy"), codec=codec)
+    assert not isinstance(raised.value, ProgramNotFoundError)
+    assert raised.value.__cause__ is original
+    assert raised.value.prog_output is not None
+    assert not raised.value.prog_output.success
+
+
+def test_missing_executable_attaches_failed_output(
+    prog_input_factory: Callable[..., ProgramInput],
+) -> None:
+    """Preserve the public missing-program category for a failed executable launch."""
+    with pytest.raises(ProgramNotFoundError) as raised:
+        compute(
+            prog_input_factory("energy"),
+            codec=local_codec(SubprocessInput(("nonexistent-qcc-program",))),
+        )
+    assert isinstance(raised.value.__cause__, FileNotFoundError)
+    assert raised.value.prog_output is not None
+    assert not raised.value.prog_output.success
+
+
+def test_invalid_environment_is_input_error(
+    prog_input_factory: Callable[..., ProgramInput],
+) -> None:
+    """Reject invalid options before invoking the program and attach diagnostics."""
+    with pytest.raises(AdapterInputError, match="strings") as raised:
+        compute(
+            prog_input_factory("energy"),
+            codec=local_codec(PythonInput(lambda: pytest.fail("Program executed"))),
+            environment={"OMP_NUM_THREADS": 1},  # type: ignore[dict-item]
+        )
+    assert raised.value.prog_output is not None
+    assert not raised.value.prog_output.success
+
+
+def test_absent_wavefunction_artifact_is_execution_error(
+    prog_input_factory: Callable[..., ProgramInput],
+) -> None:
+    """A supported artifact missing after execution is not an encoding error."""
+    with pytest.raises(
+        ExternalProgramError, match="No requested wavefunction"
+    ) as raised:
+        compute(
+            prog_input_factory("energy"),
+            codec=local_codec(
+                PythonInput(lambda: None, wavefunction_files=("missing.wfn",))
+            ),
+            collect_wfn=True,
+        )
+    assert raised.value.prog_output is not None
+    assert raised.value.prog_output.results.energy == -1
+
+
+@pytest.mark.parametrize("raise_exc", [False, True])
+def test_cleanup_failure_preserves_primary_error(
+    prog_input_factory: Callable[..., ProgramInput],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    raise_exc: bool,
+) -> None:
+    """Cleanup diagnostics must not replace the scientific failure or disagree with output."""
+
+    def invoke() -> None:
+        """Fail after producing useful diagnostics."""
+        print("partial log")
+        raise RuntimeError("primary calculation failure")
+
+    def fail_cleanup(path: Path) -> None:
+        """Simulate a scratch removal failure."""
+        raise OSError("cleanup failure")
+
+    monkeypatch.setattr("qccompute.execution.shutil.rmtree", fail_cleanup)
+    codec = local_codec(PythonInput(invoke))
+    if raise_exc:
+        with pytest.raises(
+            QCComputeBaseError, match="primary calculation failure"
+        ) as raised:
+            compute(
+                prog_input_factory("energy"),
+                codec=codec,
+                scratch_dir=tmp_path / "job",
+                collect_logs=False,
+            )
+        output = raised.value.prog_output
+        assert output is not None
+    else:
+        output = compute(
+            prog_input_factory("energy"),
+            codec=codec,
+            scratch_dir=tmp_path / "job",
+            collect_logs=False,
+            raise_exc=False,
+        )
+    assert not output.success and output.logs == "partial log\n"
+    assert output.traceback is not None
+    assert "primary calculation failure" in output.traceback
+    assert "cleanup failure" in output.traceback

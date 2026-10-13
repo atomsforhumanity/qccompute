@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [unreleased]
 
+- Simplify codec composition and configuration; finalize failures after scratch cleanup.
+- Preserve merged logs and force the single-thread OpenMP default for xTB and CREST.
+
+- Replace the Adapter hierarchy with a shared scalar lifecycle and generic subprocess/Python runner functions.
+- Add `compute(..., codec=..., environment=...)`; preserve `compute_args`, file inputs, result/error contracts, and optional QCEngine fallback.
+- Move program integration logic to qccodec 0.13, including xTB and geomeTRIC; retain decorated small parsers there.
+- Capture both output streams, drain subprocess logs without newline blocking, and retain artifacts through failed decoding.
+- Python log callbacks run after invocation; Python process-global mutations require process isolation for independent concurrent calculations.
+- Use a temporary editable sibling qccodec source for coordinated development of these unpublished releases.
+
+
 ## [0.14.0] - 2026-09-16
 
 - Require published `qcdata>=0.19.0` and `qccodec>=0.12.0`; remove temporary sibling source overrides and refactor-branch CI checkouts.

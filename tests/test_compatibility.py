@@ -6,6 +6,7 @@ from collections.abc import Callable
 from typing import Any
 
 import pytest
+from qccodec.programs.qcengine import codec_for
 from qcdata import (
     ProgramInput,
     SinglePointData,
@@ -14,7 +15,7 @@ from qcdata.qcel import to_qcel_input
 
 from qccompute import compute
 from qccompute.exceptions import (
-    AdapterNotFoundError,
+    CodecNotFoundError,
     ProgramNotFoundError,
     QCComputeBaseError,
 )
@@ -43,7 +44,7 @@ def test_qcengine_fallback_retains_producer_and_logs(
         return native
 
     monkeypatch.setattr(qcengine, "compute", invoke)
-    output = compute(inp, task_config={"ncores": 2})
+    output = compute(inp, codec=codec_for("psi4", task_config={"ncores": 2}))
     assert isinstance(output.results, SinglePointData)
     assert output.success and output.results.energy == -1
     assert output.results.provenance.program == "Psi4"
@@ -57,7 +58,7 @@ def test_qcengine_fallback_retains_producer_and_logs(
 
 @pytest.mark.parametrize(
     "exception,expected",
-    [("InputError", AdapterNotFoundError), ("ResourceError", ProgramNotFoundError)],
+    [("InputError", CodecNotFoundError), ("ResourceError", ProgramNotFoundError)],
 )
 def test_qcengine_discovery_errors(
     prog_input_factory: Callable[..., ProgramInput],
@@ -86,7 +87,7 @@ def test_tcpb_guard(
     import sys
     from types import SimpleNamespace
 
-    from qccodec.codecs import tcpb
+    from qccodec.programs import tcpb
 
     monkeypatch.setitem(sys.modules, "tcpb", SimpleNamespace())
     monkeypatch.setattr(tcpb, "version", lambda _: "0.16.0")

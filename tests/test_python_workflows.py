@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 from pathlib import Path
-from types import SimpleNamespace
 
 import numpy as np
 import pytest
 import qccodec
 from numpy.typing import NDArray
-from qccodec import NativeOutput, PythonInput
+from qccodec import Codec, NativeOutput, PythonInput
 from qcdata import (
+    CalcType,
     OptimizationData,
     ProgramInput,
     ProgramSpec,
@@ -46,7 +46,9 @@ def test_geometric_with_analytic_child(tmp_path: Path, fail_child: bool) -> None
             }
         )
 
-    child = SimpleNamespace(
+    child = Codec(
+        "analytic",
+        calctypes={CalcType.gradient},
         encode=lambda inp: PythonInput(potential, (inp.structure.geometry,)),
         decode=decode,
     )
@@ -66,12 +68,11 @@ def test_geometric_with_analytic_child(tmp_path: Path, fail_child: bool) -> None
         }
     )
     before = inp.model_copy(deep=True)
-    output = compute(
-        inp,
-        codec=qccodec.get_codec("geometric", gradient_codec=child),
-        scratch_dir=tmp_path / "outer",
-        raise_exc=False,
-    )
+    qccodec.register(child)
+    try:
+        output = compute(inp, scratch_dir=tmp_path / "outer", raise_exc=False)
+    finally:
+        qccodec.unregister("analytic")
     assert inp == before
     assert isinstance(output.results, OptimizationData)
     assert output.results.trajectory

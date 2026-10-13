@@ -1,4 +1,4 @@
-"""Scalar calculation lifecycle using independently testable codecs and runners."""
+"""Run one calculation: encode with a codec, execute, decode, and build the output."""
 
 import traceback
 from collections.abc import Callable, Mapping
@@ -8,7 +8,8 @@ from typing import Any
 
 import qccodec
 from pydantic import ValidationError
-from qccodec.exceptions import CodecNotFoundError, DependencyNotFoundError, EncoderError
+from qccodec.exceptions import CodecNotFoundError as CodecMissing
+from qccodec.exceptions import DependencyNotFoundError, EncoderError
 from qcdata import (
     CalcType,
     Data,
@@ -25,9 +26,9 @@ from qcdata import (
 from qcdata.helper_types import StrOrPath
 
 from .exceptions import (
-    AdapterInputError,
-    AdapterNotFoundError,
+    CodecNotFoundError,
     ExternalProgramError,
+    InputError,
     ProgramNotFoundError,
     QCComputeBaseError,
 )
@@ -51,16 +52,16 @@ def compute(
     print_logs: bool = False,
     raise_exc: bool = True,
     propagate_wfn: bool = False,
-    qcng_fallback: bool = True,
-    **codec_options: Any,
+    options: Mapping[str, Any] | None = None,
 ) -> ProgramOutput[InputType, Data]:
     """Compute the given input using a codec and a local runner.
 
     Args:
         input_data: A qcdata input object, such as ProgramInput or FileInput.
-        codec: An object or module implementing encode(input_data) and
-            decode(input_data, native_output). If None, resolve a built-in codec
-            using input_data.program, or the native-file codec for FileInput.
+        codec: The ``qccodec.Codec`` translating this program's inputs and outputs.
+            If None, resolve one with ``qccodec.get_codec(input_data)``: a codec
+            registered with ``qccodec.register``, a built-in, or QCEngine when it is
+            installed.
         environment: Process environment overrides mapping strings to strings.
             Applied after the inherited environment and codec defaults. Subprocess
             overrides affect only the child. Python calls temporarily change the
@@ -97,26 +98,22 @@ def compute(
             geometry optimization, use the child codec's restart support to prepare
             each input from the previous result. Requires a child-calculation
             integration and support for collecting and restarting from wavefunctions.
-        qcng_fallback: Use the QCEngine compatibility codec when no built-in codec
-            exists for the requested program. Also applies to child calculations.
-        **codec_options: Additional options configuring the selected built-in codec,
-            including supported QCEngine options. Configure an explicitly supplied
-            codec before passing it; these options are not accepted with codec or
-            FileInput.
+        options: Program-specific decode options passed to the codec, such as
+            ``{"collect_rotamers": True}`` for CREST. Each codec declares the
+            options it accepts in ``codec.options``; unknown keys are rejected.
 
     Returns:
         A ProgramOutput containing scientific results, execution metadata, and the
         requested logs and files. Failed calculations may contain partial results.
 
     Raises:
-        AdapterNotFoundError: No codec is available for the requested program.
-        AdapterInputError: Inputs or compute options are unsupported or invalid.
+        CodecNotFoundError: No codec is available for the requested program.
+        InputError: Inputs or compute options are unsupported or invalid.
         ProgramNotFoundError: The executable cannot be found, or a codec explicitly
             reports an unavailable dependency.
         ExternalProgramError: Execution, decoding, artifact collection, or cleanup
             fails. Unexpected codec exceptions also use this category.
 
-    Exception names containing "Adapter" are retained for API compatibility.
     Calculation exceptions are raised only when raise_exc is True.
     """
     start = monotonic()
@@ -136,45 +133,23 @@ def compute(
             not isinstance(k, str) or not isinstance(v, str)
             for k, v in environment.items()
         ):
-            raise AdapterInputError(
+            raise InputError(
                 input_data.program, "Environment overrides must map strings to strings."
             )
         if codec is None:
-            if type(input_data) is FileInput:
-                from qccodec.codecs import file as file_codec
-
-                codec = file_codec
-                if codec_options:
-                    raise AdapterInputError(
-                        input_data.program, "FileInput does not accept codec options."
-                    )
-            else:
-                codec = qccodec.get_codec(
-                    input_data.program, qcng_fallback=qcng_fallback, **codec_options
-                )
-        elif codec_options:
-            raise AdapterInputError(
-                input_data.program,
-                "Configure an external codec before passing it to compute()."
-            )
-        result = empty_results(input_data, getattr(codec, "producer_program", None))
+            codec = qccodec.get_codec(input_data)
         request = codec.encode(input_data)
-        if not isinstance(request, (qccodec.SubprocessInput, qccodec.PythonInput)):
-            raise AdapterInputError(
-                input_data.program,
-                "codec.encode() must return SubprocessInput or PythonInput."
-            )
         if collect_wfn and not collect_files and not request.wavefunction_files:
-            raise AdapterInputError(
+            raise InputError(
                 input_data.program,
-                "This codec does not support wavefunction file collection."
+                "This codec does not support wavefunction file collection.",
             )
         if propagate_wfn and not (
             isinstance(request, qccodec.PythonInput) and request.child_callback
         ):
-            raise AdapterInputError(
+            raise InputError(
                 input_data.program,
-                "Wavefunction propagation requires a child-calculation integration."
+                "Wavefunction propagation requires a child-calculation integration.",
             )
         with workspace(scratch_dir, rm_scratch_dir) as directory:
             try:
@@ -198,7 +173,6 @@ def compute(
                             environment=environment,
                             update_func=update_func,
                             update_interval=update_interval,
-                            qcng_fallback=qcng_fallback,
                         ),
                         update_func=update_func,
                     )
@@ -214,7 +188,7 @@ def compute(
                     record_failure(execution_error, native.traceback)
                 # Always attempt scientific recovery, including after execution failure.
                 try:
-                    result = codec.decode(input_data, native)
+                    result = codec.decode(input_data, native, options)
                 except Exception as exc:
                     recovered = getattr(exc, "data", None)
                     if isinstance(recovered, type(result)):
@@ -234,7 +208,7 @@ def compute(
                     if not retained:
                         raise ExternalProgramError(
                             input_data.program,
-                            "No requested wavefunction files were produced."
+                            "No requested wavefunction files were produced.",
                         )
                 if retained:
                     result = type(result).model_validate(
@@ -270,14 +244,14 @@ def _compute_child(
     environment: Mapping[str, str] | None,
     update_func: Callable[[str, str], None] | None,
     update_interval: float | None,
-    qcng_fallback: bool,
     previous: ProgramOutput[ProgramInput, Data] | None = None,
-    codec: qccodec.Codec | None = None,
 ) -> ProgramOutput[ProgramInput, Data]:
     """Run a child with optional restart input, retaining failed steps for its parent.
 
     Children inherit environment and log callbacks, but use their own temporary
     workspaces and default retention settings except for restart wavefunctions.
+    The child codec is resolved by program name, so codecs registered with
+    ``qccodec.register`` are available to optimizers.
 
     Args:
         child_input: Standardized input for the child calculation.
@@ -285,28 +259,23 @@ def _compute_child(
         environment: Environment overrides inherited from the parent.
         update_func: Log callback inherited from the parent.
         update_interval: Subprocess callback interval inherited from the parent.
-        qcng_fallback: Allow QCEngine fallback when resolving the child codec.
         previous: Previous child output supplying restart data, if available.
-        codec: Explicit child codec; otherwise resolve it from the input.
 
     Returns:
         The child output, including a failed output if restart preparation fails.
     """
     child_start = monotonic()
+    codec = None
     try:
-        if propagate_wfn:
-            if codec is None:
-                codec = qccodec.get_codec(
-                    child_input.program, qcng_fallback=qcng_fallback
+        codec = qccodec.get_codec(child_input)
+        if propagate_wfn and previous is not None:
+            if codec.propagate_wfn is None:
+                raise InputError(
+                    child_input.program,
+                    f"Codec {child_input.program!r} does not support wavefunction "
+                    "propagation.",
                 )
-            if previous is not None:
-                restart = getattr(codec, "restart", None)
-                if restart is None:
-                    raise AdapterInputError(
-                        child_input.program,
-                        f"Codec {child_input.program} does not support restart propagation."
-                    )
-                child_input = restart(child_input, previous.results)
+            child_input = codec.propagate_wfn(previous, child_input)
     except Exception:
         return ProgramOutput(
             input_data=child_input,
@@ -323,7 +292,6 @@ def _compute_child(
         raise_exc=False,
         update_func=update_func,
         update_interval=update_interval,
-        qcng_fallback=qcng_fallback,
     )
 
 
@@ -356,6 +324,7 @@ def _finalize_output(
     Raises:
         ValidationError: The fallback failed output also violates the data contract.
     """
+
     def build_output() -> ProgramOutput[InputType, Data]:
         """Construct the output from the current results and failure diagnostics."""
         return ProgramOutput(
@@ -377,16 +346,14 @@ def _finalize_output(
         return build_output()
 
 
-def _calculation_error(
-    exc: Exception, program: str
-) -> QCComputeBaseError:
-    """Translate the primary failure into the existing public exception categories."""
+def _calculation_error(exc: Exception, program: str) -> QCComputeBaseError:
+    """Translate the primary failure into the public exception categories."""
     if isinstance(exc, QCComputeBaseError):
         return exc
-    if isinstance(exc, CodecNotFoundError):
-        return AdapterNotFoundError(program, str(exc))
+    if isinstance(exc, CodecMissing):
+        return CodecNotFoundError(program, str(exc))
     if isinstance(exc, EncoderError):
-        return AdapterInputError(program, str(exc))
+        return InputError(program, str(exc))
     if isinstance(exc, DependencyNotFoundError):
         return ProgramNotFoundError(program, str(exc))
     return ExternalProgramError(program, str(exc), original_exception=exc)

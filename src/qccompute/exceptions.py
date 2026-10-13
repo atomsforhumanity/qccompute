@@ -1,4 +1,4 @@
-"""Exceptions retaining standardized failed outputs for compatibility."""
+"""Exceptions that carry the completed ProgramOutput of a failed calculation."""
 
 from __future__ import annotations
 
@@ -55,17 +55,15 @@ class QCComputeBaseError(Exception):
         )
 
 
-# ===================== Adapter-Related Errors =====================
+# ===================== Codec and Input Errors =====================
 
 
-class AdapterError(QCComputeBaseError):
-    """Exceptions due to misconfiguration or invalid inputs for adapters."""
-
-    pass
+class CodecError(QCComputeBaseError):
+    """Misconfiguration or invalid inputs detected before the program runs."""
 
 
-class AdapterNotFoundError(AdapterError):
-    """Raised when no adapter can be found for the requested program."""
+class CodecNotFoundError(CodecError):
+    """Raised when no codec can be found for the requested program."""
 
     def __init__(
         self,
@@ -75,7 +73,7 @@ class AdapterNotFoundError(AdapterError):
     ) -> None:
         """Retain the original failure and available calculation diagnostics."""
         if message is None:
-            message = f"No adapter found for program '{program}'."
+            message = f"No codec found for program '{program}'."
         super().__init__(message, prog_output, None)
         self.program: str = program
 
@@ -84,8 +82,8 @@ class AdapterNotFoundError(AdapterError):
         return f"{super().__repr__()}, program={self.program!r}"
 
 
-class AdapterInputError(AdapterError):
-    """Raised when the inputs provided to an adapter are invalid."""
+class InputError(CodecError):
+    """Raised when the inputs or compute options are invalid for the codec."""
 
     def __init__(
         self,
@@ -102,6 +100,13 @@ class AdapterInputError(AdapterError):
     def __repr__(self) -> str:
         """Describe the failure together with its attached diagnostic state."""
         return f"{super().__repr__()}, program={self.program!r}"
+
+
+# Deprecated names from the Adapter era, kept for one release so existing
+# ``except`` clauses keep working. Raised exceptions use the new classes above.
+AdapterError = CodecError
+AdapterNotFoundError = CodecNotFoundError
+AdapterInputError = InputError
 
 
 # ===================== External Program Errors =====================

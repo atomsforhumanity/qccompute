@@ -1,5 +1,9 @@
-qccodec supplies program integrations; qccompute executes their prepared invocations.
-Built-ins include TeraChem, ORCA, CREST, xTB, and geomeTRIC, plus optional tcpb
-clients. QCEngine remains an optional fallback for other programs.
-Scientific keywords and supported calculation types are defined by each codec.
-External integrations can be passed as `compute(input_data, codec=my_codec)`.
+qccodec supplies program integrations as `Codec` objects; qccompute executes their
+prepared invocations. Built-ins include TeraChem, ORCA, CREST, xTB, and geomeTRIC, plus
+the optional tcpb clients. QCEngine covers other programs when `qccompute[qcengine]` is
+installed. Scientific keywords and supported calculation types are defined by each codec.
+
+Program-specific decode options are passed as `compute(input_data, options={...})`;
+each codec declares what it accepts in `codec.options`. Custom programs are defined in a
+script as a `qccodec.Codec` and passed as `codec=` or made resolvable by name with
+`qccodec.register(codec)`.

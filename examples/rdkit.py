@@ -1,3 +1,5 @@
+"""Run an RDKit force-field energy through QCEngine and print the results."""
+
 from qcdata import ProgramInput, SinglePointData, Structure
 
 from qccompute import compute, exceptions

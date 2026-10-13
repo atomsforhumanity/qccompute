@@ -6,11 +6,11 @@ import pickle
 import sys
 from collections.abc import Callable
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
+import qccodec
 from qccodec import (
-    CodecDefinition,
+    Codec,
     NativeInput,
     NativeOutput,
     PythonInput,
@@ -29,8 +29,9 @@ from qcdata import (
 
 from qccompute import compute, compute_args
 from qccompute.exceptions import (
-    AdapterInputError,
+    CodecNotFoundError,
     ExternalProgramError,
+    InputError,
     ProgramNotFoundError,
     QCComputeBaseError,
 )
@@ -39,9 +40,11 @@ from qccompute.exceptions import (
 def local_codec(
     request: NativeInput,
     decode: Callable[[ProgramInput, NativeOutput], StructuredData] | None = None,
-) -> SimpleNamespace:
-    """Build a standalone integration without discovery or registration."""
-    return SimpleNamespace(
+) -> Codec:
+    """Build a standalone codec without discovery or registration."""
+    return Codec(
+        "test",
+        calctypes=list(CalcType),
         encode=lambda inp: request,
         decode=decode
         or (
@@ -82,38 +85,82 @@ def test_external_python_codec(
     assert pickle.loads(pickle.dumps(output)) == output
 
 
-def test_parser_decorator_end_to_end(
-    prog_input_factory: Callable[..., ProgramInput],
+def test_script_codec_end_to_end(
+    prog_input_factory: Callable[..., ProgramInput], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Parser decorator end to end."""
-    definition = CodecDefinition(
-        "test",
-        frozenset({CalcType.energy}),
-        encoder=lambda inp: SubprocessInput((sys.executable, "-c", "print(-2.5)")),
-        iter_files=lambda stdout, directory: [("stdout", stdout)],
-    )
+    """A codec defined in a script runs explicitly and, once registered, by name."""
+    codec = Codec("myprog", calctypes={CalcType.energy})
 
-    @definition.parser(filetype="stdout", calctypes=[CalcType.energy], target="energy")
-    def energy(contents: str) -> float:
+    @codec.encoder
+    def encode(inp: ProgramInput) -> SubprocessInput:
+        """Fake a program that prints its result."""
+        assert inp.model is not None
+        return SubprocessInput(
+            (sys.executable, "-c", "print('Total energy: -2.5')"),
+            files={"run.inp": f"{inp.model.method}\n{inp.structure.to_xyz()}"},
+        )
+
+    @codec.parser(target="energy", calctypes=[CalcType.energy])
+    def energy(stdout: str) -> float:
         """Parse a scalar directly from the supplied native contents."""
-        return float(contents)
+        return float(
+            qccodec.re_search(r"Total energy:\s+(-?\d+\.\d+)", stdout).group(1)
+        )
 
-    output = compute(prog_input_factory("energy"), codec=definition)
+    inp = prog_input_factory("energy", program="myprog")
+    output = compute(inp, codec=codec)
     assert isinstance(output.results, SinglePointData)
     assert output.results.energy == -2.5
+    assert output.results.provenance.program == "myprog"
+
+    monkeypatch.setattr("qccodec.registry.find_spec", lambda name: None)  # no QCEngine
+    with pytest.raises(CodecNotFoundError):
+        compute(inp)
+    qccodec.register(codec)
+    try:
+        by_name = compute(inp).results
+        assert isinstance(by_name, SinglePointData) and by_name.energy == -2.5
+    finally:
+        qccodec.unregister("myprog")
+
+
+def test_options_reach_the_codec(
+    prog_input_factory: Callable[..., ProgramInput],
+) -> None:
+    """Decode options flow to the codec's parsers and unknown keys are input errors."""
+    codec = Codec(
+        "test",
+        calctypes={CalcType.energy},
+        options={"natoms": None},
+        encode=lambda inp: SubprocessInput((sys.executable, "-c", "print(-1.0)")),
+    )
+    codec.parser(target="energy")(lambda stdout: float(stdout))
+    codec.parser(file="directory")(
+        lambda ctx: {"calcinfo_natoms": ctx.options["natoms"]}
+        if ctx.options["natoms"]
+        else {}
+    )
+    inp = prog_input_factory("energy")
+    default = compute(inp, codec=codec).results
+    assert isinstance(default, SinglePointData) and default.calcinfo_natoms is None
+    chosen = compute(inp, codec=codec, options={"natoms": 2}).results
+    assert isinstance(chosen, SinglePointData) and chosen.calcinfo_natoms == 2
+    with pytest.raises(InputError, match="does not accept options"):
+        compute(inp, codec=codec, options={"typo": 1})
 
 
 @pytest.mark.parametrize("calctype", list(CalcType))
 def test_lookup_failure_preserves_result_contract(
-    prog_input_factory: Callable[..., ProgramInput], calctype: CalcType
+    prog_input_factory: Callable[..., ProgramInput],
+    calctype: CalcType,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Lookup failure preserves result contract."""
-    output = compute(
-        prog_input_factory(calctype, program="missing"),
-        qcng_fallback=False,
-        raise_exc=False,
-    )
-    assert not output.success
+    """An unknown program without QCEngine fails cleanly with the right data type."""
+    monkeypatch.setattr("qccodec.registry.find_spec", lambda name: None)
+    with pytest.raises(CodecNotFoundError) as raised:
+        compute(prog_input_factory(calctype, program="missing"))
+    output = raised.value.prog_output
+    assert output is not None and not output.success
     assert type(output.results) is get_data_type(calctype)
     assert ProgramOutput.model_validate_json(output.model_dump_json()) == output
 
@@ -210,7 +257,7 @@ def test_encoding_and_staging_errors_are_wrapped(
 
     output = compute(
         prog_input_factory("energy"),
-        codec=SimpleNamespace(encode=encode),
+        codec=Codec("test", calctypes=[CalcType.energy], encode=encode),
         raise_exc=False,
     )
     assert output.traceback is not None
@@ -400,7 +447,7 @@ def test_invalid_environment_is_input_error(
     prog_input_factory: Callable[..., ProgramInput],
 ) -> None:
     """Reject invalid options before invoking the program and attach diagnostics."""
-    with pytest.raises(AdapterInputError, match="strings") as raised:
+    with pytest.raises(InputError, match="strings") as raised:
         compute(
             prog_input_factory("energy"),
             codec=local_codec(PythonInput(lambda: pytest.fail("Program executed"))),

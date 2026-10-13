@@ -1,3 +1,5 @@
+"""Run a TeraChem gradient calculation and print the results."""
+
 from qcdata import CalcType, ProgramInput, SinglePointData, Structure
 
 from qccompute import compute, exceptions

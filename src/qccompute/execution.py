@@ -21,14 +21,14 @@ from qcdata import (
 )
 
 
-def empty_results(input_data: Inputs, producer: str | None = None) -> Data:
+def empty_results(input_data: Inputs) -> Data:
     """Create the result type required by an input before any values are available."""
     data_type = (
         get_data_type(input_data.calctype)
         if isinstance(input_data, ProgramInput)
         else FileData
     )
-    return data_type(provenance=Provenance(program=producer or input_data.program))
+    return data_type(provenance=Provenance(program=input_data.program))
 
 
 def construct_execution(directory: Path | None, wall_time: float) -> ExecutionInfo:

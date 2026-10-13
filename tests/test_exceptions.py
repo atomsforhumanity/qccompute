@@ -5,26 +5,34 @@ import pickle
 import pytest
 from qcdata import ProgramInput, ProgramOutput, SinglePointData
 
+from qccompute import exceptions
 from qccompute.exceptions import (
-    AdapterError,
-    AdapterInputError,
-    AdapterNotFoundError,
+    CodecNotFoundError,
     ExternalProgramError,
+    InputError,
     ProgramNotFoundError,
+    QCComputeBaseError,
 )
 
 test_data = [
-    (AdapterNotFoundError, ("psi4",)),
-    (AdapterInputError, ("psi4",)),
+    (CodecNotFoundError, ("psi4",)),
+    (InputError, ("psi4",)),
     (ExternalProgramError, ("psi4",)),
     (ProgramNotFoundError, ("psi4",)),
 ]
 
 
+def test_adapter_names_remain_available() -> None:
+    """Deprecated Adapter-era names still catch the new exceptions."""
+    assert exceptions.AdapterNotFoundError is CodecNotFoundError
+    assert exceptions.AdapterInputError is InputError
+    assert issubclass(CodecNotFoundError, exceptions.AdapterError)
+
+
 @pytest.mark.parametrize("exc_class,args", test_data)
 def test_exception_pickle(
     results: ProgramOutput[ProgramInput, SinglePointData],
-    exc_class: type[AdapterError],
+    exc_class: type[QCComputeBaseError],
     args: tuple[str],
 ) -> None:
     """Preserve exception attributes across process boundaries."""

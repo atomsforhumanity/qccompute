@@ -3,7 +3,14 @@
 Constraints docs: https://geometric.readthedocs.io/en/latest/constraints.html
 """
 
-from qcdata import OptimizationData, ProgramInput, ProgramSpec, Structure
+from qcdata import (
+    CalcType,
+    Model,
+    OptimizationData,
+    ProgramInput,
+    ProgramSpec,
+    Structure,
+)
 
 from qccompute import compute, exceptions
 
@@ -21,8 +28,8 @@ prog_input = ProgramInput(
     subprograms=[
         ProgramSpec(
             program="terachem",
-            calctype="gradient",
-            model={"method": "HF", "basis": "6-31g"},
+            calctype=CalcType.gradient,
+            model=Model(method="HF", basis="6-31g"),
             keywords={"purify": "no"},
         ),
     ],

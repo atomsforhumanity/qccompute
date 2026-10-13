@@ -1,4 +1,4 @@
-"""Must run script like this: python -m examples.xtb"""
+"""Run an xTB calculation; invoke as ``python -m examples.xtb``."""
 
 from qcdata import CalcType, ProgramInput, Structure
 

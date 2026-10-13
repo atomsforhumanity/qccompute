@@ -1,4 +1,6 @@
-Program-specific translation and Python bindings live in `qccodec.codecs.qcengine`.
+Program-specific translation lives in `qccodec.programs.qcengine`.
 Use `qccompute.compute(input_data)` to execute a calculation.
 
-QCEngine is an optional fallback. Disable it with `qcng_fallback=False`. Install `qccompute[qcengine]` to use it.
+QCEngine is used automatically for programs without a built-in codec when
+`qccompute[qcengine]` is installed. Pass QCEngine settings through its codec factory:
+`compute(inp, codec=qccodec.programs.qcengine.codec_for("psi4", task_config={...}))`.

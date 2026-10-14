@@ -15,6 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Added `compute(..., environment=...)`; invocation defaults from the codec override inherited values and explicit overrides take precedence. Subprocess overrides are child-local.
 - Both output streams are captured and merged; subprocess logs stream line by line without blocking on missing newlines. Python log callbacks run after invocation. Artifacts remain available to decoders through failed executions, and failures are finalized after scratch cleanup.
 - xTB and CREST default to a single OpenMP thread.
+- Added `compute(..., timeout=seconds)`: each external program, including child calculations of Python integrations, is killed with its whole process tree when it exceeds the limit, raising `ProgramTimeoutError` with partial results and logs attached. Subprocesses now run in their own session on POSIX so timeouts and interrupts never leave orphaned child processes.
 - New exception names `CodecNotFoundError` and `InputError`; `AdapterError`, `AdapterNotFoundError`, and `AdapterInputError` remain as aliases for one release.
 - Use a temporary editable sibling qccodec source for coordinated development of these unpublished releases.
 

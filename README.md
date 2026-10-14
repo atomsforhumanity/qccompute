@@ -228,6 +228,11 @@ streams under a reentrant lock, so use separate processes for independent concur
 Python calculations. xTB defaults to `OMP_NUM_THREADS=1` before its library import,
 and CREST receives the same setting in its child environment.
 
+Timeouts: `compute(..., timeout=3600)` kills any program that runs longer, together
+with every process it started, and raises `ProgramTimeoutError` with partial results
+attached. The limit applies to each program run, including geomeTRIC's child
+gradients; Python callables themselves are not interrupted.
+
 Logs: subprocess callbacks stream `(all_logs, new_logs)` with a final callback for
 remaining output; `update_interval` is a minimum spacing. Python callbacks receive the
 captured log once after invocation. Logs remain attached on failure even with

@@ -175,3 +175,11 @@ class ProgramNotFoundError(ExternalProgramError):
     def __repr__(self) -> str:
         """Describe the failure together with its attached diagnostic state."""
         return f"{super().__repr__()}, install_msg={self.install_msg!r}"
+
+
+class ProgramTimeoutError(ExternalProgramError):
+    """Raised when an external program exceeds the ``timeout`` given to ``compute``.
+
+    The program and any processes it started are killed. Output produced before the
+    deadline is retained and decoded, so partial results remain available.
+    """

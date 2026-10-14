@@ -33,6 +33,7 @@ from qccompute.exceptions import (
     ExternalProgramError,
     InputError,
     ProgramNotFoundError,
+    ProgramTimeoutError,
     QCComputeBaseError,
 )
 
@@ -517,3 +518,36 @@ def test_cleanup_failure_preserves_primary_error(
     assert output.traceback is not None
     assert "primary calculation failure" in output.traceback
     assert "cleanup failure" in output.traceback
+
+
+def test_timeout_raises_with_partial_output(
+    prog_input_factory: Callable[..., ProgramInput],
+) -> None:
+    """compute(timeout=...) kills a slow program and still decodes what it wrote."""
+    request = SubprocessInput(
+        (
+            sys.executable,
+            "-c",
+            "import time; print('partial', flush=True); time.sleep(60)",
+        )
+    )
+
+    def decode(inp: ProgramInput, out: NativeOutput) -> SinglePointData:
+        """Recover what the program printed before it was killed."""
+        assert out.failed and "partial" in out.stdout
+        return SinglePointData.model_validate(
+            {"provenance": {"program": "test"}, "energy": -1}
+        )
+
+    with pytest.raises(ProgramTimeoutError, match="timeout") as raised:
+        compute(
+            prog_input_factory("gradient"),
+            codec=local_codec(request, decode),
+            timeout=1,
+        )
+    output = raised.value.prog_output
+    assert output is not None and not output.success
+    assert output.logs is not None and "partial" in output.logs
+    assert isinstance(output.results, SinglePointData) and output.results.energy == -1
+    with pytest.raises(InputError, match="timeout"):
+        compute(prog_input_factory("energy"), codec=local_codec(request), timeout=0)

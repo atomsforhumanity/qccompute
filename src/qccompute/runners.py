@@ -5,6 +5,7 @@ from __future__ import annotations
 import ctypes
 import logging
 import os
+import signal
 import subprocess
 import sys
 import tempfile
@@ -19,7 +20,7 @@ from typing import TextIO
 from qccodec import PythonInput, PythonOutput, SubprocessInput, SubprocessOutput
 from qccodec.native import ComputeChild
 
-from .exceptions import ProgramNotFoundError
+from .exceptions import ProgramNotFoundError, ProgramTimeoutError
 
 _python_lock = threading.RLock()
 
@@ -39,6 +40,7 @@ def run_subprocess(
     environment: Mapping[str, str] | None = None,
     update_func: Callable[[str, str], None] | None = None,
     update_interval: float | None = None,
+    timeout: float | None = None,
 ) -> SubprocessOutput:
     """Execute a native command and monitor its merged stdout/stderr.
 
@@ -62,6 +64,9 @@ def run_subprocess(
             Updates are line-based, so an unterminated line waits until a newline
             or EOF. This interval is not a heartbeat. The final callback is not
             delayed by the interval.
+        timeout: Seconds the program may run. When exceeded, the program and every
+            process it started are killed, and ``error`` holds a
+            ``ProgramTimeoutError``; output produced so far is kept.
 
     Returns:
         Native execution observations with merged output in ``stdout``, the working directory, and the return code. Launch, reading,
@@ -69,12 +74,15 @@ def run_subprocess(
         output read so far retained. A nonzero exit is returned for the caller to
         interpret, allowing decoding of partial scientific results.
 
-    The immediate child is terminated and waited for if execution is interrupted
-    before it exits. Scientific decoding and scratch-directory cleanup belong to
-    the caller.
+    On POSIX the program runs in its own session, so a timeout or an interrupted
+    caller kills the whole process tree (for example the xtb processes CREST
+    starts), not just the immediate child. Scientific decoding and scratch-directory
+    cleanup belong to the caller.
     """
     output = SubprocessOutput(directory=directory)
     proc = None
+    timer: threading.Timer | None = None
+    timed_out = threading.Event()
     lines: list[str] = []
     try:
         proc = subprocess.Popen(
@@ -87,7 +95,19 @@ def run_subprocess(
             text=True,
             encoding="utf-8",
             errors="replace",
+            start_new_session=_GROUP_KILL,
         )
+        if timeout is not None:
+            running = proc
+
+            def expire() -> None:
+                """Kill the program tree once the deadline passes."""
+                timed_out.set()
+                _kill_tree(running)
+
+            timer = threading.Timer(timeout, expire)
+            timer.daemon = True
+            timer.start()
         assert proc.stdout is not None
         last_update = monotonic()
         reported = 0
@@ -101,6 +121,11 @@ def run_subprocess(
         output.returncode = proc.wait()
         if update_func and len(lines) > reported:
             update_func("".join(lines), "".join(lines[reported:]))
+        if timed_out.is_set():
+            output.error = ProgramTimeoutError(
+                request.command[0],
+                f"{request.command[0]} exceeded the {timeout:g} s timeout and was killed.",
+            )
     except Exception as exc:
         output.error = exc
         output.traceback = traceback.format_exc()
@@ -113,14 +138,32 @@ def run_subprocess(
             output.error = ProgramNotFoundError(request.command[0], str(exc))
             output.error.__cause__ = exc
     finally:
+        if timer is not None:
+            timer.cancel()
         if proc is not None:
             if proc.poll() is None:
-                proc.kill()
+                _kill_tree(proc)
             output.returncode = proc.wait()
             if proc.stdout is not None:
                 proc.stdout.close()
         output.stdout = "".join(lines)
     return output
+
+
+# A new session gives the program its own process group, so the whole tree can be
+# killed together. Windows has no process groups in this sense.
+_GROUP_KILL = hasattr(os, "killpg")
+
+
+def _kill_tree(proc: subprocess.Popen[str]) -> None:
+    """Kill a program and, on POSIX, every process in its session."""
+    try:
+        if _GROUP_KILL:
+            os.killpg(proc.pid, signal.SIGKILL)
+        else:
+            proc.kill()
+    except (ProcessLookupError, PermissionError):
+        pass
 
 
 @contextmanager

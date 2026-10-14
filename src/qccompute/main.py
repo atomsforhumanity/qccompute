@@ -53,6 +53,7 @@ def compute(
     raise_exc: bool = True,
     propagate_wfn: bool = False,
     options: Mapping[str, Any] | None = None,
+    timeout: float | None = None,
 ) -> ProgramOutput[InputType, Data]:
     """Compute the given input using a codec and a local runner.
 
@@ -101,6 +102,11 @@ def compute(
         options: Program-specific decode options passed to the codec, such as
             ``{"collect_rotamers": True}`` for CREST. Each codec declares the
             options it accepts in ``codec.options``; unknown keys are rejected.
+        timeout: Seconds each external program may run before it and the processes
+            it started are killed, raising ``ProgramTimeoutError`` with any partial
+            results attached. Applies to every subprocess, including child
+            calculations of Python integrations such as geomeTRIC; a Python
+            callable itself is not interrupted.
 
     Returns:
         A ProgramOutput containing scientific results, execution metadata, and the
@@ -111,6 +117,7 @@ def compute(
         InputError: Inputs or compute options are unsupported or invalid.
         ProgramNotFoundError: The executable cannot be found, or a codec explicitly
             reports an unavailable dependency.
+        ProgramTimeoutError: A program exceeded ``timeout``.
         ExternalProgramError: Execution, decoding, artifact collection, or cleanup
             fails. Unexpected codec exceptions also use this category.
 
@@ -135,6 +142,10 @@ def compute(
         ):
             raise InputError(
                 input_data.program, "Environment overrides must map strings to strings."
+            )
+        if timeout is not None and not timeout > 0:
+            raise InputError(
+                input_data.program, "timeout must be a positive number of seconds."
             )
         if codec is None:
             codec = qccodec.get_codec(input_data)
@@ -161,6 +172,7 @@ def compute(
                         environment=environment,
                         update_func=update_func,
                         update_interval=update_interval,
+                        timeout=timeout,
                     )
                 else:
                     native = run_python(
@@ -173,6 +185,7 @@ def compute(
                             environment=environment,
                             update_func=update_func,
                             update_interval=update_interval,
+                            timeout=timeout,
                         ),
                         update_func=update_func,
                     )
@@ -244,6 +257,7 @@ def _compute_child(
     environment: Mapping[str, str] | None,
     update_func: Callable[[str, str], None] | None,
     update_interval: float | None,
+    timeout: float | None = None,
     previous: ProgramOutput[ProgramInput, Data] | None = None,
 ) -> ProgramOutput[ProgramInput, Data]:
     """Run a child with optional restart input, retaining failed steps for its parent.
@@ -259,6 +273,7 @@ def _compute_child(
         environment: Environment overrides inherited from the parent.
         update_func: Log callback inherited from the parent.
         update_interval: Subprocess callback interval inherited from the parent.
+        timeout: Per-program timeout inherited from the parent.
         previous: Previous child output supplying restart data, if available.
 
     Returns:
@@ -292,6 +307,7 @@ def _compute_child(
         raise_exc=False,
         update_func=update_func,
         update_interval=update_interval,
+        timeout=timeout,
     )
 
 

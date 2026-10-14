@@ -7,6 +7,7 @@ import logging
 import os
 import subprocess
 import sys
+import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -19,7 +20,7 @@ from qccodec import (
     SubprocessInput,
 )
 
-from qccompute.exceptions import ProgramNotFoundError
+from qccompute.exceptions import ProgramNotFoundError, ProgramTimeoutError
 from qccompute.runners import run_python, run_subprocess
 
 
@@ -306,3 +307,39 @@ def test_crest_child_openmp_override(
     output = run_subprocess(request, tmp_path)
     assert output.stdout == "1\n" and not output.failed
     assert os.environ["OMP_NUM_THREADS"] == "8"
+
+
+def test_subprocess_timeout_kills_program_tree(tmp_path: Path) -> None:
+    """A timeout kills the program and its children and keeps earlier output."""
+    script = (
+        "import subprocess, sys, time; "
+        "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)']); "
+        "open('child.pid', 'w').write(str(child.pid)); "
+        "print('started', flush=True); time.sleep(60)"
+    )
+    start = time.monotonic()
+    output = run_subprocess(
+        SubprocessInput((sys.executable, "-c", script)), tmp_path, timeout=1.0
+    )
+    assert time.monotonic() - start < 30
+    assert isinstance(output.error, ProgramTimeoutError) and output.failed
+    assert "1 s timeout" in str(output.error)
+    assert output.stdout == "started\n"
+    if hasattr(os, "killpg"):
+        child = int((tmp_path / "child.pid").read_text())
+        for _ in range(50):
+            try:
+                os.kill(child, 0)
+            except ProcessLookupError:
+                break
+            time.sleep(0.1)
+        else:
+            pytest.fail("child process survived the timeout")
+
+
+def test_subprocess_within_timeout_is_unaffected(tmp_path: Path) -> None:
+    """A program that finishes in time behaves exactly as without a timeout."""
+    output = run_subprocess(
+        SubprocessInput((sys.executable, "-c", "print('ok')")), tmp_path, timeout=30
+    )
+    assert output.error is None and output.returncode == 0 and output.stdout == "ok\n"

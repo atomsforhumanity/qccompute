@@ -60,8 +60,8 @@ def compute(
         input_data: A qcdata input object, such as ProgramInput or FileInput.
         codec: The ``qccodec.Codec`` translating this program's inputs and outputs.
             If None, resolve one with ``qccodec.get_codec(input_data)``: a codec
-            registered with ``qccodec.register``, a built-in, or QCEngine when it is
-            installed.
+            registered with ``qccodec.register``, a built-in, or one installed by
+            another package.
         environment: Process environment overrides mapping strings to strings.
             Applied after the inherited environment and codec defaults. Subprocess
             overrides affect only the child. Python calls temporarily change the

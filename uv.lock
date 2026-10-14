@@ -336,30 +336,6 @@ wheels = [
 ]
 
 [[package]]
-name = "flexcache"
-version = "0.3"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/55/b0/8a21e330561c65653d010ef112bf38f60890051d244ede197ddaa08e50c1/flexcache-0.3.tar.gz", hash = "sha256:18743bd5a0621bfe2cf8d519e4c3bfdf57a269c15d1ced3fb4b64e0ff4600656", size = 15816 }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/27/cd/c883e1a7c447479d6e13985565080e3fea88ab5a107c21684c813dba1875/flexcache-0.3-py3-none-any.whl", hash = "sha256:d43c9fea82336af6e0115e308d9d33a185390b8346a017564611f1466dcd2e32", size = 13263 },
-]
-
-[[package]]
-name = "flexparser"
-version = "0.4"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/82/99/b4de7e39e8eaf8207ba1a8fa2241dd98b2ba72ae6e16960d8351736d8702/flexparser-0.4.tar.gz", hash = "sha256:266d98905595be2ccc5da964fe0a2c3526fbbffdc45b65b3146d75db992ef6b2", size = 31799 }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/fe/5e/3be305568fe5f34448807976dc82fc151d76c3e0e03958f34770286278c1/flexparser-0.4-py3-none-any.whl", hash = "sha256:3738b456192dcb3e15620f324c447721023c0293f6af9955b481e91d00179846", size = 27625 },
-]
-
-[[package]]
 name = "geometric"
 version = "1.1"
 source = { registry = "https://pypi.org/simple" }
@@ -895,21 +871,6 @@ wheels = [
 ]
 
 [[package]]
-name = "pint"
-version = "0.24.4"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "flexcache" },
-    { name = "flexparser" },
-    { name = "platformdirs" },
-    { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/20/bb/52b15ddf7b7706ed591134a895dbf6e41c8348171fb635e655e0a4bbb0ea/pint-0.24.4.tar.gz", hash = "sha256:35275439b574837a6cd3020a5a4a73645eb125ce4152a73a2f126bf164b91b80", size = 342225 }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/b7/16/bd2f5904557265882108dc2e04f18abc05ab0c2b7082ae9430091daf1d5c/Pint-0.24.4-py3-none-any.whl", hash = "sha256:aa54926c8772159fcf65f82cc0d34de6768c151b32ad1deb0331291c38fe7659", size = 302029 },
-]
-
-[[package]]
 name = "platformdirs"
 version = "4.3.6"
 source = { registry = "https://pypi.org/simple" }
@@ -939,30 +900,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/89/1a/b4d72e1d7134ffac2156d1dfc3b9ddb21d1664ff392e1e5fe2882a117f81/protobuf-3.20.1-cp310-cp310-win32.whl", hash = "sha256:9016d01c91e8e625141d24ec1b20fed584703e527d28512aa8c8707f105a683c", size = 779974 },
     { url = "https://files.pythonhosted.org/packages/c0/9c/bb88091287418ae1cf8af2bb9ed9710748a562b9abc227e4884d687a8650/protobuf-3.20.1-cp310-cp310-win_amd64.whl", hash = "sha256:32ca378605b41fd180dfe4e14d3226386d8d1b002ab31c969c366549e66a2bb7", size = 903843 },
     { url = "https://files.pythonhosted.org/packages/ef/c8/2e7f7feaf804b7206e6cc8fa3f0f49834a78f7cb127813d2c45e42d5f7bf/protobuf-3.20.1-py2.py3-none-any.whl", hash = "sha256:adfc6cf69c7f8c50fd24c793964eef18f0ac321315439d94945820612849c388", size = 162127 },
-]
-
-[[package]]
-name = "psutil"
-version = "7.0.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/2a/80/336820c1ad9286a4ded7e845b2eccfcb27851ab8ac6abece774a6ff4d3de/psutil-7.0.0.tar.gz", hash = "sha256:7be9c3eba38beccb6495ea33afd982a44074b78f28c434a1f51cc07fd315c456", size = 497003 }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/ed/e6/2d26234410f8b8abdbf891c9da62bee396583f713fb9f3325a4760875d22/psutil-7.0.0-cp36-abi3-macosx_10_9_x86_64.whl", hash = "sha256:101d71dc322e3cffd7cea0650b09b3d08b8e7c4109dd6809fe452dfd00e58b25", size = 238051 },
-    { url = "https://files.pythonhosted.org/packages/04/8b/30f930733afe425e3cbfc0e1468a30a18942350c1a8816acfade80c005c4/psutil-7.0.0-cp36-abi3-macosx_11_0_arm64.whl", hash = "sha256:39db632f6bb862eeccf56660871433e111b6ea58f2caea825571951d4b6aa3da", size = 239535 },
-    { url = "https://files.pythonhosted.org/packages/2a/ed/d362e84620dd22876b55389248e522338ed1bf134a5edd3b8231d7207f6d/psutil-7.0.0-cp36-abi3-manylinux_2_12_i686.manylinux2010_i686.manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:1fcee592b4c6f146991ca55919ea3d1f8926497a713ed7faaf8225e174581e91", size = 275004 },
-    { url = "https://files.pythonhosted.org/packages/bf/b9/b0eb3f3cbcb734d930fdf839431606844a825b23eaf9a6ab371edac8162c/psutil-7.0.0-cp36-abi3-manylinux_2_12_x86_64.manylinux2010_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:4b1388a4f6875d7e2aff5c4ca1cc16c545ed41dd8bb596cefea80111db353a34", size = 277986 },
-    { url = "https://files.pythonhosted.org/packages/eb/a2/709e0fe2f093556c17fbafda93ac032257242cabcc7ff3369e2cb76a97aa/psutil-7.0.0-cp36-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:a5f098451abc2828f7dc6b58d44b532b22f2088f4999a937557b603ce72b1993", size = 279544 },
-    { url = "https://files.pythonhosted.org/packages/50/e6/eecf58810b9d12e6427369784efe814a1eec0f492084ce8eb8f4d89d6d61/psutil-7.0.0-cp37-abi3-win32.whl", hash = "sha256:ba3fcef7523064a6c9da440fc4d6bd07da93ac726b5733c29027d7dc95b39d99", size = 241053 },
-    { url = "https://files.pythonhosted.org/packages/50/1b/6921afe68c74868b4c9fa424dad3be35b095e16687989ebbb50ce4fceb7c/psutil-7.0.0-cp37-abi3-win_amd64.whl", hash = "sha256:4cf3d4eb1aa9b348dec30105c55cd9b7d4629285735a102beb4441e38db90553", size = 244885 },
-]
-
-[[package]]
-name = "py-cpuinfo"
-version = "9.0.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/37/a8/d832f7293ebb21690860d2e01d8115e5ff6f2ae8bbdc953f0eb0fa4bd2c7/py-cpuinfo-9.0.0.tar.gz", hash = "sha256:3cdbbf3fac90dc6f118bfd64384f309edeadd902d7c8fb17f02ffa1fc3f49690", size = 104716 }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/e0/a9/023730ba63db1e494a271cb018dcd361bd2c917ba7004c3e49d5daf795a2/py_cpuinfo-9.0.0-py3-none-any.whl", hash = "sha256:859625bc251f64e21f077d099d4162689c762b5d6a4c3c97553d56241c9674d5", size = 22335 },
 ]
 
 [[package]]
@@ -1256,6 +1193,7 @@ name = "qccodec"
 version = "0.13.0"
 source = { editable = "../qccodec" }
 dependencies = [
+    { name = "packaging" },
     { name = "qcconst" },
     { name = "qcdata" },
     { name = "tomli-w" },
@@ -1264,10 +1202,6 @@ dependencies = [
 [package.optional-dependencies]
 geometric = [
     { name = "geometric" },
-]
-qcengine = [
-    { name = "qcelemental" },
-    { name = "qcengine" },
 ]
 tcpb = [
     { name = "tcpb" },
@@ -1279,10 +1213,9 @@ xtb = [
 [package.metadata]
 requires-dist = [
     { name = "geometric", marker = "extra == 'geometric'", specifier = ">=1.0.1,<2" },
+    { name = "packaging", specifier = ">=23.0" },
     { name = "qcconst", specifier = ">=0.2.1" },
     { name = "qcdata", specifier = ">=0.19.0" },
-    { name = "qcelemental", marker = "extra == 'qcengine'", specifier = ">=0.50.4" },
-    { name = "qcengine", marker = "extra == 'qcengine'", specifier = ">=0.51.0" },
     { name = "tcpb", marker = "extra == 'tcpb'", specifier = ">=0.16.0" },
     { name = "tomli-w", specifier = ">=1.0.0" },
     { name = "xtb", marker = "extra == 'xtb'" },
@@ -1309,13 +1242,10 @@ dependencies = [
 
 [package.optional-dependencies]
 all = [
-    { name = "qccodec", extra = ["geometric", "qcengine", "tcpb"] },
+    { name = "qccodec", extra = ["geometric", "tcpb"] },
 ]
 geometric = [
     { name = "qccodec", extra = ["geometric"] },
-]
-qcengine = [
-    { name = "qccodec", extra = ["qcengine"] },
 ]
 tcpb = [
     { name = "qccodec", extra = ["tcpb"] },
@@ -1332,8 +1262,6 @@ dev = [
     { name = "pytest-cov" },
     { name = "pytest-mock" },
     { name = "qccompute" },
-    { name = "qcelemental" },
-    { name = "qcengine" },
     { name = "ruff" },
     { name = "types-toml" },
 ]
@@ -1350,8 +1278,7 @@ docs = [
 requires-dist = [
     { name = "qccodec", editable = "../qccodec" },
     { name = "qccodec", extras = ["geometric"], marker = "extra == 'geometric'", editable = "../qccodec" },
-    { name = "qccodec", extras = ["qcengine"], marker = "extra == 'qcengine'", editable = "../qccodec" },
-    { name = "qccodec", extras = ["qcengine", "geometric", "tcpb"], marker = "extra == 'all'", editable = "../qccodec" },
+    { name = "qccodec", extras = ["geometric", "tcpb"], marker = "extra == 'all'", editable = "../qccodec" },
     { name = "qccodec", extras = ["tcpb"], marker = "extra == 'tcpb'", editable = "../qccodec" },
     { name = "qccodec", extras = ["xtb"], marker = "extra == 'xtb'", editable = "../qccodec" },
     { name = "qcdata", specifier = ">=0.19.0" },
@@ -1365,8 +1292,6 @@ dev = [
     { name = "pytest-cov", specifier = ">=4.1.0,<5" },
     { name = "pytest-mock", specifier = ">=3.11.1,<4" },
     { name = "qccompute", editable = "." },
-    { name = "qcelemental", specifier = ">=0.50.4" },
-    { name = "qcengine", specifier = ">=0.51.0" },
     { name = "ruff", specifier = ">=0.12.0" },
     { name = "types-toml", specifier = ">=0.10.8.20240310,<0.11" },
 ]
@@ -1405,39 +1330,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/d5/17/b9631651fface037d555cba69eef84a70325f8395a98e26735cb270f49c6/qcdata-0.19.0.tar.gz", hash = "sha256:637ba495595050e5fa68cb794fa5b6c079fe53a392a648563cac847286a45cbd", size = 1523462 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c3/da/673529d76d43810c312d1e26ae8df7061eab8e22b10b91d653af2f40e0dd/qcdata-0.19.0-py3-none-any.whl", hash = "sha256:bcea7db435554dc251b6eeab5fd07940c2290c47b64a9555ad56382e94b48975", size = 38380 },
-]
-
-[[package]]
-name = "qcelemental"
-version = "0.51.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "numpy", version = "2.0.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.14'" },
-    { name = "numpy", version = "2.5.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.14'" },
-    { name = "pint" },
-    { name = "pydantic" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/0f/a7/cb902957c57c6d2bec86830c502b66065d06cd2be44d175f432e4849b850/qcelemental-0.51.1.tar.gz", hash = "sha256:d92eec6b5e2b29df1bfb20f2d9e2299354d412503a5dea5e4cfbb3596e92e135", size = 9082189 }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/d8/2c/3b5ce324cae4621ef5f46bdc598554c13c6d8d3e0157f551abaa437256a7/qcelemental-0.51.1-py3-none-any.whl", hash = "sha256:692ceb53f5568778c981606277527b4a3cd50bbda0f3c0a8fc2a9bd704b142b4", size = 367876 },
-]
-
-[[package]]
-name = "qcengine"
-version = "0.51.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "packaging" },
-    { name = "psutil" },
-    { name = "py-cpuinfo" },
-    { name = "pydantic" },
-    { name = "pydantic-settings" },
-    { name = "pyyaml" },
-    { name = "qcelemental" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/3f/24/98734cb58fe1bcb1f4967737c1eef12586811c366781ff76238cbbc31b92/qcengine-0.51.0.tar.gz", hash = "sha256:23a122d132329585a8add8cd023d305c0c4c1f5032bf8a7ab22273e05d7c4c0d", size = 394272 }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/f1/53/87d7d2233361a74dd5780f4d8db2a7a26c3cfac6a97c9f0181e351e82f07/qcengine-0.51.0-py3-none-any.whl", hash = "sha256:c07fbcad9ebbb5abe4d84a88bd7db65086bea8ca491b26add14fa197de5bf9e0", size = 381757 },
 ]
 
 [[package]]

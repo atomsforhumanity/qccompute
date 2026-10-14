@@ -1,6 +1,6 @@
 # qccompute
 
-A package for running Quantum Chemistry programs using [qcdata](https://github.com/atomsforhumanity/qcdata) standardized data structures. Compatible with `TeraChem`, `psi4`, `Crest`, `xTB`, `QChem`, `NWChem`, `ORCA`, `Molpro`, `geomeTRIC` and many more.
+A package for running Quantum Chemistry programs using [qcdata](https://github.com/atomsforhumanity/qcdata) standardized data structures. Built-in support for `TeraChem`, `ORCA`, `CREST`, `xTB`, and `geomeTRIC`, and any program you define a `qccodec.Codec` for.
 
 [![image](https://img.shields.io/pypi/v/qccompute.svg)](https://pypi.python.org/pypi/qccompute)
 [![image](https://img.shields.io/pypi/l/qccompute.svg)](https://pypi.python.org/pypi/qccompute)
@@ -208,7 +208,7 @@ temporary and should be removed once qccodec 0.13 is published.
 ### How a calculation runs
 
 1. `compute()` resolves a codec: the `codec=` argument, a codec registered with
-   `qccodec.register`, a built-in, or QCEngine when `qccompute[qcengine]` is installed.
+   `qccodec.register`, a built-in, or one installed by another package.
 2. `codec.encode(input_data)` returns a `SubprocessInput` (command + files) or a
    `PythonInput` (callable + arguments). Encoding never executes anything.
 3. qccompute creates the scratch directory, stages the files, and runs

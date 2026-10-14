@@ -113,7 +113,6 @@ def test_script_codec_end_to_end(
     assert output.results.energy == -2.5
     assert output.results.provenance.program == "myprog"
 
-    monkeypatch.setattr("qccodec.registry.find_spec", lambda name: None)  # no QCEngine
     with pytest.raises(CodecNotFoundError):
         compute(inp)
     qccodec.register(codec)
@@ -155,8 +154,7 @@ def test_lookup_failure_preserves_result_contract(
     calctype: CalcType,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """An unknown program without QCEngine fails cleanly with the right data type."""
-    monkeypatch.setattr("qccodec.registry.find_spec", lambda name: None)
+    """An unknown program fails cleanly with the right data type."""
     with pytest.raises(CodecNotFoundError) as raised:
         compute(prog_input_factory(calctype, program="missing"))
     output = raised.value.prog_output

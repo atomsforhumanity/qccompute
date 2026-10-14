@@ -115,7 +115,7 @@ AdapterInputError = InputError
 class ExternalProgramError(QCComputeBaseError):
     """Raised when an external program or package fails to complete successfully.
 
-    This covers failures from external subprocesses, Python packages (like qccodec or QCEngine),
+    This covers failures from external subprocesses, Python packages (like qccodec),
     or any other external libraries.
     """
 

@@ -26,11 +26,10 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
-qcengine = ["qccodec[qcengine]>=0.13.0"]
 geometric = ["qccodec[geometric]>=0.13.0"]
 xtb = ["qccodec[xtb]>=0.13.0"]
 tcpb = ["qccodec[tcpb]>=0.13.0"]
-all = ["qccodec[qcengine,geometric,tcpb]>=0.13.0"]
+all = ["qccodec[geometric,tcpb]>=0.13.0"]
 
 [project.urls]
 Homepage = "https://github.com/atomsforhumanity/qccompute"
@@ -49,8 +48,6 @@ dev = [
     "pytest-cov>=4.1.0,<5",
     "pytest-mock>=3.11.1,<4",
     "geometric>=1.0.1,<2",
-    "qcelemental>=0.50.4",
-    "qcengine>=0.51.0",
     "types-toml>=0.10.8.20240310,<0.11",
     "qccompute",
 ]
@@ -108,7 +105,6 @@ addopts = "-m 'not integration'"
 markers = [
     "integration: marks tests as integration (deselect with '-m \"not integration\"')",
 ]
-filterwarnings = ["ignore::DeprecationWarning:qcengine.*"]
 
 [tool.typos]
 # Exclude specific files or directories

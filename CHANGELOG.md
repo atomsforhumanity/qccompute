@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [unreleased]
 
+## [0.15.0] - 2026-10-14
+
 ### Changed
 
 - Replaced the Adapter hierarchy with a single calculation lifecycle: resolve a `qccodec.Codec`, encode, run with `run_subprocess` or `run_python`, decode, collect files, build the output. All program-specific logic, including xTB, geomeTRIC, and tcpb bindings, now lives in qccodec 0.13.
@@ -485,7 +487,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Created adapter for TeraChem.
 - Exposed general purpose computing for any subprocess with `FileAdaptor`
 
-[unreleased]: https://github.com/atomsforhumanity/qccompute/compare/0.14.0...HEAD
+[unreleased]: https://github.com/atomsforhumanity/qccompute/compare/0.15.0...HEAD
+[0.15.0]: https://github.com/atomsforhumanity/qccompute/releases/tag/0.15.0
 [0.14.0]: https://github.com/atomsforhumanity/qccompute/releases/tag/0.14.0
 [0.13.3]: https://github.com/atomsforhumanity/qccompute/releases/tag/0.13.3
 [0.13.2]: https://github.com/atomsforhumanity/qccompute/releases/tag/0.13.2

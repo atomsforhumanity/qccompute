@@ -1,3 +1,5 @@
+"""Execute standardized computational chemistry calculations."""
+
 from importlib import metadata as _metadata
 
 try:
@@ -7,4 +9,3 @@ except _metadata.PackageNotFoundError:
     __version__ = "0.0.0+local"
 
 from .main import compute, compute_args  # noqa: F401
-from .utils import get_adapter  # noqa: F401

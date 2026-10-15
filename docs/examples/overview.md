@@ -17,7 +17,7 @@ structure = Structure(
 # Define the program input
 prog_input = ProgramInput(
     program="terachem",
-    structure=h2o,
+    structure=structure,
     calctype="energy",
     model={"method": "hf", "basis": "sto-3g"},
     keywords={"purify": "no", "restricted": False},
@@ -27,6 +27,6 @@ prog_input = ProgramInput(
 result = compute(prog_input, collect_files=True)
 ```
 
-The `compute` selects the correct program adapter and then calls `adapter.compute()`. The available arguments and keywords for the top level `compute()` function match those shown here:
+The `compute` function resolves a codec and executes its native invocation. It also accepts an explicit local `codec=`. The available arguments are:
 
-::: qccompute.adapters.BaseAdapter.compute
+::: qccompute.main.compute

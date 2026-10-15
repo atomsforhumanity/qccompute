@@ -1,3 +1,5 @@
+"""Tests and fixtures for test terachem integration."""
+
 import numpy as np
 import pytest
 from qcdata import CalcType, ProgramInput, Structure
@@ -10,6 +12,7 @@ from tests.conftest import skipif_program_not_available
 @skipif_program_not_available("terachem")
 def test_terachem_energy(hydrogen):
     # Modify keywords
+    """Test terachem energy."""
     energy_inp = ProgramInput(
         program="terachem",
         structure=hydrogen,
@@ -28,6 +31,7 @@ def test_terachem_energy(hydrogen):
 @skipif_program_not_available("terachem")
 def test_terachem_gradient(hydrogen):
     # Modify keywords
+    """Test terachem gradient."""
     energy_inp = ProgramInput(
         program="terachem",
         structure=hydrogen,
@@ -53,6 +57,7 @@ def test_terachem_gradient(hydrogen):
 def test_terachem_hessian():
     # Modify keywords
     # This H2O converges in TeraChem
+    """Test terachem hessian."""
     h2o = Structure(
         symbols=["O", "H", "H"],
         geometry=[
@@ -206,6 +211,7 @@ def test_terachem_hessian():
 @skipif_program_not_available("terachem")
 def test_terachem_optimization(water):
     # Modify keywords
+    """Test terachem optimization."""
     energy_inp = ProgramInput(
         program="terachem",
         structure=water,

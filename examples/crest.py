@@ -1,4 +1,6 @@
-from qcdata import ProgramInput, Structure
+"""Run a CREST conformer search and print the conformer energies."""
+
+from qcdata import ConformerSearchData, ProgramInput, Structure
 
 from qccompute import compute, exceptions
 
@@ -26,8 +28,9 @@ prog_input = ProgramInput(
 # Run the calculation
 try:
     # prog_output is a ProgramOutput instance
-    prog_output = compute(prog_input, collect_files=True, collect_rotamers=False)
+    prog_output = compute(prog_input, collect_files=True)
 except exceptions.QCComputeBaseError as e:
+    assert e.prog_output is not None
     prog_output = e.prog_output
     print(prog_output.logs)
     print(f"Success: {prog_output.success}")  # False
@@ -37,6 +40,7 @@ except exceptions.QCComputeBaseError as e:
     raise
 
 else:
+    assert isinstance(prog_output.results, ConformerSearchData)
     # Check results
     print(prog_output.logs)
     print(f"Success: {prog_output.success}")  # True

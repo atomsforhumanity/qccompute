@@ -1,3 +1,5 @@
+"""Tests and fixtures for test crest."""
+
 import numpy as np
 import pytest
 from qcdata import ProgramInput, Structure
@@ -9,6 +11,7 @@ from tests.conftest import skipif_program_not_available
 @pytest.mark.integration
 @skipif_program_not_available("crest")
 def test_crest():
+    """Test crest."""
     input_data = ProgramInput(
         program="crest",
         structure=Structure(

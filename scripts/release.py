@@ -25,11 +25,10 @@ def get_repo_url():
 
 
 def update_version_in_pyproject(version: str) -> None:
-    """
-    Update the version in pyproject.toml by replacing the line that sets the version
-    in the [project] section with the new version string.
+    """Update the version in pyproject.toml.
 
-    This function uses a regex to find a line that starts with "version =", captures the surrounding quotes,
+    Replaces the line that sets the version in the [project] section with the new
+    version string. This function uses a regex to find a line that starts with "version =", captures the surrounding quotes,
     and substitutes the new version.
 
     Args:

@@ -1,6 +1,6 @@
 """Example of how to run an optimization calculation with TeraChem using qccompute."""
 
-from qcdata import ProgramInput, Structure
+from qcdata import OptimizationData, ProgramInput, Structure
 
 from qccompute import compute, exceptions
 
@@ -31,6 +31,7 @@ try:
     # prog_output is a ProgramOutput instance
     prog_output = compute(prog_input, collect_files=True)
 except exceptions.QCComputeBaseError as e:
+    assert e.prog_output is not None
     prog_output = e.prog_output
     print(prog_output.logs)
     print(f"Success: {prog_output.success}")  # False
@@ -40,6 +41,7 @@ except exceptions.QCComputeBaseError as e:
     raise
 
 else:
+    assert isinstance(prog_output.results, OptimizationData)
     # Check results
     print(prog_output.logs)
     print(f"Success: {prog_output.success}")  # True

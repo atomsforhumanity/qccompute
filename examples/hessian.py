@@ -1,4 +1,6 @@
-from qcdata import CalcType, ProgramInput, Structure
+"""Run a TeraChem Hessian calculation and print the results."""
+
+from qcdata import CalcType, ProgramInput, SinglePointData, Structure
 
 from qccompute import compute, exceptions
 
@@ -28,6 +30,7 @@ try:
     # prog_output is a ProgramOutput instance
     prog_output = compute(prog_input, collect_files=True)
 except exceptions.QCComputeBaseError as e:
+    assert e.prog_output is not None
     prog_output = e.prog_output
     print(prog_output.logs)
     print(f"Success: {prog_output.success}")  # False
@@ -37,6 +40,7 @@ except exceptions.QCComputeBaseError as e:
     raise
 
 else:
+    assert isinstance(prog_output.results, SinglePointData)
     # Check results
     print(prog_output.logs)
     print(f"Success: {prog_output.success}")  # True

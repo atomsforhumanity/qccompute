@@ -9,8 +9,9 @@ import pytest
 
 @pytest.mark.parametrize("outcome", ["success", "lock_failure", "cancel"])
 def test_release_updates_lock_before_git_and_restores_on_failure(
-    tmp_path, monkeypatch, outcome
-):
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, outcome: str
+) -> None:
+    """Test release updates lock before git and restores on failure."""
     spec = importlib.util.spec_from_file_location(
         "qccompute_release", Path(__file__).parents[1] / "scripts" / "release.py"
     )
@@ -29,7 +30,8 @@ def test_release_updates_lock_before_git_and_restores_on_failure(
     monkeypatch.setattr(release, "confirm_version", lambda _: outcome != "cancel")
     calls = []
 
-    def run(command, *, check):
+    def run(command: list[str], *, check: bool) -> None:
+        """Run."""
         assert command == ["uv", "lock"] and check
         assert 'version = "0.14.0"' in Path("pyproject.toml").read_text()
         calls.append("lock")
@@ -37,7 +39,8 @@ def test_release_updates_lock_before_git_and_restores_on_failure(
         if outcome == "lock_failure":
             raise subprocess.CalledProcessError(1, command)
 
-    def git(version):
+    def git(version: str) -> None:
+        """Git."""
         assert version == "0.14.0"
         assert calls == ["lock"]
         assert Path("uv.lock").read_text() == "updated lockfile\n"

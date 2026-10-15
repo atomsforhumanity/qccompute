@@ -1,29 +1,8 @@
-::: qccompute.adapters.geometric.GeometricAdapter
-## Recursive program input
+Program-specific translation and the native engine bridge live in `qccodec.programs.geometric`.
+Use `qccompute.compute(input_data)` to execute a calculation.
 
-```python
-from qcdata import ProgramInput, ProgramSpec, Structure
-from qccompute import compute
-
-structure = Structure.open("molecule.xyz")
-input_data = ProgramInput(
-    program="geometric",
-    calctype="optimization",
-    structure=structure,
-    keywords={"maxiter": 250},
-    subprograms=[
-        ProgramSpec(
-            program="terachem",
-            calctype="gradient",
-            model={"method": "wb97x-d3", "basis": "def2-svp"},
-        ),
-    ],
-)
-output = compute(input_data)
-output.results.final_structure
-output.results.trajectory[0].results.provenance  # Gradient producer
-output.execution.wall_time  # Optimizer execution time
-```
-
-Each child has its own model, keywords, native files, command-line arguments, and
-metadata. Additional role-named structures are passed to child calculations.
+geomeTRIC requires a gradient child in `ProgramInput.subprograms`. Its native engine
+calls qccompute through an injected callback; each gradient is its own `ProgramOutput`
+in the trajectory, and failed children remain there. The child codec is resolved by the
+child's program name, so a codec defined in your script works as the gradient engine
+once you call `qccodec.register(codec)`.

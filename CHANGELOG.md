@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [unreleased]
 
+### Changed
+
+- Replaced the Adapter hierarchy with a single calculation lifecycle: resolve a `qccodec.Codec`, encode, run with `run_subprocess` or `run_python`, decode, collect files, build the output. All program-specific logic, including xTB, geomeTRIC, and tcpb bindings, now lives in qccodec 0.13.
+- `compute(input_data, codec=...)` accepts a `qccodec.Codec`. Codecs defined in a script can be passed explicitly or registered by name with `qccodec.register(codec)`, which also makes them available as geomeTRIC gradient children.
+- Program-specific decode options are passed as `compute(inp, options={"collect_rotamers": True})` and validated by the codec.
+- `propagate_wfn=True` calls the child codec's `propagate_wfn(output, input_data)` between optimizer steps.
+- Added `compute(..., environment=...)`; invocation defaults from the codec override inherited values and explicit overrides take precedence. Subprocess overrides are child-local.
+- Both output streams are captured and merged; subprocess logs stream line by line without blocking on missing newlines. Python log callbacks run after invocation. Artifacts remain available to decoders through failed executions, and failures are finalized after scratch cleanup.
+- xTB and CREST default to a single OpenMP thread.
+- Added `compute(..., timeout=seconds)`: each external program, including child calculations of Python integrations, is killed with its whole process tree when it exceeds the limit, raising `ProgramTimeoutError` with partial results and logs attached. Subprocesses now run in their own session on POSIX so timeouts and interrupts never leave orphaned child processes.
+- New exception names `CodecNotFoundError` and `InputError`; `AdapterError`, `AdapterNotFoundError`, and `AdapterInputError` remain as aliases for one release.
+- Require published `qccodec>=0.13.0` and `qcdata>=0.20.0`.
+
+### Removed
+
+- The QCEngine fallback and the `qccompute[qcengine]` extra; programs without a qccodec codec raise `CodecNotFoundError`. Also removed: `compute(..., qcng_fallback=...)` and `**codec_options`; the Adapter classes and `get_adapter()`; the `gradient_codec` option for geomeTRIC.
+
+
 ## [0.14.0] - 2026-09-16
 
 - Require published `qcdata>=0.19.0` and `qccodec>=0.12.0`; remove temporary sibling source overrides and refactor-branch CI checkouts.

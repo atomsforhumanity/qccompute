@@ -1,15 +1,14 @@
 [project]
 name = "qccompute"
-version = "0.14.0"
+version = "0.15.0"
 description = "A package for operating Quantum Chemistry programs using qcdata standardized data structures. Compatible with TeraChem, psi4, QChem, NWChem, ORCA, Molpro, geomeTRIC and many more."
 authors = [{ name = "Colton Hicks", email = "github@coltonhicks.com" }]
 requires-python = ">=3.10"
 readme = "README.md"
 license = { file = "LICENSE" }
 dependencies = [
-    "qccodec>=0.12.0",
-    "qcdata>=0.19.0",
-    "tomli-w>=1.0.0,<2",
+    "qccodec>=0.13.0",
+    "qcdata>=0.20.0",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -27,14 +26,10 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
-qcengine = ["qcelemental>=0.50.4", "qcengine>=0.51.0"]
-geometric = ["geometric>=1.0.1,<2"]
-all = [
-    "qcelemental>=0.50.4",
-    "qcengine>=0.51.0",
-    "geometric>=1.0.1,<2",
-    "tcpb>=0.16.0",
-]
+geometric = ["qccodec[geometric]>=0.13.0"]
+xtb = ["qccodec[xtb]>=0.13.0"]
+tcpb = ["qccodec[tcpb]>=0.13.0"]
+all = ["qccodec[geometric,tcpb]>=0.13.0"]
 
 [project.urls]
 Homepage = "https://github.com/atomsforhumanity/qccompute"
@@ -53,8 +48,6 @@ dev = [
     "pytest-cov>=4.1.0,<5",
     "pytest-mock>=3.11.1,<4",
     "geometric>=1.0.1,<2",
-    "qcelemental>=0.50.4",
-    "qcengine>=0.51.0",
     "types-toml>=0.10.8.20240310,<0.11",
     "qccompute",
 ]
@@ -85,6 +78,10 @@ target-version = "py39"
 [tool.ruff.lint]
 isort = { known-first-party = ["qccompute", "tests"] }
 select = ["I", "F401"]
+extend-select = ["D"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
 
 [tool.coverage.run]
 branch = true
@@ -106,7 +103,6 @@ addopts = "-m 'not integration'"
 markers = [
     "integration: marks tests as integration (deselect with '-m \"not integration\"')",
 ]
-filterwarnings = ["ignore::DeprecationWarning:qcengine.*"]
 
 [tool.typos]
 # Exclude specific files or directories

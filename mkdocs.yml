@@ -106,7 +106,6 @@ nav:
       - CREST: programs/crest.md
       - geomeTRIC: programs/geometric.md
       - xtb: programs/xtb.md
-      - QCEngine: programs/qcengine.md
   - Examples:
       - Overview: examples/overview.md
       - Single Point: examples/single_point.md

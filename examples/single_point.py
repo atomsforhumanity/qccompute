@@ -1,4 +1,6 @@
-from qcdata import ProgramInput, Structure
+"""Run a TeraChem single point energy and print the results."""
+
+from qcdata import ProgramInput, SinglePointData, Structure
 
 from qccompute import compute, exceptions
 
@@ -21,14 +23,15 @@ prog_input = ProgramInput(
     # Can be "energy", "gradient", "hessian"
     calctype="energy",  # type: ignore
     model={"method": "hf", "basis": "sto-3g"},  # type: ignore
-    keywords={"purify": "no"},
+    # keywords={"purify": "no"},
 )
 
 # Run the calculation
 try:
     # prog_output is a ProgramOutput instance
-    prog_output = compute(prog_input, collect_files=True)
+    prog_output = compute(prog_input, collect_files=True, print_logs=True)
 except exceptions.QCComputeBaseError as e:
+    assert e.prog_output is not None
     prog_output = e.prog_output
     print(prog_output.logs)
     print(f"Success: {prog_output.success}")  # False
@@ -42,6 +45,7 @@ else:
     print(prog_output.logs)
     print(f"Success: {prog_output.success}")  # True
     print("output.results: ", prog_output.results)
+    assert isinstance(prog_output.results, SinglePointData)
     print("output.results.energy:", prog_output.results.energy)
     print("output.results.gradient:", prog_output.results.gradient)
     print("output.results.hessian:", prog_output.results.hessian)

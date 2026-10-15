@@ -222,6 +222,14 @@ streams under a reentrant lock, so use separate processes for independent concur
 Python calculations. xTB defaults to `OMP_NUM_THREADS=1` before its library import,
 and CREST receives the same setting in its child environment.
 
+Executables: a program runs from the first of `compute(..., executables={"orca":
+"/opt/orca/orca"})`, the environment variable `QCCOMPUTE_<PROGRAM>_EXECUTABLE` (for
+example `QCCOMPUTE_ORCA_EXECUTABLE`), or the codec's command found on `PATH`. Use this
+when the program is not on `PATH`, or when another program shadows its name, such as
+the GNOME screen reader named `orca`. Child calculations use the same mapping. The
+program always runs by its absolute path, which ORCA requires for parallel runs, and
+that path is recorded in `output.execution.extras["executable"]`.
+
 Timeouts: `compute(..., timeout=3600)` kills any program that runs longer, together
 with every process it started, and raises `ProgramTimeoutError` with partial results
 attached. The limit applies to each program run, including geomeTRIC's child

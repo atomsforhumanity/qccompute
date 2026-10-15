@@ -6,7 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [unreleased]
 
+### Added
+
+- `compute(..., executables={"orca": "/opt/orca/orca"})` and the environment variable `QCCOMPUTE_<PROGRAM>_EXECUTABLE` choose the executable a program runs from. Child calculations inherit the mapping. Programs always run by their absolute path, recorded in `output.execution.extras["executable"]`.
+
 ### Changed
+
+- A program that is not on `PATH` now fails before launch with a `ProgramNotFoundError` that names the environment variable and `executables` argument to use.
 
 - Development tooling: shared ruff (including Google docstring rules), mypy (fully typed library code), and pytest settings; pre-commit hooks that run the locked tools through `uv run`; one CI workflow; a tag-driven release workflow with `scripts/prepare_release.py` and an approval-gated PyPI deployment. Added CONTRIBUTING.md and AGENTS.md.
 

@@ -431,13 +431,14 @@ def test_missing_python_file_or_module_preserves_cause(
 def test_missing_executable_attaches_failed_output(
     prog_input_factory: Callable[..., ProgramInput],
 ) -> None:
-    """Preserve the public missing-program category for a failed executable launch."""
-    with pytest.raises(ProgramNotFoundError) as raised:
+    """A program missing from PATH fails before launch and says how to point to it."""
+    with pytest.raises(
+        ProgramNotFoundError, match="QCCOMPUTE_TEST_EXECUTABLE"
+    ) as raised:
         compute(
             prog_input_factory("energy"),
             codec=local_codec(SubprocessInput(("nonexistent-qcc-program",))),
         )
-    assert isinstance(raised.value.__cause__, FileNotFoundError)
     assert raised.value.prog_output is not None
     assert not raised.value.prog_output.success
 

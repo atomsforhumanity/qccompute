@@ -1,3 +1,0 @@
-```python
-{!examples/crest.py!}
-```

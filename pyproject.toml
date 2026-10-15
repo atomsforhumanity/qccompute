@@ -27,7 +27,6 @@ classifiers = [
 
 [project.optional-dependencies]
 geometric = ["qccodec[geometric]>=0.13.0"]
-xtb = ["qccodec[xtb]>=0.13.0"]
 tcpb = ["qccodec[tcpb]>=0.13.0"]
 all = ["qccodec[geometric,tcpb]>=0.13.0"]
 

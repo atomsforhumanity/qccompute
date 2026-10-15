@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [unreleased]
 
+### Removed
+
+- The `xtb` extra. qccodec 0.14 runs the xtb program on the command line instead of through xtb-python; install xtb itself and put it on `PATH`.
+
 ### Changed
 
 - Integration tests that run real programs moved to qccodec (`tests/integration/`), next to the codecs they exercise; qccodec uses qccompute as a test-only dependency.

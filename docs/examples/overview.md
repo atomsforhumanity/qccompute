@@ -30,3 +30,12 @@ result = compute(prog_input, collect_files=True)
 The `compute` function resolves a codec and executes its native invocation. It also accepts an explicit local `codec=`. The available arguments are:
 
 ::: qccompute.main.compute
+
+## Examples for each program
+
+Complete, runnable scripts for every program and calculation type, with every common
+option shown and the program's quirks explained, are on the
+[qccodec program pages](https://qccodec.docs.atomsforhumanity.org/programs/). The
+examples here cover qccompute itself: running a program from your own input files and
+defining a codec for a program qccodec doesn't support.
+

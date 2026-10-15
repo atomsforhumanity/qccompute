@@ -102,14 +102,9 @@ nav:
   #     - Why use QCCompute?: why.md
   - Programs:
       - Overview: programs/overview.md
-      - TeraChem: programs/terachem.md
-      - CREST: programs/crest.md
-      - geomeTRIC: programs/geometric.md
-      - xtb: programs/xtb.md
+      - Program pages and examples: https://qccodec.docs.atomsforhumanity.org/programs/
   - Examples:
       - Overview: examples/overview.md
-      - Single Point: examples/single_point.md
-      - Optimization: examples/optimization.md
-      - Conformer Search: examples/conformer_search.md
       - File Input: examples/file_input.md
+      - Custom codec: examples/custom_codec.md
   - Changelog: https://github.com/atomsforhumanity/qccompute/blob/master/CHANGELOG.md

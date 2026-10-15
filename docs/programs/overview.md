@@ -1,8 +1,24 @@
-qccodec supplies program integrations as `Codec` objects; qccompute executes their
-prepared invocations. Built-ins include TeraChem, ORCA, CREST, xTB, and geomeTRIC, plus
-the optional tcpb clients. Scientific keywords and supported calculation types are defined by each codec.
+# Programs
+
+qccompute runs programs; everything specific to a program lives in its
+[qccodec](https://qccodec.docs.atomsforhumanity.org) codec. The qccodec documentation
+has a page for each supported program, explaining how a `ProgramInput` maps onto it
+(keywords, solvent, parallelism, quirks), with a complete, runnable example script for
+every calculation type:
+
+- [CREST](https://qccodec.docs.atomsforhumanity.org/programs/crest/)
+- [geomeTRIC](https://qccodec.docs.atomsforhumanity.org/programs/geometric/)
+- [ORCA](https://qccodec.docs.atomsforhumanity.org/programs/orca/)
+- [Psi4](https://qccodec.docs.atomsforhumanity.org/programs/psi4/)
+- [TeraChem](https://qccodec.docs.atomsforhumanity.org/programs/terachem/) and its
+  [servers](https://qccodec.docs.atomsforhumanity.org/programs/terachem-servers/)
+- [xtb](https://qccodec.docs.atomsforhumanity.org/programs/xtb/)
 
 Program-specific decode options are passed as `compute(input_data, options={...})`;
-each codec declares what it accepts in `codec.options`. Custom programs are defined in a
-script as a `qccodec.Codec` and passed as `codec=` or made resolvable by name with
-`qccodec.register(codec)`.
+each codec declares what it accepts in `codec.options`. A program not on `PATH`, or
+shadowed by another command of the same name, is selected with
+`compute(..., executables={"orca": "/path/to/orca"})` or the environment variable
+`QCCOMPUTE_<PROGRAM>_EXECUTABLE`.
+
+Programs qccodec doesn't support yet can be run by writing a codec in your own script;
+see [Custom codec](../examples/custom_codec.md).

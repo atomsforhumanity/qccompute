@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Changed
 
+- Program-specific examples and program pages moved to qccodec's documentation (https://qccodec.docs.atomsforhumanity.org/programs/), next to the codecs they document, with a tested script for every program and calculation type. qccompute keeps its program-agnostic examples (file input, custom codec). The documentation site is now published by a Docs workflow on every release tag (or by hand).
 - When a program exits with an error and its codec explains why (qccodec raises `CalculationError` from decode), that explanation is the raised error's message; the exit status remains in `output.traceback`. Timeouts and missing programs keep their own error types.
 - A program that is not on `PATH` now fails before launch with a `ProgramNotFoundError` that names the environment variable and `executables` argument to use.
 - Integration tests that run real programs moved to qccodec (`tests/integration/`), next to the codecs they exercise; qccodec uses qccompute as a test-only dependency.

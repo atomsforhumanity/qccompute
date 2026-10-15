@@ -9,12 +9,9 @@ from qcdata import (
     Model,
     ProgramInput,
     ProgramOutput,
-    ProgramSpec,
     SinglePointData,
     Structure,
 )
-
-from qccompute.utils import prog_available
 
 
 @pytest.fixture(scope="session")
@@ -62,28 +59,6 @@ def prog_input_factory(hydrogen: Structure) -> Callable[..., ProgramInput]:
     return create_program_input
 
 
-@pytest.fixture(scope="function")
-def nested_input_factory(hydrogen: Structure) -> Callable[[CalcType], ProgramInput]:
-    """Nested input factory."""
-
-    def create_nested_input(calctype: CalcType) -> ProgramInput:
-        """Create nested input."""
-        return ProgramInput(
-            program="geometric",
-            calctype=CalcType(calctype),
-            structure=hydrogen,
-            subprograms=[
-                ProgramSpec(
-                    calctype=CalcType.gradient,
-                    model=Model(method="hf", basis="sto-3g"),
-                    program="test",
-                )
-            ],
-        )
-
-    return create_nested_input
-
-
 @pytest.fixture
 def results(
     prog_input_factory: Callable[..., ProgramInput],
@@ -109,11 +84,4 @@ def results(
             "execution": {"scratch_dir": "/tmp/qcdata"},
             "extras": {"some_extra": 1},
         }
-    )
-
-
-def skipif_program_not_available(program_name: str) -> pytest.MarkDecorator:
-    """Skip a test if the given program is not available."""
-    return pytest.mark.skipif(
-        not prog_available(program_name), reason=f"{program_name} is not installed."
     )

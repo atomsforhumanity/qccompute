@@ -25,9 +25,9 @@ file_input = FileInput(
 prog_output = compute(file_input, print_logs=True)
 
 # Data
-prog_output.logs
-prog_output.input_data
-prog_output.results.files  # Has all the files terachem creates
-prog_output.results.files.keys()  # Print out file names
+print(prog_output.logs)
+print(prog_output.input_data)
+print(prog_output.results.files)  # Has all the files terachem creates
+print(prog_output.results.files.keys())  # File names
 # Saves all outputs with the exact structure produced by the QC program
 prog_output.results.save_files("to/this/directory")

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import platform
+import re
 import shutil
 import tempfile
 from collections.abc import Collection, Iterator, Mapping
@@ -20,6 +21,8 @@ from qcdata import (
     get_data_type,
 )
 
+from .exceptions import ProgramNotFoundError
+
 
 def empty_results(input_data: Inputs) -> Data:
     """Create the result type required by an input before any values are available."""
@@ -31,14 +34,78 @@ def empty_results(input_data: Inputs) -> Data:
     return data_type(provenance=Provenance(program=input_data.program))
 
 
-def construct_execution(directory: Path | None, wall_time: float) -> ExecutionInfo:
-    """Record runtime observations independently of scientific producer identity."""
+def construct_execution(
+    directory: Path | None, wall_time: float, executable: str | None = None
+) -> ExecutionInfo:
+    """Record runtime observations independently of scientific producer identity.
+
+    Args:
+        directory: The calculation directory, if one was created.
+        wall_time: Seconds from the start of the call.
+        executable: Absolute path of the program that ran, stored in
+            ``extras["executable"]``; None for Python calculations.
+    """
     return ExecutionInfo(
         scratch_dir=directory,
         wall_time=round(wall_time, 6),
         hostname=platform.node(),
         host_cpu=os.cpu_count(),
+        extras={"executable": executable} if executable else {},
     )
+
+
+def executable_variable(program: str) -> str:
+    """Name the environment variable that overrides a program's executable.
+
+    ``orca`` becomes ``QCCOMPUTE_ORCA_EXECUTABLE``; characters other than letters
+    and digits become underscores.
+    """
+    return f"QCCOMPUTE_{re.sub(r'[^A-Z0-9]', '_', program.upper())}_EXECUTABLE"
+
+
+def resolve_executable(
+    program: str,
+    command: str,
+    environment: Mapping[str, str],
+    executables: Mapping[str, str] | None = None,
+) -> str:
+    """Return the absolute path of the executable to run for ``program``.
+
+    The first of these wins: ``executables[program]``, the environment variable
+    named by ``executable_variable(program)``, then ``command`` (the codec's first
+    argument). A value without a path separator is looked up on the ``PATH`` in
+    ``environment``; a relative path is taken relative to the current directory,
+    not the calculation directory.
+
+    Args:
+        program: The program name from the input, which keys the overrides.
+        command: The executable the codec asked for.
+        environment: The environment the program will run with.
+        executables: Explicit overrides mapping program names to executables.
+
+    Raises:
+        ProgramNotFoundError: The chosen executable does not exist or is not
+            executable.
+    """
+    variable = executable_variable(program)
+    if executables and program in executables:
+        value, source = executables[program], f"executables[{program!r}]"
+    elif environment.get(variable):
+        value, source = environment[variable], variable
+    else:
+        value, source = command, None
+    found = shutil.which(os.path.expanduser(value), path=environment.get("PATH"))
+    if found is not None:
+        return os.path.abspath(found)
+    if source is not None:
+        message = f"{source} is {value!r}, which is not an executable file."
+    else:
+        message = (
+            f"Program not found: {value!r} is not on PATH. Install it, or set "
+            f"{variable} or compute(..., executables={{{program!r}: path}}) to its "
+            "full path."
+        )
+    raise ProgramNotFoundError(program, message)
 
 
 @contextmanager

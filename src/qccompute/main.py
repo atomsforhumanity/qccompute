@@ -1,5 +1,7 @@
 """Run one calculation: encode with a codec, execute, decode, and build the output."""
 
+import dataclasses
+import os
 import traceback
 from collections.abc import Callable, Mapping
 from functools import partial
@@ -33,7 +35,13 @@ from .exceptions import (
     QCComputeBaseError,
 )
 from .execution import collect_files as read_files
-from .execution import construct_execution, empty_results, stage_files, workspace
+from .execution import (
+    construct_execution,
+    empty_results,
+    resolve_executable,
+    stage_files,
+    workspace,
+)
 from .runners import run_python, run_subprocess
 
 
@@ -54,6 +62,7 @@ def compute(
     propagate_wfn: bool = False,
     options: Mapping[str, Any] | None = None,
     timeout: float | None = None,
+    executables: Mapping[str, str] | None = None,
 ) -> ProgramOutput[InputType, Data]:
     """Compute the given input using a codec and a local runner.
 
@@ -107,6 +116,15 @@ def compute(
             results attached. Applies to every subprocess, including child
             calculations of Python integrations such as geomeTRIC; a Python
             callable itself is not interrupted.
+        executables: Executables to run, keyed by program name, such as
+            ``{"orca": "/opt/orca/orca"}``. Child calculations of Python
+            integrations such as geomeTRIC use the same mapping; entries for programs
+            that do not run are ignored. Without an entry, the environment variable
+            ``QCCOMPUTE_<PROGRAM>_EXECUTABLE`` (for example
+            ``QCCOMPUTE_ORCA_EXECUTABLE``) is used, and otherwise the program is
+            found on ``PATH``. Bare names are looked up on ``PATH``; the program
+            always runs by its absolute path, recorded in
+            ``execution.extras["executable"]``.
 
     Returns:
         A ProgramOutput containing scientific results, execution metadata, and the
@@ -127,6 +145,7 @@ def compute(
     directory = None
     result = empty_results(input_data)
     logs = None
+    executable = None
     failures: list[tuple[Exception, str]] = []
     if print_logs and update_func is None:
 
@@ -150,6 +169,13 @@ def compute(
             raise InputError(
                 input_data.program, "timeout must be a positive number of seconds."
             )
+        if executables is not None and any(
+            not isinstance(k, str) or not isinstance(v, str)
+            for k, v in executables.items()
+        ):
+            raise InputError(
+                input_data.program, "executables must map program names to paths."
+            )
         if codec is None:
             codec = qccodec.get_codec(input_data)
         request = codec.encode(input_data)
@@ -164,6 +190,16 @@ def compute(
             raise InputError(
                 input_data.program,
                 "Wavefunction propagation requires a child-calculation integration.",
+            )
+        if isinstance(request, qccodec.SubprocessInput):
+            executable = resolve_executable(
+                input_data.program,
+                request.command[0],
+                {**os.environ, **request.environment, **(environment or {})},
+                executables,
+            )
+            request = dataclasses.replace(
+                request, command=(executable, *request.command[1:])
             )
         with workspace(scratch_dir, rm_scratch_dir) as directory:
             try:
@@ -189,6 +225,7 @@ def compute(
                             update_func=update_func,
                             update_interval=update_interval,
                             timeout=timeout,
+                            executables=executables,
                         ),
                         update_func=update_func,
                     )
@@ -236,7 +273,7 @@ def compute(
         record_failure(exc)
 
     # Finalize only after cleanup, so raised errors and attached outputs agree.
-    execution = construct_execution(directory, monotonic() - start)
+    execution = construct_execution(directory, monotonic() - start, executable)
     output = _finalize_output(
         input_data, result, logs, execution, failures, collect_logs=collect_logs
     )
@@ -261,6 +298,7 @@ def _compute_child(
     update_func: Callable[[str, str], None] | None,
     update_interval: float | None,
     timeout: float | None = None,
+    executables: Mapping[str, str] | None = None,
     previous: ProgramOutput[ProgramInput, Data] | None = None,
 ) -> ProgramOutput[ProgramInput, Data]:
     """Run a child with optional restart input, retaining failed steps for its parent.
@@ -277,6 +315,7 @@ def _compute_child(
         update_func: Log callback inherited from the parent.
         update_interval: Subprocess callback interval inherited from the parent.
         timeout: Per-program timeout inherited from the parent.
+        executables: Executable overrides inherited from the parent.
         previous: Previous child output supplying restart data, if available.
 
     Returns:
@@ -311,6 +350,7 @@ def _compute_child(
         update_func=update_func,
         update_interval=update_interval,
         timeout=timeout,
+        executables=executables,
     )
 
 

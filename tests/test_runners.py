@@ -108,7 +108,7 @@ def test_subprocess_environment_and_cwd_are_child_local(
                 paths,
             )
         )
-    for path, output in zip(paths, outputs):
+    for path, output in zip(paths, outputs, strict=True):
         assert output.stdout == f"{path.name}\n{path}\n"
     assert os.environ["QCC_TEST_ENV"] == "parent" and Path.cwd() == cwd
 
@@ -201,7 +201,10 @@ def test_nested_python_invocations_restore_parent(tmp_path: Path) -> None:
         print("after")
         return result.value
 
-    callback = lambda: run_python(PythonInput(lambda: 42), inner)
+    def callback() -> PythonOutput:
+        """Run a nested Python invocation in the inner workspace."""
+        return run_python(PythonInput(lambda: 42), inner)
+
     output = run_python(
         PythonInput(outer, child_callback="child"), tmp_path, compute_child=callback
     )

@@ -129,7 +129,10 @@ def compute(
     logs = None
     failures: list[tuple[Exception, str]] = []
     if print_logs and update_func is None:
-        update_func = lambda _, new: print(new, end="")
+
+        def update_func(all_logs: str, new_logs: str) -> None:
+            """Print each new chunk of program output as it arrives."""
+            print(new_logs, end="")
 
     def record_failure(exc: Exception, trace: str | None = None) -> None:
         """Keep the first failure primary and retain subsequent diagnostics."""

@@ -136,9 +136,9 @@ def test_options_reach_the_codec(
     )
     codec.parser(target="energy")(lambda stdout: float(stdout))
     codec.parser(file="directory")(
-        lambda ctx: {"calcinfo_natoms": ctx.options["natoms"]}
-        if ctx.options["natoms"]
-        else {}
+        lambda ctx: (
+            {"calcinfo_natoms": ctx.options["natoms"]} if ctx.options["natoms"] else {}
+        )
     )
     inp = prog_input_factory("energy")
     default = compute(inp, codec=codec).results

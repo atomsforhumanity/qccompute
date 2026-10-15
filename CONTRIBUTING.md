@@ -48,11 +48,7 @@ uv run pytest                               # all tests
 uv run pytest --cov --cov-report=term-missing   # with coverage
 ```
 
-Tests that need a real quantum chemistry program are marked `integration` and are skipped by default. Run them, where the programs are installed, with:
-
-```sh
-uv run pytest -m integration
-```
+Tests here use stand-in programs and never need a real quantum chemistry program. Integration tests that run real programs through qccompute live in [qccodec](https://github.com/atomsforhumanity/qccodec/blob/master/CONTRIBUTING.md#integration-tests), next to the codecs they exercise.
 
 ## Pull requests
 

@@ -27,7 +27,6 @@ classifiers = [
 
 [project.optional-dependencies]
 geometric = ["qccodec[geometric]>=0.13.0"]
-xtb = ["qccodec[xtb]>=0.13.0"]
 tcpb = ["qccodec[tcpb]>=0.13.0"]
 all = ["qccodec[geometric,tcpb]>=0.13.0"]
 
@@ -121,10 +120,7 @@ init_typed = true
 warn_required_dynamic_aliases = true
 
 [tool.pytest.ini_options]
-addopts = "--strict-markers -m 'not integration'"
-markers = [
-    "integration: marks tests as integration (deselect with '-m \"not integration\"')",
-]
+addopts = "--strict-markers"
 testpaths = ["tests"]
 
 [tool.typos]

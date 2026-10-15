@@ -219,8 +219,8 @@ Environment: invocation defaults from the codec override inherited values, and
 `environment=` overrides both. Subprocess overrides are local to the child. Python
 execution temporarily changes the process environment, working directory, and output
 streams under a reentrant lock, so use separate processes for independent concurrent
-Python calculations. xTB defaults to `OMP_NUM_THREADS=1` before its library import,
-and CREST receives the same setting in its child environment.
+Python calculations. xtb and CREST default to `OMP_NUM_THREADS=1` in their child
+environments.
 
 Executables: a program runs from the first of `compute(..., executables={"orca":
 "/opt/orca/orca"})`, the environment variable `QCCOMPUTE_<PROGRAM>_EXECUTABLE` (for

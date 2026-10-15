@@ -10,6 +10,7 @@ from typing import Any
 
 import qccodec
 from pydantic import ValidationError
+from qccodec.exceptions import CalculationError as CodecCalculationError
 from qccodec.exceptions import CodecNotFoundError as CodecMissing
 from qccodec.exceptions import DependencyNotFoundError, EncoderError
 from qcdata import (
@@ -230,6 +231,7 @@ def compute(
                         update_func=update_func,
                     )
                 logs = native.stdout
+                exit_status_only = native.failed and native.error is None
                 if native.failed:
                     execution_error = native.error
                     if execution_error is None:
@@ -247,6 +249,10 @@ def compute(
                     if isinstance(recovered, type(result)):
                         result = recovered
                     record_failure(exc)
+                    if exit_status_only and isinstance(exc, CodecCalculationError):
+                        # The codec explains a nonzero exit; lead with its reason and
+                        # keep the bare exit status as an additional failure.
+                        failures.insert(0, failures.pop())
             except Exception as exc:
                 record_failure(exc)
             # Artifacts must remain available through decoding and retention.

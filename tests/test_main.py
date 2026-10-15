@@ -16,7 +16,7 @@ from qccodec import (
     PythonInput,
     SubprocessInput,
 )
-from qccodec.exceptions import EncoderError, ParserError
+from qccodec.exceptions import CalculationError, EncoderError, ParserError
 from qcdata import (
     CalcType,
     FileInput,
@@ -361,6 +361,46 @@ def test_execution_failure_remains_primary_when_decode_fails(
     assert (
         "return code 9" in output.traceback and "truncated artifact" in output.traceback
     )
+
+
+def test_codec_explanation_of_nonzero_exit_is_primary(
+    prog_input_factory: Callable[..., ProgramInput],
+) -> None:
+    """When the codec explains a nonzero exit, its reason leads; the status follows."""
+    request = SubprocessInput((sys.executable, "-c", "exit(1)"))
+
+    def decode(inp: ProgramInput, out: NativeOutput) -> SinglePointData:
+        """Explain the failure the way a codec's failure hook does."""
+        raise CalculationError(
+            "SCF did not converge",
+            data=SinglePointData.model_validate(
+                {"provenance": {"program": "test"}, "energy": -3}
+            ),
+        )
+
+    with pytest.raises(ExternalProgramError, match="SCF did not converge") as raised:
+        compute(prog_input_factory("gradient"), codec=local_codec(request, decode))
+    output = raised.value.prog_output
+    assert output is not None and output.results.energy == -3
+    assert output.traceback is not None and "return code 1" in output.traceback
+
+
+def test_timeout_stays_primary_over_codec_explanation(
+    prog_input_factory: Callable[..., ProgramInput],
+) -> None:
+    """A timeout is the real cause even if the codec then finds the output incomplete."""
+    request = SubprocessInput((sys.executable, "-c", "import time; time.sleep(5)"))
+
+    def decode(inp: ProgramInput, out: NativeOutput) -> SinglePointData:
+        """Report the truncated output a killed program leaves."""
+        raise CalculationError("output ends early")
+
+    with pytest.raises(ProgramTimeoutError):
+        compute(
+            prog_input_factory("gradient"),
+            codec=local_codec(request, decode),
+            timeout=0.5,
+        )
 
 
 def test_wavefunction_retention_uses_codec_patterns(

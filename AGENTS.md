@@ -6,7 +6,7 @@ Instructions for AI coding agents (and a quick reference for people) working in 
 
 `qccompute` only executes: it resolves a `qccodec.Codec`, runs the native invocation (`run_subprocess` or `run_python`), decodes, collects files, and builds the `ProgramOutput`. It must never branch on a program name or contain program-specific logic; that belongs in `qccodec`.
 
-- Failures keep partial results: decoding always runs, exceptions carry the completed `ProgramOutput`, and the first failure stays primary.
+- Failures keep partial results: decoding always runs, exceptions carry the completed `ProgramOutput`, and the first failure stays primary, except that a codec's explanation of a plain nonzero exit (`qccodec.CalculationError`) leads, with the exit status kept as an additional failure.
 - Tests use stand-in programs. Integration tests with real programs live in qccodec (`tests/integration/`), which uses qccompute as a test-only dependency.
 
 ## The qc* suite

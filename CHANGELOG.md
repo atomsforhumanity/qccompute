@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Changed
 
+- When a program exits with an error and its codec explains why (qccodec raises `CalculationError` from decode), that explanation is the raised error's message; the exit status remains in `output.traceback`. Timeouts and missing programs keep their own error types.
 - A program that is not on `PATH` now fails before launch with a `ProgramNotFoundError` that names the environment variable and `executables` argument to use.
 - Integration tests that run real programs moved to qccodec (`tests/integration/`), next to the codecs they exercise; qccodec uses qccompute as a test-only dependency.
 - Development tooling: shared ruff (including Google docstring rules), mypy (fully typed library code), and pytest settings; pre-commit hooks that run the locked tools through `uv run`; one CI workflow; a tag-driven release workflow with `scripts/prepare_release.py` and an approval-gated PyPI deployment. Added CONTRIBUTING.md and AGENTS.md.

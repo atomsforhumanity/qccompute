@@ -9,11 +9,14 @@ keywords pass through as xtb's command-line flags (`{"alpb": "water"}` gives
 `OMP_NUM_THREADS=1` unless overridden with `compute(..., environment=...)`.
 
 g-xTB ships as its own build of xtb ([grimme-lab/g-xtb](https://github.com/grimme-lab/g-xtb)).
-Point qccompute at it for g-xTB runs:
+That build also runs GFN0/1/2-xTB and GFN-FF, so it can be your only xtb: put it on
+`PATH`, or point qccompute at it:
 
 ```python
 compute(input_data, executables={"xtb": "/opt/g-xtb/bin/xtb"})
 ```
 
-or set `QCCOMPUTE_XTB_EXECUTABLE`. CREST (`program="crest"`) also runs GFN-xTB and
+or set `QCCOMPUTE_XTB_EXECUTABLE`. Requesting `gxtb` from an xtb build without g-xTB
+fails with a message saying so, because xtb itself only warns about the unknown
+`--gxtb` option. CREST (`program="crest"`) also runs GFN-xTB and
 GFN-FF, and is the program for conformer searches.

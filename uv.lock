@@ -1191,12 +1191,16 @@ wheels = [
 [[package]]
 name = "qccodec"
 version = "0.13.0"
-source = { editable = "../qccodec" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "packaging" },
     { name = "qcconst" },
     { name = "qcdata" },
     { name = "tomli-w" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c3/9a/8b11d5090141fc1eb68f88ef3a709488c129c2b6f26e88da35adfe18ac21/qccodec-0.13.0.tar.gz", hash = "sha256:405ab1eee9c10f42ca7405a76b859a0b0e9f334b696f2d9a6b2ddb48a20d237c", size = 619957 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/70/d7/33e4c143f49a4c78b7ca7b7a0c4aacfcdac4d6c82d70d7b4a2281d9acf44/qccodec-0.13.0-py3-none-any.whl", hash = "sha256:55888bbbc4f88f1052a58d59ff732ac6c5bb2f43ad97fdb79f71f1ca4c433f70", size = 44772 },
 ]
 
 [package.optional-dependencies]
@@ -1208,27 +1212,6 @@ tcpb = [
 ]
 xtb = [
     { name = "xtb" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "geometric", marker = "extra == 'geometric'", specifier = ">=1.0.1,<2" },
-    { name = "packaging", specifier = ">=23.0" },
-    { name = "qcconst", specifier = ">=0.2.1" },
-    { name = "qcdata", specifier = ">=0.19.0" },
-    { name = "tcpb", marker = "extra == 'tcpb'", specifier = ">=0.16.0" },
-    { name = "tomli-w", specifier = ">=1.0.0" },
-    { name = "xtb", marker = "extra == 'xtb'" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "mypy", specifier = ">=1.1.1" },
-    { name = "pre-commit", specifier = ">=3.2.0" },
-    { name = "pytest", specifier = ">=7.2.2" },
-    { name = "pytest-cov", specifier = ">=4.0.0" },
-    { name = "ruff", specifier = ">=0.8.3" },
-    { name = "types-toml", specifier = ">=0.10.8.20240310" },
 ]
 
 [[package]]
@@ -1276,12 +1259,12 @@ docs = [
 
 [package.metadata]
 requires-dist = [
-    { name = "qccodec", editable = "../qccodec" },
-    { name = "qccodec", extras = ["geometric"], marker = "extra == 'geometric'", editable = "../qccodec" },
-    { name = "qccodec", extras = ["geometric", "tcpb"], marker = "extra == 'all'", editable = "../qccodec" },
-    { name = "qccodec", extras = ["tcpb"], marker = "extra == 'tcpb'", editable = "../qccodec" },
-    { name = "qccodec", extras = ["xtb"], marker = "extra == 'xtb'", editable = "../qccodec" },
-    { name = "qcdata", specifier = ">=0.19.0" },
+    { name = "qccodec", specifier = ">=0.13.0" },
+    { name = "qccodec", extras = ["geometric"], marker = "extra == 'geometric'", specifier = ">=0.13.0" },
+    { name = "qccodec", extras = ["geometric", "tcpb"], marker = "extra == 'all'", specifier = ">=0.13.0" },
+    { name = "qccodec", extras = ["tcpb"], marker = "extra == 'tcpb'", specifier = ">=0.13.0" },
+    { name = "qccodec", extras = ["xtb"], marker = "extra == 'xtb'", specifier = ">=0.13.0" },
+    { name = "qcdata", specifier = ">=0.20.0" },
 ]
 
 [package.metadata.requires-dev]
@@ -1315,7 +1298,7 @@ wheels = [
 
 [[package]]
 name = "qcdata"
-version = "0.19.0"
+version = "0.20.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "eval-type-backport" },
@@ -1327,9 +1310,9 @@ dependencies = [
     { name = "toml" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d5/17/b9631651fface037d555cba69eef84a70325f8395a98e26735cb270f49c6/qcdata-0.19.0.tar.gz", hash = "sha256:637ba495595050e5fa68cb794fa5b6c079fe53a392a648563cac847286a45cbd", size = 1523462 }
+sdist = { url = "https://files.pythonhosted.org/packages/ce/37/98c499bc17935661583f9483586277b31890323c8d359bb5f090c357d8f9/qcdata-0.20.0.tar.gz", hash = "sha256:a0e72ef3e0d0bc7f0983fad5d73321511b7b22e28a0a8eaec9724069ec738d88", size = 1523481 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c3/da/673529d76d43810c312d1e26ae8df7061eab8e22b10b91d653af2f40e0dd/qcdata-0.19.0-py3-none-any.whl", hash = "sha256:bcea7db435554dc251b6eeab5fd07940c2290c47b64a9555ad56382e94b48975", size = 38380 },
+    { url = "https://files.pythonhosted.org/packages/bd/17/61bdbfaac79632f7f02422ea954c7217ce5c047243361520175fa1276177/qcdata-0.20.0-py3-none-any.whl", hash = "sha256:7e49d8c2bd2dd07728077f4f72510c0f4cb0a11c87d035d10007ad3353c5c68d", size = 38379 },
 ]
 
 [[package]]

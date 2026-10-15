@@ -17,7 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - xTB and CREST default to a single OpenMP thread.
 - Added `compute(..., timeout=seconds)`: each external program, including child calculations of Python integrations, is killed with its whole process tree when it exceeds the limit, raising `ProgramTimeoutError` with partial results and logs attached. Subprocesses now run in their own session on POSIX so timeouts and interrupts never leave orphaned child processes.
 - New exception names `CodecNotFoundError` and `InputError`; `AdapterError`, `AdapterNotFoundError`, and `AdapterInputError` remain as aliases for one release.
-- Use a temporary editable sibling qccodec source for coordinated development of these unpublished releases.
+- Require published `qccodec>=0.13.0` and `qcdata>=0.20.0`.
 
 ### Removed
 

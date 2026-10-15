@@ -200,10 +200,8 @@ compute(prog_input, options={"collect_rotamers": True})   # CREST
 
 ## Development
 
-qccompute requires `qcdata>=0.19.0` and `qccodec>=0.13.0`. For coordinated development
-of unreleased changes keep the companion qccodec checkout at `../qccodec` and run
-`uv sync --all-groups --locked`; the editable source override in `pyproject.toml` is
-temporary and should be removed once qccodec 0.13 is published.
+qccompute requires `qcdata>=0.20.0` and `qccodec>=0.13.0`. Run
+`uv sync --all-groups --locked` to install the project and development dependencies.
 
 ### How a calculation runs
 

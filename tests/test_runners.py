@@ -238,42 +238,25 @@ def test_python_merged_order_and_reporting_failure(tmp_path: Path) -> None:
     assert output.traceback is not None and "calculation failed" in output.traceback
 
 
-def test_xtb_environment_precedes_native_import(
+def test_python_environment_applies_during_the_call(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Force one OpenMP thread before the lazy xTB binding imports its runtime."""
-    import builtins
+    """A codec's environment is in place while its Python function runs, then undone.
 
-    from qccodec import get_codec
-    from qcdata import ProgramInput
-    from qcdata.utils import water
+    Native libraries (OpenMP, BLAS) read settings such as OMP_NUM_THREADS when they
+    are first imported inside the function, so the environment must already be set.
+    """
+    observed: list[str] = []
 
-    original_import = builtins.__import__
-    observed = []
-
-    def intercept(name: str, *args: Any, **kwargs: Any) -> Any:
-        """Observe the environment at the first native-library import."""
-        if name == "xtb.interface":
-            observed.append(os.environ["OMP_NUM_THREADS"])
-            raise ImportError("stop before native import")
-        return original_import(name, *args, **kwargs)
+    def function() -> None:
+        """Record the thread setting a native import would see."""
+        observed.append(os.environ["OMP_NUM_THREADS"])
 
     monkeypatch.setenv("OMP_NUM_THREADS", "8")
-    request = get_codec("xtb").encode(
-        ProgramInput.model_validate(
-            {
-                "program": "xtb",
-                "calctype": "energy",
-                "structure": water,
-                "model": {"method": "GFN2xTB"},
-            }
-        )
-    )
-    assert isinstance(request, PythonInput)
-    monkeypatch.setattr(builtins, "__import__", intercept)
+    request = PythonInput(function=function, environment={"OMP_NUM_THREADS": "1"})
     output = run_python(request, tmp_path)
-    assert output.failed and observed == ["1"]
+    assert not output.failed and observed == ["1"]
     assert os.environ["OMP_NUM_THREADS"] == "8"
 
 

@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [unreleased]
 
+## [0.16.0] - 2026-10-15
+
 ### Added
 
 - `compute(..., executables={"orca": "/opt/orca/orca"})` and the environment variable `QCCOMPUTE_<PROGRAM>_EXECUTABLE` choose the executable a program runs from. Child calculations inherit the mapping. Programs always run by their absolute path, recorded in `output.execution.extras["executable"]`.
@@ -16,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Changed
 
+- Require `qccodec>=0.14.0`, which adds Psi4, runs xtb on the command line, and reports a program's own explanation when it exits with an error.
 - Program-specific examples and program pages moved to qccodec's documentation (https://qccodec.docs.atomsforhumanity.org/programs/), next to the codecs they document, with a tested script for every program and calculation type. qccompute keeps its program-agnostic examples (file input, custom codec). The documentation site is now published by a Docs workflow on every release tag (or by hand).
 - When a program exits with an error and its codec explains why (qccodec raises `CalculationError` from decode), that explanation is the raised error's message; the exit status remains in `output.traceback`. Timeouts and missing programs keep their own error types.
 - A program that is not on `PATH` now fails before launch with a `ProgramNotFoundError` that names the environment variable and `executables` argument to use.
@@ -503,7 +506,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Created adapter for TeraChem.
 - Exposed general purpose computing for any subprocess with `FileAdaptor`
 
-[unreleased]: https://github.com/atomsforhumanity/qccompute/compare/0.15.0...HEAD
+[unreleased]: https://github.com/atomsforhumanity/qccompute/compare/0.16.0...HEAD
+[0.16.0]: https://github.com/atomsforhumanity/qccompute/releases/tag/0.16.0
 [0.15.0]: https://github.com/atomsforhumanity/qccompute/releases/tag/0.15.0
 [0.14.0]: https://github.com/atomsforhumanity/qccompute/releases/tag/0.14.0
 [0.13.3]: https://github.com/atomsforhumanity/qccompute/releases/tag/0.13.3

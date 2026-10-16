@@ -5,7 +5,7 @@
 [![image](https://img.shields.io/pypi/pyversions/qccompute.svg)](https://pypi.python.org/pypi/qccompute)
 [![CI](https://github.com/atomsforhumanity/qccompute/actions/workflows/ci.yaml/badge.svg)](https://github.com/atomsforhumanity/qccompute/actions/workflows/ci.yaml)
 
-Runs quantum chemistry programs on [qcdata](https://github.com/atomsforhumanity/qcdata) inputs using [qccodec](https://github.com/atomsforhumanity/qccodec) codecs and returns structured results. Built-in support for `TeraChem`, `ORCA`, `CREST`, `xTB`, and `geomeTRIC`, and any program you define a `qccodec.Codec` for.
+Runs quantum chemistry programs on [qcdata](https://github.com/atomsforhumanity/qcdata) inputs using [qccodec](https://github.com/atomsforhumanity/qccodec) codecs and returns structured results. Built-in support for `TeraChem`, `ORCA`, `Psi4`, `CREST`, `xtb`, and `geomeTRIC`, and any program you define a `qccodec.Codec` for.
 
 ## The QC Suite
 

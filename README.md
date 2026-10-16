@@ -46,7 +46,7 @@ prog_input = ProgramInput(
     program="terachem",
     structure=h2o,
     calctype="energy",
-    model={"method": "hf", "basis": "sto-3g"},
+    model={"method": "wb97xd3", "basis": "def2-svp"},
     keywords={"purify": "no", "restricted": False},
 )
 
@@ -91,7 +91,7 @@ prog_input = ProgramInput(
     program="terachem",
     structure=h2o,
     calctype="energy",
-    model={"method": "hf", "basis": "sto-3g"},
+    model={"method": "wb97xd3", "basis": "def2-svp"},
     keywords={"purify": "no", "restricted": False},
 )
 
@@ -118,7 +118,7 @@ prog_output = compute_args(
     "terachem",
     h2o,
     calctype="energy",
-    model={"method": "hf", "basis": "sto-3g"},
+    model={"method": "wb97xd3", "basis": "def2-svp"},
     keywords={"purify": "no", "restricted": False},
     files={...},
     collect_files=True

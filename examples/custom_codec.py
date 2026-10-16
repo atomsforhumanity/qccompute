@@ -41,7 +41,7 @@ prog_input = ProgramInput(
     program="myprog",
     calctype="energy",  # type: ignore
     structure=Structure(symbols=["H", "H"], geometry=[[0, 0, 0], [0, 0, 1.4]]),  # type: ignore
-    model={"method": "hf"},  # type: ignore
+    model={"method": "wb97x-d"},  # type: ignore
 )
 
 # Pass the codec explicitly...

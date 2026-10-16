@@ -19,7 +19,7 @@ prog_input = ProgramInput(
     program="terachem",
     structure=structure,
     calctype="energy",
-    model={"method": "hf", "basis": "sto-3g"},
+    model={"method": "wb97xd3", "basis": "def2-svp"},
     keywords={"purify": "no", "restricted": False},
 )
 

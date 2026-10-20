@@ -188,6 +188,40 @@ def test_python_captures_large_native_output_and_restores_globals(
     assert (logger.handlers, logger.level, logger.propagate) == state
 
 
+def test_handlers_added_during_a_call_keep_working(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A handler a library binds to sys.stdout during a call outlives the capture.
+
+    fairchem attaches a root StreamHandler to sys.stdout on first import. Bound to the
+    capture file, it made every later log message in the process fail with "I/O
+    operation on closed file"; now it writes to the live streams, so later calls
+    capture it again and code outside a call sees it on the real stdout.
+    """
+    logger = logging.getLogger("binds-at-import")
+    logger.propagate = False
+    logger.setLevel(logging.INFO)
+
+    def first_import() -> None:
+        """Configure logging the way a library does at import time."""
+        logger.addHandler(logging.StreamHandler(sys.stdout))
+        logger.info("during import")
+
+    def later_call() -> None:
+        logger.info("during a later call")
+
+    try:
+        first = run_python(PythonInput(first_import), tmp_path)
+        assert "during import" in first.stdout
+        capsys.readouterr()
+        logger.info("outside any call")
+        assert "outside any call" in capsys.readouterr().out
+        later = run_python(PythonInput(later_call), tmp_path)
+        assert not later.failed and "during a later call" in later.stdout
+    finally:
+        logger.handlers.clear()
+
+
 def test_nested_python_invocations_restore_parent(tmp_path: Path) -> None:
     """Nested python invocations restore parent."""
     inner = tmp_path / "inner"

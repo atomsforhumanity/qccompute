@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [unreleased]
 
+### Fixed
+
+- Logging handlers that a Python library binds to `sys.stdout` or `sys.stderr` during a calculation (fairchem does this on first import) no longer break logging for the rest of the process. They were left writing to the closed capture file, so every later log message failed with "I/O operation on closed file". They now write to the live streams after the calculation, and later calculations capture them again.
+
 ## [0.16.0] - 2026-10-15
 
 ### Added

@@ -166,6 +166,44 @@ def _kill_tree(proc: subprocess.Popen[str]) -> None:
         pass
 
 
+class _CallStream:
+    """``sys.stdout`` or ``sys.stderr`` during a Python call.
+
+    Writes go to the capture file while the call runs. Libraries often keep a
+    reference to the stream they saw at import time (a logging handler bound to
+    ``sys.stdout``); once the call ends, this stream forwards to whatever
+    ``sys.stdout``/``sys.stderr`` is current instead of to the closed capture file,
+    so such handlers keep working and are captured again by later calls.
+    """
+
+    def __init__(self, capture: TextIO, name: str) -> None:
+        self._capture: TextIO | None = capture
+        self._name = name
+
+    def _target(self) -> TextIO:
+        if self._capture is not None:
+            return self._capture
+        current: TextIO = getattr(sys, self._name)
+        # A stale proxy can be installed again by code that saved it; never loop.
+        return current if current is not self else getattr(sys, f"__{self._name}__")
+
+    def release(self) -> None:
+        """Stop writing to the capture file and follow the live stream from now on."""
+        self._capture = None
+
+    def write(self, text: str) -> int:
+        """Write to the capture file, or to the live stream after the call."""
+        return self._target().write(text)
+
+    def flush(self) -> None:
+        """Flush the current target."""
+        self._target().flush()
+
+    def __getattr__(self, name: str) -> object:
+        """Delegate everything else (``fileno``, ``encoding``, ...) to the target."""
+        return getattr(self._target(), name)
+
+
 @contextmanager
 def _python_context(
     directory: Path,
@@ -214,8 +252,11 @@ def _python_context(
             logger.handlers = [logging.StreamHandler(capture)]
             logger.setLevel(logging.DEBUG)
             logger.propagate = False
-        restore.enter_context(redirect_stdout(capture))
-        restore.enter_context(redirect_stderr(capture))
+        streams = [_CallStream(capture, "stdout"), _CallStream(capture, "stderr")]
+        for stream in streams:
+            restore.callback(stream.release)
+        restore.enter_context(redirect_stdout(streams[0]))  # type: ignore[arg-type]
+        restore.enter_context(redirect_stderr(streams[1]))  # type: ignore[arg-type]
         try:
             yield
         finally:

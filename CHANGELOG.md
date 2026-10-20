@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [unreleased]
 
+## [0.16.1] - 2026-10-20
+
 ### Fixed
 
 - Logging handlers that a Python library binds to `sys.stdout` or `sys.stderr` during a calculation (fairchem does this on first import) no longer break logging for the rest of the process. They were left writing to the closed capture file, so every later log message failed with "I/O operation on closed file". They now write to the live streams after the calculation, and later calculations capture them again.
@@ -510,7 +512,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Created adapter for TeraChem.
 - Exposed general purpose computing for any subprocess with `FileAdaptor`
 
-[unreleased]: https://github.com/atomsforhumanity/qccompute/compare/0.16.0...HEAD
+[unreleased]: https://github.com/atomsforhumanity/qccompute/compare/0.16.1...HEAD
+[0.16.1]: https://github.com/atomsforhumanity/qccompute/releases/tag/0.16.1
 [0.16.0]: https://github.com/atomsforhumanity/qccompute/releases/tag/0.16.0
 [0.15.0]: https://github.com/atomsforhumanity/qccompute/releases/tag/0.15.0
 [0.14.0]: https://github.com/atomsforhumanity/qccompute/releases/tag/0.14.0

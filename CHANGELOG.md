@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [unreleased]
 
+## [0.18.0] - 2026-10-21
+
 ### Added
 
 - Supports Python 3.15; CI tests the oldest (3.11) and newest (3.15) supported versions.
@@ -525,7 +527,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Created adapter for TeraChem.
 - Exposed general purpose computing for any subprocess with `FileAdaptor`
 
-[unreleased]: https://github.com/atomsforhumanity/qccompute/compare/0.17.0...HEAD
+[unreleased]: https://github.com/atomsforhumanity/qccompute/compare/0.18.0...HEAD
+[0.18.0]: https://github.com/atomsforhumanity/qccompute/releases/tag/0.18.0
 [0.17.0]: https://github.com/atomsforhumanity/qccompute/releases/tag/0.17.0
 [0.16.1]: https://github.com/atomsforhumanity/qccompute/releases/tag/0.16.1
 [0.16.0]: https://github.com/atomsforhumanity/qccompute/releases/tag/0.16.0

@@ -3,7 +3,7 @@ name = "qccompute"
 version = "0.16.1"
 description = "A package for operating Quantum Chemistry programs using qcdata standardized data structures. Compatible with TeraChem, psi4, QChem, NWChem, ORCA, Molpro, geomeTRIC and many more."
 authors = [{ name = "Colton Hicks", email = "github@coltonhicks.com" }]
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 readme = "README.md"
 license = { file = "LICENSE" }
 dependencies = [
@@ -16,7 +16,6 @@ classifiers = [
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
     "Natural Language :: English",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -75,7 +74,7 @@ build-backend = "hatchling.build"
 
 [tool.ruff]
 line-length = 88
-target-version = "py310"
+target-version = "py311"
 extend-exclude = ["*.ipynb", "*.md"]
 
 [tool.ruff.lint]
@@ -103,7 +102,7 @@ source = ["qccompute"]
 show_missing = true
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.11"
 files = ["src", "tests", "scripts", "examples"]
 plugins = ["pydantic.mypy"]
 ignore_missing_imports = true

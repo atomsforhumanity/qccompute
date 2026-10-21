@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [unreleased]
 
+### Added
+
+- `compute` takes a list (or tuple) of inputs and returns a list of outputs in input order; the inputs may be for different programs. Calculations that run as programs run side by side in threads, up to `max_workers` at once (default: the CPU cores this process may use); calculations that run in Python take over the process's output streams, so they run one at a time, after the programs. Lists computed inside a Python calculation run serially.
+- `ComputeErrors`, an `ExceptionGroup` raised after every calculation of a list has run if any failed (with `raise_exc=True`): its sub-exceptions are the per-input errors with `prog_output` and `input_index`, and `outputs` holds every output. With `raise_exc=False` the failed outputs are returned.
+- For lists, `update_func` receives `(index, all_logs, new_logs)` and `print_logs` prefixes each line with its input's index. Ctrl-C kills every running program of the list and its process tree.
+
 ## [0.17.0] - 2026-10-21
 
 ### Changed

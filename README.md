@@ -125,6 +125,27 @@ prog_output = compute_args(
 )
 ```
 
+### Many calculations at once
+
+Pass a list of inputs to get a list of outputs, in the same order. Calculations that run as programs (ORCA, xtb, Psi4, TeraChem, ...) run side by side, one per CPU core by default; calculations that run in Python run one at a time. The inputs may be for different programs.
+
+```python
+from qccompute import compute
+from qccompute.exceptions import ComputeErrors
+
+outputs = compute([inp1, inp2, inp3])  # list[ProgramOutput]
+outputs = compute(inputs, max_workers=8)  # at most 8 programs at once
+
+try:
+    outputs = compute(inputs)
+except ComputeErrors as errors:  # raised after every calculation has run
+    for error in errors.exceptions:
+        print(error.input_index, error)  # which input failed, and why
+    outputs = errors.outputs  # every output, successful or not
+
+outputs = compute(inputs, raise_exc=False)  # or check output.success yourself
+```
+
 The behavior of `compute()` and `compute_args()` can be tuned by passing in keyword arguments like `collect_files` shown above. Arguments can modify which scratch directory location to use, whether to delete or keep the scratch files after a calculation completes, what files to collect from a calculation, whether to stream the program logs in real time as the program executes, and whether to propagate a wavefunction through a series of calculations. Arguments also include hooks for passing in update functions that can be called as a program executes in real time. See the `qccompute.compute` docstring for details.
 
 See the [/examples](https://github.com/atomsforhumanity/qccompute/tree/master/examples) directory for more examples.

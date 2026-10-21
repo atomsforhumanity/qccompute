@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [unreleased]
 
+## [0.17.0] - 2026-10-21
+
 ### Changed
 
 - 🚨 Requires Python 3.11 or newer. Python 3.10 reached end of life in October 2026.
@@ -516,7 +518,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Created adapter for TeraChem.
 - Exposed general purpose computing for any subprocess with `FileAdaptor`
 
-[unreleased]: https://github.com/atomsforhumanity/qccompute/compare/0.16.1...HEAD
+[unreleased]: https://github.com/atomsforhumanity/qccompute/compare/0.17.0...HEAD
+[0.17.0]: https://github.com/atomsforhumanity/qccompute/releases/tag/0.17.0
 [0.16.1]: https://github.com/atomsforhumanity/qccompute/releases/tag/0.16.1
 [0.16.0]: https://github.com/atomsforhumanity/qccompute/releases/tag/0.16.0
 [0.15.0]: https://github.com/atomsforhumanity/qccompute/releases/tag/0.15.0

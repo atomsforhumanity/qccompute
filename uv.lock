@@ -1388,7 +1388,7 @@ tcpb = [
 
 [[package]]
 name = "qccompute"
-version = "0.16.1"
+version = "0.17.0"
 source = { editable = "." }
 default-groups = ["dev", "docs"]
 dependencies = [

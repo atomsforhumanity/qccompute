@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [unreleased]
 
+### Added
+
+- Lists of calculations respect the resources each one declares (qccodec 0.17.0): `max_workers` is a budget of CPU threads (default: the usable cores), and a calculation draws the threads its codec declares (ORCA `pal`, Psi4 `-n`, CREST `threads`, xtb `parallel`). GPU calculations (TeraChem) each run with their own `CUDA_VISIBLE_DEVICES`, as many at once as there are GPUs (from `CUDA_VISIBLE_DEVICES` or `nvidia-smi`), or one at a time when none are found. Calculations start in input order, so large ones are not starved.
+
+### Changed
+
+- Requires `qccodec>=0.17.0`.
+
 ## [0.18.0] - 2026-10-21
 
 ### Added

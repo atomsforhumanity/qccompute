@@ -190,9 +190,12 @@ def compute(
             found on ``PATH``. Bare names are looked up on ``PATH``; the program
             always runs by its absolute path, recorded in
             ``execution.extras["executable"]``.
-        max_workers: For a list of inputs, the most program calculations to run at
-            once. Defaults to the number of CPU cores this process may use. Ignored
-            for a single input.
+        max_workers: For a list of inputs, the CPU threads program calculations may
+            use at once. Defaults to the number of CPU cores this process may use.
+            Each calculation counts the threads its codec declares (ORCA ``pal``,
+            Psi4 ``-n``, CREST ``threads``; one otherwise), and each GPU calculation
+            gets its own devices through ``CUDA_VISIBLE_DEVICES``. Ignored for a
+            single input.
 
     Returns:
         A ProgramOutput containing scientific results, execution metadata, and the

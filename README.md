@@ -127,14 +127,14 @@ prog_output = compute_args(
 
 ### Many calculations at once
 
-Pass a list of inputs to get a list of outputs, in the same order. Calculations that run as programs (ORCA, xtb, Psi4, TeraChem, ...) run side by side, one per CPU core by default; calculations that run in Python run one at a time. The inputs may be for different programs.
+Pass a list of inputs to get a list of outputs, in the same order. Calculations that run as programs (ORCA, xtb, Psi4, TeraChem, ...) run side by side within the machine's cores, counting the threads each one asks for (ORCA `pal`, Psi4 `-n`, ...), and GPU calculations each get their own GPU; calculations that run in Python run one at a time. The inputs may be for different programs.
 
 ```python
 from qccompute import compute
 from qccompute.exceptions import ComputeErrors
 
 outputs = compute([inp1, inp2, inp3])  # list[ProgramOutput]
-outputs = compute(inputs, max_workers=8)  # at most 8 programs at once
+outputs = compute(inputs, max_workers=8)  # use at most 8 cores
 
 try:
     outputs = compute(inputs)

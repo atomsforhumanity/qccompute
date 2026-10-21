@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [unreleased]
 
+## [0.19.0] - 2026-10-21
+
 ### Added
 
 - Lists of calculations respect the resources each one declares (qccodec 0.17.0): `max_workers` is a budget of CPU threads (default: the usable cores), and a calculation draws the threads its codec declares (ORCA `pal`, Psi4 `-n`, CREST `threads`, xtb `parallel`). GPU calculations (TeraChem) each run with their own `CUDA_VISIBLE_DEVICES`, as many at once as there are GPUs (from `CUDA_VISIBLE_DEVICES` or `nvidia-smi`), or one at a time when none are found. Calculations start in input order, so large ones are not starved.
@@ -535,7 +537,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Created adapter for TeraChem.
 - Exposed general purpose computing for any subprocess with `FileAdaptor`
 
-[unreleased]: https://github.com/atomsforhumanity/qccompute/compare/0.18.0...HEAD
+[unreleased]: https://github.com/atomsforhumanity/qccompute/compare/0.19.0...HEAD
+[0.19.0]: https://github.com/atomsforhumanity/qccompute/releases/tag/0.19.0
 [0.18.0]: https://github.com/atomsforhumanity/qccompute/releases/tag/0.18.0
 [0.17.0]: https://github.com/atomsforhumanity/qccompute/releases/tag/0.17.0
 [0.16.1]: https://github.com/atomsforhumanity/qccompute/releases/tag/0.16.1

@@ -1,12 +1,12 @@
-"""Run one calculation: encode with a codec, execute, decode, and build the output."""
+"""Run calculations: encode with a codec, execute, decode, and build the output."""
 
 import dataclasses
 import os
 import traceback
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from functools import partial
 from time import monotonic
-from typing import Any
+from typing import Any, overload
 
 import qccodec
 from pydantic import ValidationError
@@ -43,9 +43,11 @@ from .execution import (
     stage_files,
     workspace,
 )
+from .parallel import compute_list
 from .runners import run_python, run_subprocess
 
 
+@overload
 def compute(
     input_data: InputType,
     *,
@@ -56,7 +58,7 @@ def compute(
     collect_logs: bool = True,
     collect_files: bool = False,
     collect_wfn: bool = False,
-    update_func: Callable[[str, str], None] | None = None,
+    update_func: Callable[..., None] | None = None,
     update_interval: float | None = None,
     print_logs: bool = False,
     raise_exc: bool = True,
@@ -64,11 +66,66 @@ def compute(
     options: Mapping[str, Any] | None = None,
     timeout: float | None = None,
     executables: Mapping[str, str] | None = None,
-) -> ProgramOutput[InputType, Data]:
-    """Compute the given input using a codec and a local runner.
+    max_workers: int | None = None,
+) -> ProgramOutput[InputType, Data]: ...
+
+
+@overload
+def compute(
+    input_data: Sequence[InputType],
+    *,
+    codec: qccodec.Codec | None = None,
+    environment: Mapping[str, str] | None = None,
+    scratch_dir: StrOrPath | None = None,
+    rm_scratch_dir: bool = True,
+    collect_logs: bool = True,
+    collect_files: bool = False,
+    collect_wfn: bool = False,
+    update_func: Callable[..., None] | None = None,
+    update_interval: float | None = None,
+    print_logs: bool = False,
+    raise_exc: bool = True,
+    propagate_wfn: bool = False,
+    options: Mapping[str, Any] | None = None,
+    timeout: float | None = None,
+    executables: Mapping[str, str] | None = None,
+    max_workers: int | None = None,
+) -> list[ProgramOutput[InputType, Data]]: ...
+
+
+def compute(
+    input_data: InputType | Sequence[InputType],
+    *,
+    codec: qccodec.Codec | None = None,
+    environment: Mapping[str, str] | None = None,
+    scratch_dir: StrOrPath | None = None,
+    rm_scratch_dir: bool = True,
+    collect_logs: bool = True,
+    collect_files: bool = False,
+    collect_wfn: bool = False,
+    update_func: Callable[..., None] | None = None,
+    update_interval: float | None = None,
+    print_logs: bool = False,
+    raise_exc: bool = True,
+    propagate_wfn: bool = False,
+    options: Mapping[str, Any] | None = None,
+    timeout: float | None = None,
+    executables: Mapping[str, str] | None = None,
+    max_workers: int | None = None,
+) -> ProgramOutput[InputType, Data] | list[ProgramOutput[InputType, Data]]:
+    """Compute one input, or a list of inputs in parallel, with a local runner.
+
+    A single input returns a single ``ProgramOutput``. A list (or tuple) returns a
+    list of outputs in input order; its inputs may be for different programs, and
+    every other argument applies to each of them. Calculations that run as programs
+    (ORCA, xtb, Psi4, ...) run side by side, up to ``max_workers`` at once.
+    Calculations that run in Python (machine-learned potentials, geomeTRIC, tblite)
+    take over the process's output streams while they run, so they run one at a
+    time, after the programs.
 
     Args:
-        input_data: A qcdata input object, such as ProgramInput or FileInput.
+        input_data: A qcdata input object, such as ProgramInput or FileInput, or a
+            list of them.
         codec: The ``qccodec.Codec`` translating this program's inputs and outputs.
             If None, resolve one with ``qccodec.get_codec(input_data)``: a codec
             registered with ``qccodec.register``, a built-in, or one installed by
@@ -79,7 +136,8 @@ def compute(
             current process's environment, working directory, and output streams;
             use separate processes for parallel Python calculations. Environment
             settings must be applied before the relevant native library initializes.
-        scratch_dir: The calculation directory, not its parent. If None, create a
+        scratch_dir: The calculation directory, not its parent; not accepted with a
+            list of inputs. If None, create a
             directory in the system's temporary directory. Each concurrent call
             needs its own directory. This directory, including any existing
             contents, is deleted when rm_scratch_dir is True.
@@ -95,16 +153,22 @@ def compute(
             all generated files including wavefunction files.
         update_func: Callback accepting (all_logs, new_logs), both strings.
             Subprocess updates arrive during execution; Python output is delivered
-            after invocation. No callback is made for empty output.
+            after invocation. No callback is made for empty output. For a list of
+            inputs it receives (index, all_logs, new_logs), where index is the
+            input's position, and is called from the threads running the
+            calculations, so it must be thread-safe.
         update_interval: Minimum seconds between subprocess log updates; defaults
             to 0.5. Updates are line-based, and final output is delivered without
             waiting for this interval. Has no effect on Python calls.
         print_logs: Print merged stdout/stderr using the update callback. Ignored
-            when update_func is supplied. Python logs print after invocation.
+            when update_func is supplied. Python logs print after invocation. For a
+            list, each line is prefixed with its input's index, e.g. ``[3]``.
         raise_exc: Raise a qccompute exception on calculation failure, with the
             completed ProgramOutput attached as .prog_output. If False, return
             the failed output instead. Partial results and diagnostics are retained
-            when available.
+            when available. For a list, every calculation runs first; then
+            ``ComputeErrors`` (an ``ExceptionGroup``) is raised if any failed, holding
+            each failure's exception and every output in ``.outputs``.
         propagate_wfn: For integrations that request child calculations, such as
             geometry optimization, use the child codec's restart support to prepare
             each input from the previous result. Requires a child-calculation
@@ -126,10 +190,14 @@ def compute(
             found on ``PATH``. Bare names are looked up on ``PATH``; the program
             always runs by its absolute path, recorded in
             ``execution.extras["executable"]``.
+        max_workers: For a list of inputs, the most program calculations to run at
+            once. Defaults to the number of CPU cores this process may use. Ignored
+            for a single input.
 
     Returns:
         A ProgramOutput containing scientific results, execution metadata, and the
-        requested logs and files. Failed calculations may contain partial results.
+        requested logs and files, or a list of them in input order for a list of
+        inputs. Failed calculations may contain partial results.
 
     Raises:
         CodecNotFoundError: No codec is available for the requested program.
@@ -140,8 +208,73 @@ def compute(
         ExternalProgramError: Execution, decoding, artifact collection, or cleanup
             fails. Unexpected codec exceptions also use this category.
 
+        ComputeErrors: For a list of inputs, some calculations failed.
+
     Calculation exceptions are raised only when raise_exc is True.
     """
+    if isinstance(input_data, Sequence) and not isinstance(input_data, str | bytes):
+        return compute_list(
+            _compute_one,
+            input_data,
+            max_workers=max_workers,
+            raise_exc=raise_exc,
+            update_func=update_func,
+            print_logs=print_logs,
+            options={
+                "codec": codec,
+                "environment": environment,
+                "scratch_dir": scratch_dir,
+                "rm_scratch_dir": rm_scratch_dir,
+                "collect_logs": collect_logs,
+                "collect_files": collect_files,
+                "collect_wfn": collect_wfn,
+                "update_interval": update_interval,
+                "propagate_wfn": propagate_wfn,
+                "options": options,
+                "timeout": timeout,
+                "executables": executables,
+            },
+        )
+    return _compute_one(
+        input_data,
+        codec=codec,
+        environment=environment,
+        scratch_dir=scratch_dir,
+        rm_scratch_dir=rm_scratch_dir,
+        collect_logs=collect_logs,
+        collect_files=collect_files,
+        collect_wfn=collect_wfn,
+        update_func=update_func,
+        update_interval=update_interval,
+        print_logs=print_logs,
+        raise_exc=raise_exc,
+        propagate_wfn=propagate_wfn,
+        options=options,
+        timeout=timeout,
+        executables=executables,
+    )
+
+
+def _compute_one(
+    input_data: InputType,
+    *,
+    codec: qccodec.Codec | None = None,
+    environment: Mapping[str, str] | None = None,
+    scratch_dir: StrOrPath | None = None,
+    rm_scratch_dir: bool = True,
+    collect_logs: bool = True,
+    collect_files: bool = False,
+    collect_wfn: bool = False,
+    update_func: Callable[[str, str], None] | None = None,
+    update_interval: float | None = None,
+    print_logs: bool = False,
+    raise_exc: bool = True,
+    propagate_wfn: bool = False,
+    options: Mapping[str, Any] | None = None,
+    timeout: float | None = None,
+    executables: Mapping[str, str] | None = None,
+) -> ProgramOutput[InputType, Data]:
+    """Compute one input; ``compute`` documents every argument."""
     start = monotonic()
     directory = None
     result = empty_results(input_data)

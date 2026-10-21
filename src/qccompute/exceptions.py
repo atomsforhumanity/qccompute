@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Any
 
 from qcdata import Data, ProgramOutput
@@ -183,3 +183,47 @@ class ProgramTimeoutError(ExternalProgramError):
     The program and any processes it started are killed. Output produced before the
     deadline is retained and decoded, so partial results remain available.
     """
+
+
+# ===================== Lists of Calculations =====================
+
+
+class ComputeErrors(ExceptionGroup):  # type: ignore[type-arg]
+    """The failures of a list of calculations, raised after every calculation ran.
+
+    Each sub-exception is the error that calculation would have raised on its own,
+    with its completed ``prog_output`` and its position in the list as
+    ``input_index``. ``outputs`` holds every output in input order, including the
+    successful ones, so no result is lost. Handle failures by type with
+    ``except*``, or catch ``ComputeErrors`` to inspect them all.
+    """
+
+    outputs: list[ProgramOutput]
+
+    def __new__(
+        cls,
+        message: str,
+        exceptions: Sequence[QCComputeBaseError],
+        outputs: Sequence[ProgramOutput] = (),
+    ) -> ComputeErrors:
+        """Build the group and attach every output of the list."""
+        self = super().__new__(cls, message, exceptions)
+        self.outputs = list(outputs)
+        return self
+
+    def __init__(
+        self,
+        message: str,
+        exceptions: Sequence[QCComputeBaseError],
+        outputs: Sequence[ProgramOutput] = (),
+    ) -> None:
+        """Initialize the group; ``__new__`` attaches the outputs."""
+        super().__init__(message, exceptions)
+
+    def derive(self, excs: Sequence[Exception]) -> ComputeErrors:  # type: ignore[override]
+        """Keep ``outputs`` on the groups ``except*`` and ``split`` create."""
+        return ComputeErrors(self.message, excs, self.outputs)  # type: ignore[arg-type]
+
+    def __reduce__(self) -> tuple[Callable[..., ComputeErrors], tuple[object, ...]]:
+        """Pickle with the outputs."""
+        return ComputeErrors, (self.message, list(self.exceptions), self.outputs)

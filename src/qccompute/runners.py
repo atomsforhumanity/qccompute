@@ -23,6 +23,25 @@ from qccodec.native import ComputeChild
 from .exceptions import ProgramNotFoundError, ProgramTimeoutError
 
 _python_lock = threading.RLock()
+# How many Python calls are running in this thread's stack; nested lists run serially.
+_python_depth = threading.local()
+# Programs running right now, so an interrupted list can kill every process tree.
+_running: set[subprocess.Popen[str]] = set()
+_running_lock = threading.Lock()
+
+
+def in_python_call() -> bool:
+    """Whether the current thread is inside a Python calculation (a child callback)."""
+    return getattr(_python_depth, "value", 0) > 0
+
+
+def kill_running() -> None:
+    """Kill every program this process started that is still running, with its tree."""
+    with _running_lock:
+        procs = list(_running)
+    for proc in procs:
+        if proc.poll() is None:
+            _kill_tree(proc)
 
 
 def _flush_native_output() -> None:
@@ -97,6 +116,8 @@ def run_subprocess(
             errors="replace",
             start_new_session=_GROUP_KILL,
         )
+        with _running_lock:
+            _running.add(proc)
         if timeout is not None:
             running = proc
 
@@ -144,6 +165,8 @@ def run_subprocess(
             if proc.poll() is None:
                 _kill_tree(proc)
             output.returncode = proc.wait()
+            with _running_lock:
+                _running.discard(proc)
             if proc.stdout is not None:
                 proc.stdout.close()
         output.stdout = "".join(lines)
@@ -228,6 +251,8 @@ def _python_context(
     Each restoration is registered separately so cleanup continues if one fails.
     """
     with _python_lock, ExitStack() as restore:
+        _python_depth.value = getattr(_python_depth, "value", 0) + 1
+        restore.callback(setattr, _python_depth, "value", _python_depth.value - 1)
         for stream in (sys.stdout, sys.stderr):
             stream.flush()
         _flush_native_output()

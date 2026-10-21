@@ -1447,7 +1447,7 @@ wheels = [
 
 [[package]]
 name = "qccodec"
-version = "0.14.0"
+version = "0.17.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "packaging" },
@@ -1455,9 +1455,9 @@ dependencies = [
     { name = "qcref" },
     { name = "tomli-w" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/18/2b/38050f30b5fb509c2f6edaa79b5984b5e10db486e1845760d6f1585c698e/qccodec-0.14.0.tar.gz", hash = "sha256:549cf1d6385ea6bf83269ab9620233de042944ce7fd30e3cc7cdb5547d6de191", size = 840306, upload-time = "2026-10-16T06:18:16.588Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/3c/e4/6b2041b802dd83b5afb48c680f7c5d06895a7bf8435d02d7595892384780/qccodec-0.17.0.tar.gz", hash = "sha256:672a40750b59ee1c348ca514791d73775f71cac24dad1036558d2b0f84ff2f4b", size = 967137, upload-time = "2026-10-21T20:54:26.12Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/63/27/605a95a6aa57157210e24c7e30ff22c350a79793fd362143e5619b7881ad/qccodec-0.14.0-py3-none-any.whl", hash = "sha256:34c0682909ee201aa40835c7dc865511941ef2170f229ffaba1d8805b11fba71", size = 56981, upload-time = "2026-10-16T06:18:15.025Z" },
+    { url = "https://files.pythonhosted.org/packages/9f/10/983dad110a7bd975434720ee4960c97506fb615f0534552f3705a361fdf6/qccodec-0.17.0-py3-none-any.whl", hash = "sha256:1e12269cc91e48dbcc4c3fc0f77271975c229c9fa6908e91230ee1d074412396", size = 92450, upload-time = "2026-10-21T20:54:24.786Z" },
 ]
 
 [package.optional-dependencies]
@@ -1515,10 +1515,10 @@ docs = [
 
 [package.metadata]
 requires-dist = [
-    { name = "qccodec", specifier = ">=0.14.0" },
-    { name = "qccodec", extras = ["geometric"], marker = "extra == 'geometric'", specifier = ">=0.14.0" },
-    { name = "qccodec", extras = ["geometric", "tcpb"], marker = "extra == 'all'", specifier = ">=0.14.0" },
-    { name = "qccodec", extras = ["tcpb"], marker = "extra == 'tcpb'", specifier = ">=0.14.0" },
+    { name = "qccodec", specifier = ">=0.17.0" },
+    { name = "qccodec", extras = ["geometric"], marker = "extra == 'geometric'", specifier = ">=0.17.0" },
+    { name = "qccodec", extras = ["geometric", "tcpb"], marker = "extra == 'all'", specifier = ">=0.17.0" },
+    { name = "qccodec", extras = ["tcpb"], marker = "extra == 'tcpb'", specifier = ">=0.17.0" },
     { name = "qcdata", specifier = ">=0.20.0" },
 ]
 provides-extras = ["geometric", "tcpb", "all"]
@@ -1558,7 +1558,7 @@ wheels = [
 
 [[package]]
 name = "qcdata"
-version = "0.20.1"
+version = "0.22.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "eval-type-backport" },
@@ -1570,18 +1570,18 @@ dependencies = [
     { name = "toml" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/00/ae/8b76d2cfa24c044d7af7fac43f2e8c57284b92d0245b2e9dd7b53f312892/qcdata-0.20.1.tar.gz", hash = "sha256:512a095ee5659bab5a50fdc2a98fd2138714c67bc9c10471071909d84905dfee", size = 1546611, upload-time = "2026-10-15T04:15:02.842Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/16/b8/717bb2db74747da58e7a8717e76b3cd5d8dc4330483bb60f5a1088b8deb6/qcdata-0.22.0.tar.gz", hash = "sha256:062295eff164ce6fa70d43fcb0a2f78b3c834480084d6a306491a85bf9689eed", size = 1554805, upload-time = "2026-10-21T20:39:30.026Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a5/9f/311f70560c933da1a0606ceb79484d228a3b0b4c33dc2f07207f41772a6f/qcdata-0.20.1-py3-none-any.whl", hash = "sha256:3f2c76dfc4d10a6cd602be1b6b28014ab5bea396fa2c28787748fabb3dd49f80", size = 38147, upload-time = "2026-10-15T04:15:00.848Z" },
+    { url = "https://files.pythonhosted.org/packages/09/ab/d495ebd9faaa5fade84f34dfb454f611283583fe9647e7907a3fe25574ef/qcdata-0.22.0-py3-none-any.whl", hash = "sha256:d1a3b0559dde054eac4a7e8a29729858d7deba4af7ef7fc4be9ce557bec1cf89", size = 38264, upload-time = "2026-10-21T20:39:28.43Z" },
 ]
 
 [[package]]
 name = "qcref"
-version = "0.3.0"
+version = "0.5.1"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/30/70/20977f2004f8f13747b610c2c581a112281097b8a5e6f7898479a64a864a/qcref-0.3.0.tar.gz", hash = "sha256:64abf9bc25a8685100d6f8bf08a8c633fa24bc874574273abe5fbb12b83d7813", size = 110284, upload-time = "2026-10-15T01:15:51.001Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/54/1b/44ec94975ce280561bbb09f37144e53f1f21c7e5594a706187fbdb15a933/qcref-0.5.1.tar.gz", hash = "sha256:14ccb191b4a5aea5578f108ac445c5528f68e883b4bc1f4a00c3c91ec9c9049b", size = 170457, upload-time = "2026-10-21T20:37:22.175Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/50/e2/979b4cf3fff4ad2bac23dc7d5b5f86131f4d14fded540d3965721aeee040/qcref-0.3.0-py3-none-any.whl", hash = "sha256:541805c57ce5b991fbf9694dc7c5d10c1b6f7f6e6cfa51d3f2dcdee6d11b4464", size = 85347, upload-time = "2026-10-15T01:15:49.426Z" },
+    { url = "https://files.pythonhosted.org/packages/ab/e0/86a0e2b74bf7fb70e28df859a8f696aecbd12411cc3e3a491db039a153a0/qcref-0.5.1-py3-none-any.whl", hash = "sha256:ecf7c77279c0d88db1880f23b87a45d89ee12f0ada89f334aac2285d62e486e9", size = 92953, upload-time = "2026-10-21T20:37:20.963Z" },
 ]
 
 [[package]]

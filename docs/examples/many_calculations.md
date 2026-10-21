@@ -11,18 +11,29 @@ outputs = compute([inp1, inp2, inp3])
 
 ## What runs in parallel
 
-- **Programs** (ORCA, xtb, Psi4, TeraChem, DFTB+, CREST, ...) run side by side, up to
-  `max_workers` at once: by default, one per CPU core this process may use. Each runs
-  in its own directory with its own captured output, exactly as a single calculation
-  does.
+- **Programs** (ORCA, xtb, Psi4, TeraChem, DFTB+, CREST, ...) run side by side. Each
+  runs in its own directory with its own captured output, exactly as a single
+  calculation does.
 - **Python calculations** (machine-learned potentials, tblite, geomeTRIC) take over
   the process's output streams, working directory, and environment while they run,
   so they run one at a time, after the programs.
 - A list computed from inside a Python calculation (for example in a geomeTRIC child)
   runs one input at a time.
 
-Most programs use one core per calculation unless you ask for more (ORCA's `pal`,
-Psi4's `-n`). If your inputs use several cores each, lower `max_workers` to match.
+## Cores and GPUs
+
+`max_workers` is a budget of CPU threads: by default, the cores this process may use.
+Each calculation draws the threads its codec declares from what the input asks for
+(ORCA's `pal`, Psi4's `-n`, CREST's `threads`, xtb's `parallel`), and one otherwise. So
+`pal 8` ORCA runs on a 32-core machine run four at a time, with no extra setting.
+Calculations start in input order; one that asks for more threads than the budget runs
+alone.
+
+GPU programs (TeraChem) get their own devices: each calculation runs with
+`CUDA_VISIBLE_DEVICES` set to its GPUs, as many at once as there are GPUs. The GPUs are
+those in `CUDA_VISIBLE_DEVICES` if it is set (in `environment` or the process), or else
+those `nvidia-smi` lists. If none are found, GPU calculations run one at a time without
+pinning.
 
 ## Failures
 

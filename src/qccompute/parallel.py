@@ -1,16 +1,19 @@
 """Run a list of calculations, in parallel where that is safe.
 
 Subprocess calculations isolate themselves: each child has its own output pipe,
-working directory, and environment. They run in a thread pool sized to the cores
-this process may use. Python calculations redirect the process's file descriptors,
-working directory, and environment while they run, so two can never overlap. They
-run one at a time in the calling thread, after the pool has finished, so no thread
-writes into another calculation's captured output.
+working directory, and environment. They run in a thread pool, within a budget of
+CPU threads (the cores this process may use) that each calculation draws on as its
+codec declares, and each GPU calculation gets its own devices. Python calculations
+redirect the process's file descriptors, working directory, and environment while
+they run, so two can never overlap. They run one at a time in the calling thread,
+after the pool has finished, so no thread writes into another calculation's
+captured output.
 """
 
 from __future__ import annotations
 
 import os
+import subprocess
 import threading
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -34,16 +37,105 @@ def usable_cores() -> int:
         return os.cpu_count() or 1
 
 
-def _runs_as_subprocess(input_data: InputType, codec: qccodec.Codec | None) -> bool:
-    """Whether an input encodes to a subprocess, which may run alongside others.
+def visible_gpus(environment: Mapping[str, str] | None = None) -> list[str]:
+    """Return the GPU device IDs calculations may use.
+
+    ``CUDA_VISIBLE_DEVICES`` (from ``environment``, else this process) wins when set;
+    otherwise ``nvidia-smi`` lists the NVIDIA GPUs. Returns ``[]`` when there are none
+    or they cannot be found.
+    """
+    listed = (environment or {}).get("CUDA_VISIBLE_DEVICES")
+    if listed is None:
+        listed = os.environ.get("CUDA_VISIBLE_DEVICES")
+    if listed is not None:
+        return [d.strip() for d in listed.split(",") if d.strip() and d.strip() != "-1"]
+    try:
+        result = subprocess.run(
+            ["nvidia-smi", "--query-gpu=index", "--format=csv,noheader"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=True,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return []
+    return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+
+
+def _subprocess_request(
+    input_data: InputType, codec: qccodec.Codec | None
+) -> qccodec.SubprocessInput | None:
+    """Return an input's subprocess invocation, or None if it does not run as one.
 
     Inputs that cannot be encoded run serially; computing them reports the error.
     """
     try:
         resolved = codec if codec is not None else qccodec.get_codec(input_data)
-        return isinstance(resolved.encode(input_data), qccodec.SubprocessInput)
+        request = resolved.encode(input_data)
     except Exception:  # noqa: BLE001 - the real computation reports it
-        return False
+        return None
+    return request if isinstance(request, qccodec.SubprocessInput) else None
+
+
+class _Resources:
+    """CPU threads and GPU devices, handed to calculations in input order.
+
+    Granting in order keeps a calculation that needs many threads from waiting
+    forever behind a stream of small ones. A calculation asking for more threads
+    than the budget holds runs alone; one asking for GPUs when none were found runs
+    one at a time without pinning.
+    """
+
+    def __init__(self, threads: int, gpus: list[str]) -> None:
+        self._total_threads = threads
+        self._free_threads = threads
+        self._devices = list(gpus)
+        self._free_devices = list(gpus)
+        # Without known devices, GPU calculations share one unpinned token.
+        self._free_tokens = 1
+        self._serving = 0
+        self._ready = threading.Condition()
+
+    def acquire(
+        self, turn: int, threads: int, gpus: int
+    ) -> tuple[int, list[str], bool]:
+        """Wait for this calculation's turn and resources; return what it holds."""
+        threads = max(1, min(threads, self._total_threads))
+        pinned = bool(self._devices)
+        gpus = min(gpus, len(self._devices)) if pinned else min(gpus, 1)
+        with self._ready:
+            self._ready.wait_for(
+                lambda: (
+                    self._serving == turn
+                    and self._free_threads >= threads
+                    and (
+                        len(self._free_devices) >= gpus
+                        if pinned
+                        else self._free_tokens >= gpus
+                    )
+                )
+            )
+            self._serving += 1
+            self._free_threads -= threads
+            devices: list[str] = []
+            token = False
+            if pinned:
+                devices = self._free_devices[:gpus]
+                del self._free_devices[:gpus]
+            elif gpus:
+                self._free_tokens -= 1
+                token = True
+            self._ready.notify_all()
+        return threads, devices, token
+
+    def release(self, threads: int, devices: list[str], token: bool) -> None:
+        """Return a finished calculation's resources."""
+        with self._ready:
+            self._free_threads += threads
+            self._free_devices.extend(devices)
+            if token:
+                self._free_tokens += 1
+            self._ready.notify_all()
 
 
 def compute_list(
@@ -61,7 +153,8 @@ def compute_list(
     Args:
         compute_one: Computes one input, raising on failure (``compute`` itself).
         inputs: The inputs, of any programs.
-        max_workers: Most calculations to run at once; the usable cores when None.
+        max_workers: The CPU threads calculations may use at once, the usable cores
+            when None; a calculation counts the threads its codec declares.
         raise_exc: After every calculation has run, raise ``ComputeErrors`` if any
             failed; otherwise return the failed outputs.
         update_func: Receives ``(index, all_logs, new_logs)`` for each input's
@@ -109,23 +202,44 @@ def compute_list(
                 with printing:
                     print(prefixed, end="" if prefixed.endswith("\n") else "\n")
 
+        run_options = dict(options)
+        held: tuple[int, list[str], bool] | None = None
+        request = requests.get(index)
+        if request is not None:
+            held = resources.acquire(turns[index], request.threads, request.gpus)
+            if held[1]:
+                run_options["environment"] = {
+                    **(options.get("environment") or {}),
+                    "CUDA_VISIBLE_DEVICES": ",".join(held[1]),
+                }
         try:
             outputs[index] = compute_one(
-                inputs[index], raise_exc=True, update_func=on_update, **options
+                inputs[index], raise_exc=True, update_func=on_update, **run_options
             )
         except QCComputeBaseError as error:
             error.input_index = index  # type: ignore[attr-defined]
             errors[index] = error
             outputs[index] = error.prog_output
+        finally:
+            if held is not None:
+                resources.release(*held)
 
     codec = options.get("codec")
-    if in_python_call() or workers == 1:
-        parallel: list[int] = []
-    else:
-        parallel = [
-            i for i, inp in enumerate(inputs) if _runs_as_subprocess(inp, codec)
-        ]
-    serial = [i for i in range(len(inputs)) if i not in set(parallel)]
+    requests: dict[int, qccodec.SubprocessInput] = {}
+    if not in_python_call() and len(inputs) > 1:
+        for i, inp in enumerate(inputs):
+            request = _subprocess_request(inp, codec)
+            if request is not None:
+                requests[i] = request
+    parallel = sorted(requests)
+    serial = [i for i in range(len(inputs)) if i not in requests]
+    turns = {index: turn for turn, index in enumerate(parallel)}
+    gpus = (
+        visible_gpus(options.get("environment"))
+        if any(r.gpus for r in requests.values())
+        else []
+    )
+    resources = _Resources(workers, gpus)
 
     if parallel:
         pool = ThreadPoolExecutor(max_workers=min(workers, len(parallel)))

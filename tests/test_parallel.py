@@ -260,3 +260,110 @@ def test_ctrl_c_kills_the_programs_of_a_list(make: Callable[..., ProgramInput]) 
     while runners._running and time.monotonic() - start < 10:
         time.sleep(0.05)
     assert not runners._running and time.monotonic() - start < 10
+
+
+# ------------------------------------------------------------------ resources
+
+
+def _timed(threads: int = 1, gpus: int = 0) -> Codec:
+    """A stand-in program declaring resources; prints start, end, and its GPUs."""
+
+    def encode(inp: ProgramInput) -> SubprocessInput:
+        script = (
+            "import os, time; s = time.time(); time.sleep(0.4); "
+            "print(s, time.time(), os.environ.get('CUDA_VISIBLE_DEVICES', '-'))"
+        )
+        return SubprocessInput(
+            (sys.executable, "-c", script), threads=threads, gpus=gpus
+        )
+
+    def decode(inp: ProgramInput, out: NativeOutput) -> SinglePointData:
+        start, end, devices = out.stdout.split()
+        return SinglePointData.model_validate(
+            {
+                "provenance": {"program": inp.program},
+                "energy": 0,
+                "extras": {"start": float(start), "end": float(end), "gpus": devices},
+            }
+        )
+
+    return Codec("timed", calctypes=list(CalcType), encode=encode, decode=decode)
+
+
+def _peak(outputs: list[ProgramOutput]) -> int:
+    """The most calculations that ran at the same moment."""
+    events = sorted(
+        (t, step)
+        for o in outputs
+        for t, step in ((o.results.extras["start"], 1), (o.results.extras["end"], -1))
+    )
+    running = peak = 0
+    for _, step in events:
+        running += step
+        peak = max(peak, running)
+    return peak
+
+
+def test_threads_share_the_budget(make: Callable[..., ProgramInput]) -> None:
+    """Two-thread calculations run two at a time within four slots."""
+    outputs = compute(
+        [make("timed") for _ in range(4)], codec=_timed(threads=2), max_workers=4
+    )
+    assert _peak(outputs) == 2
+
+
+def test_oversized_calculations_run_alone(make: Callable[..., ProgramInput]) -> None:
+    """A calculation asking for more threads than the budget still runs, alone."""
+    outputs = compute(
+        [make("timed") for _ in range(3)], codec=_timed(threads=8), max_workers=2
+    )
+    assert all(o.success for o in outputs) and _peak(outputs) == 1
+
+
+def test_gpu_calculations_get_their_own_devices(
+    make: Callable[..., ProgramInput], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Each GPU calculation sees one device; no two share it at once."""
+    monkeypatch.setattr("qccompute.parallel.visible_gpus", lambda env=None: ["0", "1"])
+    outputs = compute(
+        [make("timed") for _ in range(4)],
+        codec=_timed(gpus=1),
+        max_workers=8,
+        environment={"OTHER": "kept"},
+    )
+    assert _peak(outputs) == 2
+    assert {o.results.extras["gpus"] for o in outputs} == {"0", "1"}
+    for a in outputs:
+        for b in outputs:
+            overlap = (
+                a is not b
+                and a.results.extras["start"] < b.results.extras["end"]
+                and b.results.extras["start"] < a.results.extras["end"]
+            )
+            assert not overlap or a.results.extras["gpus"] != b.results.extras["gpus"]
+
+
+def test_gpu_calculations_without_known_devices_run_one_at_a_time(
+    make: Callable[..., ProgramInput], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With no GPUs found, GPU calculations are not pinned and do not overlap."""
+    monkeypatch.setattr("qccompute.parallel.visible_gpus", lambda env=None: [])
+    monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
+    outputs = compute(
+        [make("timed") for _ in range(3)], codec=_timed(gpus=1), max_workers=8
+    )
+    assert _peak(outputs) == 1
+    assert {o.results.extras["gpus"] for o in outputs} == {"-"}
+
+
+def test_visible_gpus_reads_cuda_visible_devices(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """CUDA_VISIBLE_DEVICES, from the environment argument or the process, wins."""
+    from qccompute.parallel import visible_gpus
+
+    assert visible_gpus({"CUDA_VISIBLE_DEVICES": "2, 3"}) == ["2", "3"]
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "GPU-abc")
+    assert visible_gpus() == ["GPU-abc"]
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "-1")
+    assert visible_gpus() == []

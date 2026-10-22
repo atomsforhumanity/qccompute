@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
+import os
 import pickle
 import signal
 import sys
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from typing import Any
 
 import pytest
+import qccodec
 from qccodec import Codec, NativeOutput, PythonInput, SubprocessInput
 from qcdata import CalcType, ProgramInput, ProgramOutput, SinglePointData
 
@@ -45,31 +47,56 @@ PROGRAM = Codec("program", calctypes=list(CalcType), encode=_program, decode=_de
 
 
 def _python(inp: ProgramInput) -> PythonInput:
-    """A stand-in library call that returns its value."""
-    value = inp.keywords.get("value", 0)
+    """A stand-in library call: sleeps, reports its process and GPUs, returns its value.
 
-    def invoke() -> float:
-        print(f"python {value}")
-        return float(value)
+    ``die`` ends the process mid-calculation, as a crashing native library would.
+    """
+    k = dict(inp.keywords)
 
-    return PythonInput(invoke)
+    def invoke() -> dict[str, Any]:
+        print(f"python {k.get('value', 0)}")
+        start = time.time()
+        time.sleep(k.get("sleep", 0))
+        if k.get("die"):
+            os._exit(3)
+        return {
+            "value": float(k.get("value", 0)),
+            "start": start,
+            "end": time.time(),
+            "pid": os.getpid(),
+            "gpus": os.environ.get("CUDA_VISIBLE_DEVICES", "-"),
+            "omp": os.environ.get("OMP_NUM_THREADS", "-"),
+        }
+
+    return PythonInput(
+        invoke, gpus=int(k.get("gpus", 0)), threads=int(k.get("threads", 1))
+    )
+
+
+def _python_decode(inp: ProgramInput, out: NativeOutput) -> SinglePointData:
+    value = out.value
+    return SinglePointData.model_validate(
+        {
+            "provenance": {"program": inp.program},
+            "energy": value["value"],
+            "extras": {k: value.get(k) for k in ("start", "end", "pid", "gpus", "omp")},
+        }
+    )
 
 
 PYTHON = Codec(
-    "library",
-    calctypes=list(CalcType),
-    encode=_python,
-    decode=lambda inp, out: SinglePointData.model_validate(
-        {"provenance": {"program": inp.program}, "energy": out.value}
-    ),
+    "library", calctypes=list(CalcType), encode=_python, decode=_python_decode
 )
 
 
 @pytest.fixture(autouse=True)
-def _codecs(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Resolve the stand-in codecs by program name."""
-    codecs = {"program": PROGRAM, "library": PYTHON}
-    monkeypatch.setattr("qccodec.get_codec", lambda inp: codecs[inp.program])
+def _codecs() -> Iterator[None]:
+    """Register the stand-in codecs, as users register their own."""
+    for codec in (PROGRAM, PYTHON):
+        qccodec.register(codec)
+    yield
+    for codec in (PROGRAM, PYTHON):
+        qccodec.unregister(codec.program)
 
 
 @pytest.fixture
@@ -120,28 +147,112 @@ def test_programs_run_in_parallel(make: Callable[..., ProgramInput]) -> None:
     assert parallel < 1.5 < 2.0 <= serial
 
 
-def test_python_calls_never_overlap(
+def test_python_calls_run_side_by_side_in_workers(
+    make: Callable[..., ProgramInput],
+) -> None:
+    """Python calculations of a list run in worker processes, in parallel."""
+    inputs = [make("library", value=i, sleep=0.5) for i in range(4)]
+    start = time.monotonic()
+    outputs = compute(inputs, max_workers=4)
+    assert time.monotonic() - start < 3.0  # four 0.5 s calls plus worker startup
+    assert [energy(o) for o in outputs] == [0, 1, 2, 3]
+    assert _peak(outputs) == 4
+    assert os.getpid() not in {o.results.extras["pid"] for o in outputs}
+
+
+def _unpicklable() -> Codec:
+    return Codec(
+        "local",
+        calctypes=list(CalcType),
+        encode=_python,
+        decode=lambda inp, out: _python_decode(inp, out),
+    )
+
+
+def test_unpicklable_codecs_run_in_process_one_at_a_time(
+    make: Callable[..., ProgramInput],
+) -> None:
+    """A registered codec a worker cannot receive runs here, serially."""
+    qccodec.register(_unpicklable())
+    try:
+        outputs = compute([make("local", value=i, sleep=0.2) for i in range(3)])
+    finally:
+        qccodec.unregister("local")
+    assert [energy(o) for o in outputs] == [0, 1, 2] and _peak(outputs) == 1
+    assert {o.results.extras["pid"] for o in outputs} == {os.getpid()}
+
+
+def test_worker_updates_reach_update_func(make: Callable[..., ProgramInput]) -> None:
+    """Logs of calculations in workers arrive with their index."""
+    seen: dict[int, str] = {}
+    lock = threading.Lock()
+
+    def update(index: int, all_logs: str, new_logs: str) -> None:
+        with lock:
+            seen[index] = all_logs
+
+    compute([make("library", value=7), make("library", value=8)], update_func=update)
+    assert "python 7" in seen[0] and "python 8" in seen[1]
+
+
+def test_a_dying_worker_fails_only_its_calculation(
+    make: Callable[..., ProgramInput],
+) -> None:
+    """A worker that exits mid-calculation gives a failed output, not a hang."""
+    outputs = compute(
+        [make("library", value=1), make("library", die=True), make("library", value=3)],
+        raise_exc=False,
+    )
+    assert [o.success for o in outputs] == [True, False, True]
+    assert "exited with status 3" in (outputs[1].traceback or "")
+    assert energy(outputs[2]) == 3
+
+
+def test_gpu_workers_are_pinned(
     make: Callable[..., ProgramInput], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Python calculations run one at a time, after the programs."""
-    active, peak = 0, 0
-    lock = threading.Lock()
-    original = runners.run_python
+    """Each GPU calculation runs in a worker started on its own device."""
+    monkeypatch.setattr("qccompute.parallel.visible_gpus", lambda env=None: ["0", "1"])
+    outputs = compute([make("library", sleep=0.4, gpus=1) for _ in range(4)])
+    assert _peak(outputs) == 2
+    assert {o.results.extras["gpus"] for o in outputs} == {"0", "1"}
 
-    def counting(*args: Any, **kwargs: Any) -> Any:
-        nonlocal active, peak
-        with lock:
-            active += 1
-            peak = max(peak, active)
-        try:
-            return original(*args, **kwargs)
-        finally:
-            with lock:
-                active -= 1
 
-    monkeypatch.setattr("qccompute.main.run_python", counting)
-    outputs = compute([make("library", value=i) for i in range(6)], max_workers=6)
-    assert [energy(o) for o in outputs] == list(range(6)) and peak == 1
+def _nested(inp: ProgramInput) -> PythonInput:
+    """A library call that computes a list of programs itself."""
+
+    def invoke() -> dict[str, Any]:
+        nested = [
+            inp.model_copy(update={"program": "program", "keywords": {"value": v}})
+            for v in (1, 2)
+        ]
+        outputs = compute(nested, codec=PROGRAM)
+        value = sum(energy(o) or 0 for o in outputs)
+        now = time.time()
+        return {
+            "value": value,
+            "start": now,
+            "end": now,
+            "pid": os.getpid(),
+            "gpus": "-",
+        }
+
+    return PythonInput(invoke)
+
+
+NESTED = Codec(
+    "nested", calctypes=list(CalcType), encode=_nested, decode=_python_decode
+)
+
+
+def test_lists_inside_workers_run_serially(make: Callable[..., ProgramInput]) -> None:
+    """A list computed by a calculation in a worker does not start workers itself."""
+    qccodec.register(NESTED)
+    try:
+        outputs = compute([make("nested"), make("nested")])
+    finally:
+        qccodec.unregister("nested")
+    assert [energy(o) for o in outputs] == [3, 3]
 
 
 def test_failures_are_raised_together_after_everything_ran(
@@ -367,3 +478,43 @@ def test_visible_gpus_reads_cuda_visible_devices(
     assert visible_gpus() == ["GPU-abc"]
     monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "-1")
     assert visible_gpus() == []
+
+
+def _workers_running() -> list[int]:
+    """Worker processes started by this process that still run."""
+    from qccompute.workers import running_workers
+
+    return running_workers()
+
+
+@pytest.mark.skipif(not hasattr(signal, "setitimer"), reason="needs POSIX timers")
+def test_ctrl_c_stops_the_workers(make: Callable[..., ProgramInput]) -> None:
+    """KeyboardInterrupt while workers compute leaves no worker processes behind."""
+
+    def interrupt(signum: int, frame: Any) -> None:
+        raise KeyboardInterrupt
+
+    previous = signal.signal(signal.SIGALRM, interrupt)
+    signal.setitimer(signal.ITIMER_REAL, 2.0)
+    start = time.monotonic()
+    try:
+        with pytest.raises(KeyboardInterrupt):
+            compute([make("library", sleep=30) for _ in range(3)])
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous)
+    while _workers_running() and time.monotonic() - start < 15:
+        time.sleep(0.1)
+    assert not _workers_running() and time.monotonic() - start < 15
+
+
+def test_workers_limit_numerical_library_threads(
+    make: Callable[..., ProgramInput], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Workers start with BLAS/OpenMP threads set to what their task was granted."""
+    monkeypatch.delenv("OMP_NUM_THREADS", raising=False)
+    outputs = compute([make("library", threads=2) for _ in range(2)], max_workers=4)
+    assert {o.results.extras["omp"] for o in outputs} == {"2"}
+    monkeypatch.setenv("OMP_NUM_THREADS", "5")  # the caller's own setting wins
+    outputs = compute([make("library") for _ in range(2)], max_workers=4)
+    assert {o.results.extras["omp"] for o in outputs} == {"5"}

@@ -118,10 +118,11 @@ def compute(
     A single input returns a single ``ProgramOutput``. A list (or tuple) returns a
     list of outputs in input order; its inputs may be for different programs, and
     every other argument applies to each of them. Calculations that run as programs
-    (ORCA, xtb, Psi4, ...) run side by side, up to ``max_workers`` at once.
-    Calculations that run in Python (machine-learned potentials, geomeTRIC, tblite)
-    take over the process's output streams while they run, so they run one at a
-    time, after the programs.
+    (ORCA, xtb, Psi4, ...) run side by side in threads. Calculations that run in
+    Python (machine-learned potentials, geomeTRIC, tblite) take over a process's
+    output streams while they run, so two or more of them run side by side in worker
+    processes, which start with the numerical libraries' thread counts set to their
+    share. All of them draw on the ``max_workers`` budget.
 
     Args:
         input_data: A qcdata input object, such as ProgramInput or FileInput, or a

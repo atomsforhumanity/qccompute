@@ -127,7 +127,7 @@ prog_output = compute_args(
 
 ### Many calculations at once
 
-Pass a list of inputs to get a list of outputs, in the same order. Calculations that run as programs (ORCA, xtb, Psi4, TeraChem, ...) run side by side within the machine's cores, counting the threads each one asks for (ORCA `pal`, Psi4 `-n`, ...), and GPU calculations each get their own GPU; calculations that run in Python run one at a time. The inputs may be for different programs.
+Pass a list of inputs to get a list of outputs, in the same order. Calculations that run as programs (ORCA, xtb, Psi4, TeraChem, ...) run side by side within the machine's cores, counting the threads each one asks for (ORCA `pal`, Psi4 `-n`, ...), and GPU calculations each get their own GPU. Calculations that run in Python (machine-learned potentials, geomeTRIC, tblite) run side by side in worker processes; no `if __name__ == "__main__":` guard is needed. The inputs may be for different programs.
 
 ```python
 from qccompute import compute

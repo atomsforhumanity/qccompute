@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [unreleased]
 
+### Added
+
+- Python calculations in a list (geomeTRIC optimizations, machine-learned potentials, tblite) run side by side in worker processes, drawing on the same `max_workers` budget as programs. Workers start with `python -m qccompute._worker`, never re-importing the caller's script, so flat scripts need no `__main__` guard. Each starts with `OMP_NUM_THREADS`, `OPENBLAS_NUM_THREADS`, `MKL_NUM_THREADS`, `VECLIB_MAXIMUM_THREADS`, and `NUMEXPR_NUM_THREADS` set to its granted threads (unless already set) and, for GPU calculations, its own `CUDA_VISIBLE_DEVICES`. Progress updates reach `update_func`; a worker that dies fails only its calculation; Ctrl-C stops the workers and the programs they started. Codecs that exist only in the caller's process are sent pickled; ones that cannot be pickled, single Python inputs, `max_workers=1`, and lists inside a calculation run in-process, one at a time. Four geomeTRIC optimizations of a six-water cluster with xtb gradients took 7.3 s instead of 49.7 s.
+
 ## [0.19.0] - 2026-10-21
 
 ### Added

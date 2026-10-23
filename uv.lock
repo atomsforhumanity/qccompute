@@ -1447,7 +1447,7 @@ wheels = [
 
 [[package]]
 name = "qccodec"
-version = "0.17.0"
+version = "0.19.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "packaging" },
@@ -1455,9 +1455,9 @@ dependencies = [
     { name = "qcref" },
     { name = "tomli-w" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/3c/e4/6b2041b802dd83b5afb48c680f7c5d06895a7bf8435d02d7595892384780/qccodec-0.17.0.tar.gz", hash = "sha256:672a40750b59ee1c348ca514791d73775f71cac24dad1036558d2b0f84ff2f4b", size = 967137, upload-time = "2026-10-21T20:54:26.12Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/62/88/4e4f343d2040d6aeeb88a2982053d0f21b283ce8dbbf790900ede8741669/qccodec-0.19.0.tar.gz", hash = "sha256:b33cba330001e39c7488d0740d3b9181e275ff9432b88db5ce5f7611b5cb3e9e", size = 974591, upload-time = "2026-10-23T16:41:49.321Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/9f/10/983dad110a7bd975434720ee4960c97506fb615f0534552f3705a361fdf6/qccodec-0.17.0-py3-none-any.whl", hash = "sha256:1e12269cc91e48dbcc4c3fc0f77271975c229c9fa6908e91230ee1d074412396", size = 92450, upload-time = "2026-10-21T20:54:24.786Z" },
+    { url = "https://files.pythonhosted.org/packages/ab/01/500c357139b7bb27b7c2d44b2058cab95479df836aec543ce402427c599b/qccodec-0.19.0-py3-none-any.whl", hash = "sha256:e77e5054daf29f6326ea4a04c62c1d75a3510d81e03e29f7f6bbd517f94a693e", size = 98140, upload-time = "2026-10-23T16:41:47.693Z" },
 ]
 
 [package.optional-dependencies]
@@ -1515,10 +1515,10 @@ docs = [
 
 [package.metadata]
 requires-dist = [
-    { name = "qccodec", specifier = ">=0.17.0" },
-    { name = "qccodec", extras = ["geometric"], marker = "extra == 'geometric'", specifier = ">=0.17.0" },
-    { name = "qccodec", extras = ["geometric", "tcpb"], marker = "extra == 'all'", specifier = ">=0.17.0" },
-    { name = "qccodec", extras = ["tcpb"], marker = "extra == 'tcpb'", specifier = ">=0.17.0" },
+    { name = "qccodec", specifier = ">=0.19.0" },
+    { name = "qccodec", extras = ["geometric"], marker = "extra == 'geometric'", specifier = ">=0.19.0" },
+    { name = "qccodec", extras = ["geometric", "tcpb"], marker = "extra == 'all'", specifier = ">=0.19.0" },
+    { name = "qccodec", extras = ["tcpb"], marker = "extra == 'tcpb'", specifier = ">=0.19.0" },
     { name = "qcdata", specifier = ">=0.20.0" },
 ]
 provides-extras = ["geometric", "tcpb", "all"]

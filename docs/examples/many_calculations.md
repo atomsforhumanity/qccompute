@@ -22,6 +22,9 @@ outputs = compute([inp1, inp2, inp3])
   `OPENBLAS_NUM_THREADS`, and `MKL_NUM_THREADS` set to its share of the cores (unless
   you set them), so the workers' numerical libraries do not each start a thread per
   core. A worker that needs a GPU is started on its own device.
+- **Machine-learned potentials** (AIMNet2, TorchANI, MACE, Orb, FAIR-Chem) evaluate
+  many structures in one pass. Inputs their codec can batch run together in this
+  process; see [Batches](#batches).
 - Python calculations whose codec exists only in your process and cannot be pickled
   (for example one built with lambdas and registered with `qccodec.register`), single
   Python inputs, and lists computed inside a calculation run in this process, one at a
@@ -41,6 +44,42 @@ GPU programs (TeraChem) get their own devices: each calculation runs with
 those in `CUDA_VISIBLE_DEVICES` if it is set (in `environment` or the process), or else
 those `nvidia-smi` lists. If none are found, GPU calculations run one at a time without
 pinning.
+
+## Batches
+
+A codec that can batch (`Codec(encode_batch=..., batch_key=...)`, qccodec 0.19.0)
+says which inputs may share a pass: for the machine-learned potentials, energy and
+gradient inputs with the same program, model, and keywords. Such inputs in a list are
+evaluated in batches of up to `codec.max_batch` (32 by default), each one call of the
+model, and each value is decoded as if its input had run alone.
+
+```python
+from qcdata import ProgramInput
+
+inputs = [
+    ProgramInput(
+        structure=s, calctype="gradient", model={"method": "aimnet2"}, program="aimnet2"
+    )
+    for s in structures
+]
+outputs = compute(inputs)  # one model call for up to 32 structures
+```
+
+On a laptop GPU (RTX 3050 Ti), 40 water gradients took 0.41 s one at a time and
+0.05 s as a list with AIMNet2, 0.58 s and 0.04 s with TorchANI, and 1.22 s and
+0.24 s with MACE.
+
+- Batches run in this process, after the programs of the list, so a loaded model stays
+  cached for the next `compute` call, as in iterative methods such as NEB.
+- Each output's `execution.extras` records `batch_size` and `batch_index`; its
+  `wall_time` and `logs` are the batch's.
+- A batch that runs out of GPU memory is split in half until it fits. A batch that
+  fails otherwise is computed again one input at a time, so each failure is reported
+  with its own input. A value that fails to decode fails only its input.
+- Hessians, inputs whose key is unique, and lists with `collect_files` or
+  `collect_wfn` (a batch shares one directory) run as usual.
+- Results match single calculations to the model's precision; models computing in
+  float32 or TF32 on a GPU (Orb's default `float32-high`) differ in the last digits.
 
 ## Failures
 

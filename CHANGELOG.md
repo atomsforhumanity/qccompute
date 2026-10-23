@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [unreleased]
 
+## [0.21.0] - 2026-10-23
+
 ### Added
 
 - Lists batch inputs whose codec can evaluate them together (qccodec 0.19.0: AIMNet2, TorchANI, MACE, Orb, and FAIR-Chem energies and gradients sharing a model and keywords). Each batch of up to `codec.max_batch` inputs is one call in the calling process, after the list's programs, so loaded models stay cached between `compute` calls; each value is decoded as if its input had run alone, and `execution.extras` records `batch_size` and `batch_index`. A batch that runs out of memory is halved until it fits; one that fails otherwise is recomputed one input at a time. Lists with `collect_files` or `collect_wfn` do not batch. 40 AIMNet2 gradients on a laptop GPU took 0.05 s instead of 0.41 s.
@@ -551,7 +553,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Created adapter for TeraChem.
 - Exposed general purpose computing for any subprocess with `FileAdaptor`
 
-[unreleased]: https://github.com/atomsforhumanity/qccompute/compare/0.20.0...HEAD
+[unreleased]: https://github.com/atomsforhumanity/qccompute/compare/0.21.0...HEAD
+[0.21.0]: https://github.com/atomsforhumanity/qccompute/releases/tag/0.21.0
 [0.20.0]: https://github.com/atomsforhumanity/qccompute/releases/tag/0.20.0
 [0.19.0]: https://github.com/atomsforhumanity/qccompute/releases/tag/0.19.0
 [0.18.0]: https://github.com/atomsforhumanity/qccompute/releases/tag/0.18.0

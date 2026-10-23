@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [unreleased]
 
+## [0.22.0] - 2026-10-23
+
 ### Changed
 
 - Requires qcdata 0.23.1 and qccodec 0.21.0: optimization results hold `frames` (each step's `structure` and `results`) instead of per-step `ProgramOutput`s, `ProgramInput.structure` is optional for chain calculations (`path_optimization` takes `structures["initial_chain"]`), and the Sella codec runs IRCs. `compute_args` accepts `structure=None` and list-valued `structures`. Examples use `inp.require_structure()`.
@@ -557,7 +559,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Created adapter for TeraChem.
 - Exposed general purpose computing for any subprocess with `FileAdaptor`
 
-[unreleased]: https://github.com/atomsforhumanity/qccompute/compare/0.21.0...HEAD
+[unreleased]: https://github.com/atomsforhumanity/qccompute/compare/0.22.0...HEAD
+[0.22.0]: https://github.com/atomsforhumanity/qccompute/releases/tag/0.22.0
 [0.21.0]: https://github.com/atomsforhumanity/qccompute/releases/tag/0.21.0
 [0.20.0]: https://github.com/atomsforhumanity/qccompute/releases/tag/0.20.0
 [0.19.0]: https://github.com/atomsforhumanity/qccompute/releases/tag/0.19.0

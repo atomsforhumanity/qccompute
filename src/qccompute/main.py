@@ -43,7 +43,7 @@ from .execution import (
     stage_files,
     workspace,
 )
-from .parallel import compute_list
+from .parallel import BatchError, compute_list
 from .runners import run_python, run_subprocess
 
 
@@ -119,10 +119,13 @@ def compute(
     list of outputs in input order; its inputs may be for different programs, and
     every other argument applies to each of them. Calculations that run as programs
     (ORCA, xtb, Psi4, ...) run side by side in threads. Calculations that run in
-    Python (machine-learned potentials, geomeTRIC, tblite) take over a process's
-    output streams while they run, so two or more of them run side by side in worker
-    processes, which start with the numerical libraries' thread counts set to their
-    share. All of them draw on the ``max_workers`` budget.
+    Python (geomeTRIC, tblite) take over a process's output streams while they run,
+    so two or more of them run side by side in worker processes, which start with the
+    numerical libraries' thread counts set to their share. All of them draw on the
+    ``max_workers`` budget. Inputs a codec can evaluate together (machine-learned
+    potentials sharing a model) run in batches in this process, one call per batch
+    of up to ``codec.max_batch``; ``execution.extras`` records ``batch_size`` and
+    ``batch_index``.
 
     Args:
         input_data: A qcdata input object, such as ProgramInput or FileInput, or a
@@ -220,6 +223,7 @@ def compute(
         return compute_list(
             _compute_one,
             input_data,
+            compute_batch=_compute_batch,
             max_workers=max_workers,
             raise_exc=raise_exc,
             update_func=update_func,
@@ -421,16 +425,109 @@ def _compute_one(
         input_data, result, logs, execution, failures, collect_logs=collect_logs
     )
     if failures and raise_exc:
-        primary = failures[0][0]
-        error = _calculation_error(primary, input_data.program)
-        error.prog_output = output
-        error.data = output.results
-        if hasattr(error, "logs"):
-            error.logs = output.logs
-        if error is primary:
-            raise error
-        raise error from primary
+        raise _output_error(output, failures)
     return output
+
+
+def _output_error(
+    output: ProgramOutput[InputType, Data], failures: list[tuple[Exception, str]]
+) -> QCComputeBaseError:
+    """Return the exception for a failed output, caused by its primary failure."""
+    primary = failures[0][0]
+    error = _calculation_error(primary, output.input_data.program)
+    error.prog_output = output
+    error.data = output.results
+    if hasattr(error, "logs"):
+        error.logs = output.logs
+    if error is not primary:
+        error.__cause__ = primary
+    return error
+
+
+def _compute_batch(
+    inputs: Sequence[ProgramInput],
+    codec: qccodec.Codec,
+    update_funcs: Sequence[Callable[[str, str], None] | None],
+    *,
+    environment: Mapping[str, str] | None = None,
+    rm_scratch_dir: bool = True,
+    collect_logs: bool = True,
+    options: Mapping[str, Any] | None = None,
+    **_: Any,
+) -> list[tuple[ProgramOutput[ProgramInput, Data], QCComputeBaseError | None]]:
+    """Compute inputs sharing a batch key in one call of the codec's batch function.
+
+    Each value the call returns is decoded on its own, as if its input had run
+    alone. Every output keeps the batch's logs and wall time, its directory, and
+    ``execution.extras`` ``batch_size`` and ``batch_index``.
+
+    Args:
+        inputs: Inputs sharing one ``codec.batch_key``, at most ``codec.max_batch``.
+        codec: The codec batching them.
+        update_funcs: Each input's log callback, given the batch's logs afterward.
+        environment: Environment overrides for the call.
+        rm_scratch_dir: Delete the shared directory afterward.
+        collect_logs: Retain the logs on successful outputs.
+        options: The codec's decode options.
+
+    Returns:
+        Each input's output and, if it failed, its exception.
+
+    Raises:
+        BatchError: The batch could not be encoded, the call failed, or it returned
+            the wrong number of values; nothing was decoded.
+    """
+    start = monotonic()
+    try:
+        request = codec.encode_batch(inputs)
+    except Exception as exc:
+        raise BatchError(f"The batch could not be encoded: {exc}") from exc
+    decoded: list[tuple[Data, list[tuple[Exception, str]]]] = []
+    with workspace(None, rm_scratch_dir) as directory:
+        stage_files(directory, request.files)
+        native = run_python(request, directory, environment=environment)
+        if native.error is not None:
+            # torch.OutOfMemoryError and torch.cuda.OutOfMemoryError
+            raise BatchError(
+                f"The batch failed: {native.error!r}",
+                out_of_memory="OutOfMemory" in type(native.error).__name__,
+            ) from native.error
+        values = native.value
+        if not isinstance(values, Sequence) or len(values) != len(inputs):
+            raise BatchError(
+                f"The batch function must return {len(inputs)} values, one per input."
+            )
+        for inp, value in zip(inputs, values, strict=True):
+            failures: list[tuple[Exception, str]] = []
+            result = empty_results(inp)
+            try:
+                result = codec.decode(
+                    inp,
+                    qccodec.PythonOutput(
+                        value=value, stdout=native.stdout, directory=directory
+                    ),
+                    options,
+                )
+            except Exception as exc:
+                recovered = getattr(exc, "data", None)
+                if isinstance(recovered, type(result)):
+                    result = recovered
+                failures.append((exc, "".join(traceback.format_exception(exc))))
+            decoded.append((result, failures))
+    wall_time = monotonic() - start
+    outputs = []
+    for index, (inp, (result, failures), update) in enumerate(
+        zip(inputs, decoded, update_funcs, strict=True)
+    ):
+        if update is not None and native.stdout:
+            update(native.stdout, native.stdout)
+        execution = construct_execution(directory, wall_time)
+        execution.extras.update(batch_size=len(inputs), batch_index=index)
+        output = _finalize_output(
+            inp, result, native.stdout, execution, failures, collect_logs=collect_logs
+        )
+        outputs.append((output, _output_error(output, failures) if failures else None))
+    return outputs
 
 
 def _compute_child(

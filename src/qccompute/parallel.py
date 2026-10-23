@@ -9,6 +9,9 @@ they run, so two can never overlap. They run one at a time in the calling thread
 after the pool has finished, so no thread writes into another calculation's
 captured output. With two or more of them in a list, they run side by side in
 worker processes instead (``qccompute.workers``), drawing on the same budget.
+Inputs whose codec can evaluate them together, such as machine-learned potentials
+sharing a model, run in batches in the calling thread after the pool, so a loaded
+model stays cached for the next call.
 """
 
 from __future__ import annotations
@@ -17,7 +20,7 @@ import os
 import pickle
 import subprocess
 import threading
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Hashable, Mapping, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
 from typing import Any
 
@@ -34,7 +37,23 @@ from .runners import in_python_call, kill_running
 from .workers import WorkerDied, WorkerPool, supported
 
 ComputeOne = Callable[..., ProgramOutput[InputType, Data]]
+ComputeBatch = Callable[
+    ..., list[tuple[ProgramOutput[Any, Data], QCComputeBaseError | None]]
+]
 ListUpdate = Callable[[int, str, str], None]
+
+
+class BatchError(Exception):
+    """A batch did not run; its inputs should be computed one at a time.
+
+    Attributes:
+        out_of_memory: The device ran out of memory, so smaller batches may fit.
+    """
+
+    def __init__(self, message: str, out_of_memory: bool = False) -> None:
+        """Record why the batch failed."""
+        super().__init__(message)
+        self.out_of_memory: bool = out_of_memory
 
 
 def usable_cores() -> int:
@@ -131,6 +150,40 @@ def _died_output(
     return output, error
 
 
+def _batches(
+    inputs: Sequence[InputType], indices: list[int], codec: qccodec.Codec | None
+) -> list[tuple[qccodec.Codec, list[int]]]:
+    """Group inputs whose codec can batch them, in batches of at most ``max_batch``.
+
+    Inputs batch together when they share a codec and a batch key. Groups of one
+    are left out: they run as usual.
+    """
+    groups: dict[tuple[int, Hashable], list[int]] = {}
+    codecs: dict[int, qccodec.Codec] = {}
+    for i in indices:
+        try:
+            resolved = codec if codec is not None else qccodec.get_codec(inputs[i])
+            key = resolved.batch_key(inputs[i])
+        except Exception:  # noqa: BLE001 - such inputs run alone
+            continue
+        if key is not None:
+            codecs[id(resolved)] = resolved
+            groups.setdefault((id(resolved), key), []).append(i)
+    batches: list[tuple[qccodec.Codec, list[int]]] = []
+    for (codec_id, _), members in groups.items():
+        if len(members) < 2:
+            continue
+        size = codecs[codec_id].max_batch
+        # Chunks of near-equal size rather than a full batch and a small remainder.
+        count = -(-len(members) // size)
+        step = -(-len(members) // count)
+        batches.extend(
+            (codecs[codec_id], members[s : s + step])
+            for s in range(0, len(members), step)
+        )
+    return batches
+
+
 class _Resources:
     """CPU threads and GPU devices, handed to calculations in input order.
 
@@ -196,6 +249,7 @@ def compute_list(
     compute_one: ComputeOne,
     inputs: Sequence[InputType],
     *,
+    compute_batch: ComputeBatch | None = None,
     max_workers: int | None,
     raise_exc: bool,
     update_func: ListUpdate | None,
@@ -206,6 +260,8 @@ def compute_list(
 
     Args:
         compute_one: Computes one input, raising on failure (``compute`` itself).
+        compute_batch: Computes inputs sharing a codec batch key in one call,
+            returning each output and its error, or raising ``BatchError``.
         inputs: The inputs, of any programs.
         max_workers: The CPU threads calculations may use at once, the usable cores
             when None; a calculation counts the threads its codec declares.
@@ -239,8 +295,11 @@ def compute_list(
     errors: dict[int, QCComputeBaseError] = {}
     printing = threading.Lock()
 
-    def run(index: int) -> None:
-        """Compute one input, keeping its output and any error by position."""
+    def updater(index: int, label: str = "") -> Callable[[str, str], None] | None:
+        """Return the log callback for one input, or None.
+
+        ``label`` replaces the index in printed prefixes.
+        """
         on_update: Callable[[str, str], None] | None = None
         if update_func is not None:
 
@@ -251,11 +310,17 @@ def compute_list(
 
             def on_update(all_logs: str, new_logs: str) -> None:
                 prefixed = "".join(
-                    f"[{index}] {line}" for line in new_logs.splitlines(keepends=True)
+                    f"[{label or index}] {line}"
+                    for line in new_logs.splitlines(keepends=True)
                 )
                 with printing:
                     print(prefixed, end="" if prefixed.endswith("\n") else "\n")
 
+        return on_update
+
+    def run(index: int) -> None:
+        """Compute one input, keeping its output and any error by position."""
+        on_update = updater(index)
         run_options = dict(options)
         held: tuple[int, list[str], bool] | None = None
         request = requests.get(index)
@@ -283,6 +348,46 @@ def compute_list(
         finally:
             if held is not None:
                 resources.release(*held)
+
+    def run_batch(batch_codec: qccodec.Codec, indices: list[int]) -> None:
+        """Compute inputs as one batch, halving it when it runs out of memory.
+
+        A batch that fails otherwise is computed one input at a time, so each
+        failure is reported with its own input.
+        """
+        if len(indices) == 1 or compute_batch is None:
+            for index in indices:
+                run(index)
+            return
+        try:
+            results = compute_batch(
+                [inputs[i] for i in indices],
+                batch_codec,
+                # A batch prints its shared log once, prefixed with every index.
+                [updater(i) for i in indices]
+                if update_func is not None
+                else [updater(indices[0], ",".join(map(str, indices)))]
+                + [None] * (len(indices) - 1),
+                **{k: v for k, v in options.items() if k != "codec"},
+            )
+        except BatchError as exc:
+            if exc.out_of_memory:
+                half = len(indices) // 2
+                run_batch(batch_codec, indices[:half])
+                run_batch(batch_codec, indices[half:])
+                return
+            for index in indices:
+                run(index)
+            return
+        except Exception:  # noqa: BLE001 - computing alone reports the real error
+            for index in indices:
+                run(index)
+            return
+        for index, (output, error) in zip(indices, results, strict=True):
+            outputs[index] = output
+            if error is not None:
+                error.input_index = index  # type: ignore[attr-defined]
+                errors[index] = error
 
     def _compute_in_worker(
         index: int,
@@ -316,6 +421,7 @@ def compute_list(
     codec = options.get("codec")
     requests: dict[int, qccodec.NativeInput] = {}
     worker_codecs: dict[int, bytes | None] = {}
+    batches: list[tuple[qccodec.Codec, list[int]]] = []
     if not in_python_call() and not _in_worker() and len(inputs) > 1:
         python: dict[int, qccodec.NativeInput] = {}
         for i, inp in enumerate(inputs):
@@ -324,6 +430,14 @@ def compute_list(
                 requests[i] = request
             elif isinstance(request, qccodec.PythonInput):
                 python[i] = request
+        if compute_batch is not None and not any(
+            options.get(name)
+            for name in ("collect_files", "collect_wfn", "propagate_wfn")
+        ):
+            batches = _batches(inputs, sorted(python), codec)
+            for _, indices in batches:
+                for i in indices:
+                    del python[i]
         # Starting a worker costs about a second; it pays only with company.
         if supported() and len(python) > 1 and workers > 1:
             for i, request in python.items():
@@ -333,7 +447,8 @@ def compute_list(
                     worker_codecs[i] = payload
     pool = WorkerPool() if worker_codecs else None
     parallel = sorted(requests)
-    serial = [i for i in range(len(inputs)) if i not in requests]
+    batched = {i for _, indices in batches for i in indices}
+    serial = [i for i in range(len(inputs)) if i not in requests and i not in batched]
     turns = {index: turn for turn, index in enumerate(parallel)}
     gpus = (
         visible_gpus(options.get("environment"))
@@ -360,6 +475,9 @@ def compute_list(
         threads.shutdown()
         if pool is not None:
             pool.close()
+    # Batches run here, where loaded models stay cached for the next call.
+    for batch_codec, indices in batches:
+        run_batch(batch_codec, indices)
     for index in serial:
         run(index)
 

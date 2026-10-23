@@ -98,7 +98,9 @@ def test_script_codec_end_to_end(
         assert inp.model is not None
         return SubprocessInput(
             (sys.executable, "-c", "print('Total energy: -2.5')"),
-            files={"run.inp": f"{inp.model.method}\n{inp.structure.to_xyz()}"},
+            files={
+                "run.inp": f"{inp.model.method}\n{inp.require_structure().to_xyz()}"
+            },
         )
 
     @codec.parser(target="energy", calctypes=[CalcType.energy])
@@ -290,7 +292,7 @@ def test_file_input_and_compute_args(
     source = prog_input_factory("energy")
     compute_args(
         "test",
-        source.structure,
+        source.require_structure(),
         calctype="energy",
         model=source.model,
         environment={"X": "1"},

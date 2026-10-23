@@ -1447,7 +1447,7 @@ wheels = [
 
 [[package]]
 name = "qccodec"
-version = "0.19.0"
+version = "0.21.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "packaging" },
@@ -1455,9 +1455,9 @@ dependencies = [
     { name = "qcref" },
     { name = "tomli-w" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/62/88/4e4f343d2040d6aeeb88a2982053d0f21b283ce8dbbf790900ede8741669/qccodec-0.19.0.tar.gz", hash = "sha256:b33cba330001e39c7488d0740d3b9181e275ff9432b88db5ce5f7611b5cb3e9e", size = 974591, upload-time = "2026-10-23T16:41:49.321Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b1/79/3979596f22aad093fb44f2a5d92015755ae00258c52ca42f0c67c6b3e9a8/qccodec-0.21.0.tar.gz", hash = "sha256:8b9d2c093727c278d8705f923f58e1cc872b362dc16433a9c4577ee9f1e0eae1", size = 1050977, upload-time = "2026-10-23T23:38:31.111Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ab/01/500c357139b7bb27b7c2d44b2058cab95479df836aec543ce402427c599b/qccodec-0.19.0-py3-none-any.whl", hash = "sha256:e77e5054daf29f6326ea4a04c62c1d75a3510d81e03e29f7f6bbd517f94a693e", size = 98140, upload-time = "2026-10-23T16:41:47.693Z" },
+    { url = "https://files.pythonhosted.org/packages/35/07/fdd33a933adb67d3901d27815cd014a33189818f5cdd68823cdeab197a8d/qccodec-0.21.0-py3-none-any.whl", hash = "sha256:5855355b227d7c23a6707f9548c2a5f492a05b9d1ba44087a04829ce7365af50", size = 107285, upload-time = "2026-10-23T23:38:29.287Z" },
 ]
 
 [package.optional-dependencies]
@@ -1515,11 +1515,11 @@ docs = [
 
 [package.metadata]
 requires-dist = [
-    { name = "qccodec", specifier = ">=0.19.0" },
-    { name = "qccodec", extras = ["geometric"], marker = "extra == 'geometric'", specifier = ">=0.19.0" },
-    { name = "qccodec", extras = ["geometric", "tcpb"], marker = "extra == 'all'", specifier = ">=0.19.0" },
-    { name = "qccodec", extras = ["tcpb"], marker = "extra == 'tcpb'", specifier = ">=0.19.0" },
-    { name = "qcdata", specifier = ">=0.20.0" },
+    { name = "qccodec", specifier = ">=0.21.0" },
+    { name = "qccodec", extras = ["geometric"], marker = "extra == 'geometric'", specifier = ">=0.21.0" },
+    { name = "qccodec", extras = ["geometric", "tcpb"], marker = "extra == 'all'", specifier = ">=0.21.0" },
+    { name = "qccodec", extras = ["tcpb"], marker = "extra == 'tcpb'", specifier = ">=0.21.0" },
+    { name = "qcdata", specifier = ">=0.23.1" },
 ]
 provides-extras = ["geometric", "tcpb", "all"]
 
@@ -1558,7 +1558,7 @@ wheels = [
 
 [[package]]
 name = "qcdata"
-version = "0.22.0"
+version = "0.23.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "eval-type-backport" },
@@ -1570,9 +1570,9 @@ dependencies = [
     { name = "toml" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/16/b8/717bb2db74747da58e7a8717e76b3cd5d8dc4330483bb60f5a1088b8deb6/qcdata-0.22.0.tar.gz", hash = "sha256:062295eff164ce6fa70d43fcb0a2f78b3c834480084d6a306491a85bf9689eed", size = 1554805, upload-time = "2026-10-21T20:39:30.026Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/5a/d0/947388015ae757f33aff116e2511edef22934400db6e032ee1dd27026afc/qcdata-0.23.1.tar.gz", hash = "sha256:d61dac914f165101de742a1893ba674f4efd3d531de26aed7955097edc02e45b", size = 1459708, upload-time = "2026-10-23T23:22:46.245Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/09/ab/d495ebd9faaa5fade84f34dfb454f611283583fe9647e7907a3fe25574ef/qcdata-0.22.0-py3-none-any.whl", hash = "sha256:d1a3b0559dde054eac4a7e8a29729858d7deba4af7ef7fc4be9ce557bec1cf89", size = 38264, upload-time = "2026-10-21T20:39:28.43Z" },
+    { url = "https://files.pythonhosted.org/packages/77/f5/2a03f0fd2cb18ecd92b007b4ff4eacc978ba66e130e4b3646ea4a414a9cc/qcdata-0.23.1-py3-none-any.whl", hash = "sha256:c7cefc0129e28289bc17e9373835aca52dd273ec3b1bc05b2518fc918384f3bc", size = 42719, upload-time = "2026-10-23T23:22:44.646Z" },
 ]
 
 [[package]]

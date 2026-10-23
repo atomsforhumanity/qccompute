@@ -7,8 +7,8 @@ requires-python = ">=3.11"
 readme = "README.md"
 license = { file = "LICENSE" }
 dependencies = [
-    "qccodec>=0.19.0",
-    "qcdata>=0.20.0",
+    "qccodec>=0.21.0",
+    "qcdata>=0.23.1",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -26,9 +26,9 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
-geometric = ["qccodec[geometric]>=0.19.0"]
-tcpb = ["qccodec[tcpb]>=0.19.0"]
-all = ["qccodec[geometric,tcpb]>=0.19.0"]
+geometric = ["qccodec[geometric]>=0.21.0"]
+tcpb = ["qccodec[tcpb]>=0.21.0"]
+all = ["qccodec[geometric,tcpb]>=0.21.0"]
 
 [project.urls]
 Homepage = "https://github.com/atomsforhumanity/qccompute"

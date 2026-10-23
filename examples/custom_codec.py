@@ -19,7 +19,7 @@ codec = Codec("myprog", calctypes={CalcType.energy})
 def encode(inp: ProgramInput) -> SubprocessInput:
     """Write the program's input file and build its command line."""
     assert inp.model is not None
-    run_inp = f"method {inp.model.method}\n{inp.structure.to_xyz()}"
+    run_inp = f"method {inp.model.method}\n{inp.require_structure().to_xyz()}"
     # Stand-in for ("myprog", "run.inp")
     command = (sys.executable, "-c", "print('Total energy: -1.5')")
     return SubprocessInput(command, files={"run.inp": run_inp})

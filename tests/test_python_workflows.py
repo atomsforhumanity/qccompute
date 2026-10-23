@@ -75,17 +75,17 @@ def test_geometric_with_analytic_child(tmp_path: Path, fail_child: bool) -> None
         qccodec.unregister("analytic")
     assert inp == before
     assert isinstance(output.results, OptimizationData)
-    assert output.results.trajectory
+    assert output.results.frames
     assert output.success is not fail_child, output.traceback
     if fail_child:
-        assert not output.results.trajectory[-1].success
-        assert output.results.trajectory[-1].traceback is not None
-        assert "intentional child failure" in output.results.trajectory[-1].traceback
+        assert not output.results.frames[-1].success
+        assert output.results.frames[-1].traceback is not None
+        assert "intentional child failure" in output.results.frames[-1].traceback
     else:
         assert output.results.final_energy is not None
         assert output.results.final_energy < 1e-08
     assert output.execution.scratch_dir is not None
     assert not output.execution.scratch_dir.exists()
-    for child_output in output.results.trajectory:
+    for child_output in output.results.frames:
         assert child_output.execution.scratch_dir is not None
         assert not child_output.execution.scratch_dir.exists()

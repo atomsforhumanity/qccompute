@@ -156,7 +156,8 @@ def test_children_inherit_executables(tmp_path: Path) -> None:
     def decode(inp: ProgramInput, native: NativeOutput) -> SinglePointData:
         """Return a harmonic bond energy and gradient once the script has run."""
         assert "child-ran" in (native.stdout or "")
-        delta = inp.structure.geometry[1] - inp.structure.geometry[0]
+        geometry = inp.require_structure().geometry
+        delta = geometry[1] - geometry[0]
         distance = float(np.linalg.norm(delta))
         gradient = (distance - 1.4) * delta / distance
         return SinglePointData.model_validate(
@@ -188,6 +189,6 @@ def test_children_inherit_executables(tmp_path: Path) -> None:
     finally:
         qccodec.unregister("scripted")
     assert isinstance(output.results, OptimizationData)
-    assert output.results.trajectory
-    for step in output.results.trajectory:
+    assert output.results.frames
+    for step in output.results.frames:
         assert step.execution.extras["executable"] == str(program)

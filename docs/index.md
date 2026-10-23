@@ -179,7 +179,7 @@ codec = Codec("myprog", calctypes={CalcType.energy})
 
 @codec.encoder
 def encode(inp: ProgramInput) -> SubprocessInput:
-    return SubprocessInput(("myprog", "run.inp"), files={"run.inp": inp.structure.to_xyz()})
+    return SubprocessInput(("myprog", "run.inp"), files={"run.inp": inp.require_structure().to_xyz()})
 
 @codec.parser(target="energy", calctypes=[CalcType.energy])
 def parse_energy(stdout: str) -> float:

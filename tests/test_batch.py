@@ -60,7 +60,7 @@ def _decode(inp: ProgramInput, out: NativeOutput) -> SinglePointData:
         {
             "provenance": {"program": inp.program},
             "energy": out.value["value"],
-            "gradient": [[0.0, 0.0, 0.0]] * len(inp.structure.symbols),
+            "gradient": [[0.0, 0.0, 0.0]] * len(inp.require_structure().symbols),
             "extras": {"pid": out.value["pid"]},
         }
     )

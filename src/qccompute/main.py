@@ -660,7 +660,7 @@ def _calculation_error(exc: Exception, program: str) -> QCComputeBaseError:
 
 def compute_args(
     program: str,
-    structure: Structure,
+    structure: Structure | None,
     *,
     calctype: str | CalcType,
     model: dict[str, str] | Model | None = None,
@@ -668,7 +668,7 @@ def compute_args(
     files: dict[str, str | bytes] | Files | None = None,
     extras: dict[str, Any] | None = None,
     subprograms: list[ProgramSpec] | None = None,
-    structures: dict[str, Structure] | None = None,
+    structures: dict[str, Structure | list[Structure]] | None = None,
     cmdline_args: list[str] | None = None,
     **kwargs: Any,
 ) -> ProgramOutput[ProgramInput, Data]:

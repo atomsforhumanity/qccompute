@@ -47,10 +47,12 @@ def prog_input_factory(hydrogen: Structure) -> Callable[..., ProgramInput]:
     def create_program_input(
         calctype: str | CalcType, program: str = "test"
     ) -> ProgramInput:
-        """Create program input."""
+        """Create program input; a path optimization gets a two-structure chain."""
+        chain = CalcType(calctype) == CalcType.path_optimization
         return ProgramInput(
             program=program,
-            structure=hydrogen,
+            structure=None if chain else hydrogen,
+            structures={"initial_chain": [hydrogen, hydrogen]} if chain else {},
             calctype=CalcType(calctype),
             model=Model(method="hf", basis="sto-3g"),
             keywords={"purify": "no", "some-bool": False},
@@ -66,7 +68,7 @@ def results(
     """Create a ProgramOutput object."""
     sp_inp_energy = prog_input_factory("energy", program="test")
     energy = 1.0
-    n_atoms = len(sp_inp_energy.structure.symbols)
+    n_atoms = len(sp_inp_energy.require_structure().symbols)
     gradient = np.arange(n_atoms * 3).reshape(n_atoms, 3)
     hessian = np.arange(n_atoms**2 * 3**2).reshape(n_atoms * 3, n_atoms * 3)
 

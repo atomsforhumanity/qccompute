@@ -1,5 +1,5 @@
 site_name: qccompute
-site_url: https://qccompute.docs.atomsforhumanity.org/
+site_url: https://qccompute.docs.afh.org/
 theme:
   name: material
   palette:
@@ -102,7 +102,7 @@ nav:
   #     - Why use QCCompute?: why.md
   - Programs:
       - Overview: programs/overview.md
-      - Program pages and examples: https://qccodec.docs.atomsforhumanity.org/programs/
+      - Program pages and examples: https://qccodec.docs.afh.org/programs/
   - Examples:
       - Overview: examples/overview.md
       - File Input: examples/file_input.md

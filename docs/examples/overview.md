@@ -35,7 +35,7 @@ The `compute` function resolves a codec and executes its native invocation. It a
 
 Complete, runnable scripts for every program and calculation type, with every common
 option shown and the program's quirks explained, are on the
-[qccodec program pages](https://qccodec.docs.atomsforhumanity.org/programs/). The
+[qccodec program pages](https://qccodec.docs.afh.org/programs/). The
 examples here cover qccompute itself: running a program from your own input files and
 defining a codec for a program qccodec doesn't support.
 

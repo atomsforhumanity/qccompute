@@ -36,7 +36,7 @@ Source = "https://github.com/atomsforhumanity/qccompute"
 Repository = "https://github.com/atomsforhumanity/qccompute"
 Changelog = "https://github.com/atomsforhumanity/qccompute/blob/master/CHANGELOG.md"
 "Bug Tracker" = "https://github.com/atomsforhumanity/qccompute/issues"
-Documentation = "https://qccompute.docs.atomsforhumanity.org"
+Documentation = "https://qccompute.docs.afh.org"
 
 
 [dependency-groups]

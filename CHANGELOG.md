@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [unreleased]
 
+### Changed
+
+- Moved documentation from `qccompute.docs.atomsforhumanity.org` to `qccompute.docs.afh.org`.
+
 ## [0.22.0] - 2026-10-23
 
 ### Changed

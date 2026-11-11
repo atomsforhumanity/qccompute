@@ -106,7 +106,7 @@ class FiniteDifference(ToyProgram):
                 requests.append(Request((x + d).reshape(-1, 3), CalcType.energy))
         with ctx.session(child, inp.structure, threads=1) as s:
             results = s.compute_many(requests)
-        energies = np.array([r.energy for r in results])
+        energies = np.array([r.results.energy for r in results])
         gradient = (energies[0::2] - energies[1::2]) / (2 * step)
         center = ctx.compute(ProgramInput.from_spec(child, inp.structure))
         return ProgramOutput(
@@ -201,18 +201,18 @@ def test_sessions_native_and_over_compute():
     spec = ProgramSpec(program="toy", calctype="gradient", model={"method": "lj"})
     with qccompute.session(spec, ARGON3) as s:
         assert isinstance(s, ToySession)
-        r = s.compute(np.asarray(ARGON3.geometry))
+        r = s.compute(np.asarray(ARGON3.geometry)).results
         assert r.gradient.shape == (3, 3)
     programs.register_program(NoSessions("plain"))
     plain = ProgramSpec(program="plain", calctype="gradient", model={"method": "lj"})
     with qccompute.session(plain, ARGON3) as s:
         assert isinstance(s, ComputeSession)
-        r2 = s.compute(np.asarray(ARGON3.geometry))
+        r2 = s.compute(np.asarray(ARGON3.geometry)).results
         assert r2.energy == pytest.approx(r.energy)
         with pytest.raises(ProgramError) as e:
             s.compute(np.full((3, 3), np.nan))
         assert e.value.error.kind is ErrorKind.numerical
-        assert s.compute(np.asarray(ARGON3.geometry)).energy == r2.energy
+        assert s.compute(np.asarray(ARGON3.geometry)).results.energy == r2.energy
 
 
 @pytest.mark.parametrize("child", ["toy", "plain"])

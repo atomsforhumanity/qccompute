@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import os
 import platform
 import re
@@ -34,6 +35,16 @@ def empty_results(input_data: Inputs) -> Data:
     return data_type(provenance=Provenance(program=input_data.program))
 
 
+@functools.cache
+def host_info() -> tuple[str, int | None]:
+    """This machine's name and logical CPU count, read once per process.
+
+    ``os.cpu_count()`` costs about 1.3 us per call; the host does not change while a
+    process runs.
+    """
+    return platform.node(), os.cpu_count()
+
+
 def construct_execution(
     directory: Path | None, wall_time: float, executable: str | None = None
 ) -> ExecutionInfo:
@@ -48,8 +59,8 @@ def construct_execution(
     return ExecutionInfo(
         scratch_dir=directory,
         wall_time=round(wall_time, 6),
-        hostname=platform.node(),
-        host_cpu=os.cpu_count(),
+        hostname=host_info()[0],
+        host_cpu=host_info()[1],
         extras={"executable": executable} if executable else {},
     )
 

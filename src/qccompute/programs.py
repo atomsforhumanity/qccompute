@@ -10,9 +10,6 @@ over ``compute``.
 
 from __future__ import annotations
 
-import functools
-import os
-import platform
 import shutil
 import tempfile
 import threading
@@ -53,7 +50,7 @@ from .exceptions import (
     ProgramTimeoutError,
     QCComputeBaseError,
 )
-from .execution import construct_execution, empty_results
+from .execution import construct_execution, empty_results, host_info
 
 __all__ = [
     "register_program",
@@ -166,12 +163,6 @@ def _failed_output(
     )
 
 
-@functools.cache
-def _host() -> tuple[str, int | None]:
-    """This machine's name and logical CPU count, read once per process."""
-    return platform.node(), os.cpu_count()
-
-
 def run_program(
     program: Program,
     input_data: ProgramInput,
@@ -247,7 +238,7 @@ def run_program(
         for directory in made:  # only directories this run asked for
             shutil.rmtree(directory, ignore_errors=True)
     # Keep the program's own timings and extras; add what the runner measured.
-    hostname, host_cpu = _host()
+    hostname, host_cpu = host_info()
     execution = output.execution.model_copy(
         update={
             "wall_time": round(monotonic() - start, 6),

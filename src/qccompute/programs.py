@@ -13,7 +13,7 @@ from __future__ import annotations
 import tempfile
 import threading
 import traceback
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
@@ -21,6 +21,7 @@ from time import monotonic
 from typing import Any
 
 from qcdata import (
+    CalcType,
     Data,
     ErrorInfo,
     ErrorKind,
@@ -38,6 +39,7 @@ from qcdata.program import (
     Session,
     SessionProgram,
     find_program,
+    session_calctypes,
 )
 
 from .exceptions import (
@@ -195,9 +197,14 @@ def run_program(
     start = monotonic()
 
     def open_child_session(
-        spec: ProgramSpec, structure: Structure, share: int | None
+        spec: ProgramSpec,
+        structure: Structure,
+        share: int | None,
+        calctypes: frozenset[CalcType] | None,
     ) -> Session:
-        return session(spec, structure, threads=share, compute=child_compute)
+        return session(
+            spec, structure, threads=share, calctypes=calctypes, compute=child_compute
+        )
 
     with tempfile.TemporaryDirectory(prefix="qccompute-") as tmp:
         directory = scratch_dir or Path(tmp)
@@ -247,6 +254,7 @@ def session(
     structure: Structure,
     *,
     threads: int | None = None,
+    calctypes: Iterable[CalcType | str] | None = None,
     compute: Callable[..., Any] | None = None,
     **compute_options: Any,
 ) -> Session:
@@ -261,6 +269,8 @@ def session(
             request type.
         structure: The atoms, charge, multiplicity, and first geometry.
         threads: The session's CPU threads (None: the program's settings).
+        calctypes: The calctypes the session may run (default: the spec's, with lower
+            derivatives); the keywords are checked against them.
         compute: Computes inputs for a session over ``compute``; by default
             ``qccompute.compute`` with ``compute_options`` and ``raise_exc=False``.
         **compute_options: Options for ``qccompute.compute`` (``environment``,
@@ -272,15 +282,18 @@ def session(
     Raises:
         qcdata.program.ProgramError: The program rejects the spec.
     """
+    allowed = session_calctypes(spec, calctypes)
     program = get_program(spec.program)
     if program is not None and isinstance(program, SessionProgram):
         if program.capabilities().sessions:
-            return program.open_session(spec, structure, RunContext(threads=threads))
+            return program.open_session(
+                spec, structure, RunContext(threads=threads), allowed
+            )
     if compute is None:
         from .main import compute as qccompute
 
         compute = partial(qccompute, raise_exc=False, **compute_options)
-    return ComputeSession(compute, spec, structure)
+    return ComputeSession(compute, spec, structure, calctypes=allowed)
 
 
 def children_callback(

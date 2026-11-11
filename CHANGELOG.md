@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [unreleased]
 
+### Added
+
+- Programs that implement `qcdata.program.Program` (qcdata 0.24, not yet released) run without a codec: `compute` finds them under the `qcdata.programs` entry points (or `qccompute.register_program`) before codecs and calls `program.compute(input, context)` in this process. The `RunContext` carries the threads and GPUs granted, a scratch directory, a child `compute` callback limited to the calculation's threads, and child sessions. In lists, programs that declare `thread_safe` run side by side in threads within the thread budget, by the resources of their `plan`; others run one at a time. Failures carry the program's typed `error`; `compute` raises `InputError` for kinds `input` and `unsupported`, `ProgramTimeoutError`, `ProgramNotFoundError` for `environment`, and `ExternalProgramError` otherwise. Options only codecs implement (`timeout`, `environment`, `collect_files`, `collect_wfn`, `propagate_wfn`, `options`) are rejected for native programs.
+- `qccompute.session(spec, structure)`: one program and molecule at many geometries. Programs with sessions of their own open one (warm starts, pinned settings); any other program, codecs included, gets a `qcdata.program.ComputeSession` over `compute`.
+
 ### Changed
 
 - Moved documentation from `qccompute.docs.atomsforhumanity.org` to `qccompute.docs.afh.org`.

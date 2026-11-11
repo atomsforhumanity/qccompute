@@ -2,9 +2,11 @@
 
 import dataclasses
 import os
+import shutil
 import traceback
 from collections.abc import Callable, Mapping, Sequence
 from functools import partial
+from pathlib import Path
 from time import monotonic
 from typing import Any, overload
 
@@ -16,6 +18,8 @@ from qccodec.exceptions import DependencyNotFoundError, EncoderError
 from qcdata import (
     CalcType,
     Data,
+    ErrorInfo,
+    ErrorKind,
     ExecutionInfo,
     FileInput,
     Files,
@@ -44,6 +48,7 @@ from .execution import (
     workspace,
 )
 from .parallel import BatchError, compute_list
+from .programs import children_callback, get_program, run_program
 from .runners import run_python, run_subprocess
 
 
@@ -281,8 +286,33 @@ def _compute_one(
     options: Mapping[str, Any] | None = None,
     timeout: float | None = None,
     executables: Mapping[str, str] | None = None,
+    _grant: tuple[int, tuple[str, ...]] | None = None,
 ) -> ProgramOutput[InputType, Data]:
-    """Compute one input; ``compute`` documents every argument."""
+    """Compute one input; ``compute`` documents every argument.
+
+    ``_grant`` is the (threads, GPUs) the list scheduler granted a native program.
+    """
+    if codec is None and isinstance(input_data, ProgramInput):
+        program = get_program(input_data.program)
+        if program is not None:
+            return _compute_native(  # type: ignore[return-value]
+                program,
+                input_data,
+                raise_exc=raise_exc,
+                collect_logs=collect_logs,
+                scratch_dir=scratch_dir,
+                rm_scratch_dir=rm_scratch_dir,
+                options={
+                    "environment": environment,
+                    "timeout": timeout,
+                    "executables": executables,
+                    "collect_files": collect_files,
+                    "collect_wfn": collect_wfn,
+                    "propagate_wfn": propagate_wfn,
+                    "options": options,
+                },
+                grant=_grant,
+            )
     start = monotonic()
     directory = None
     result = empty_results(input_data)
@@ -427,6 +457,69 @@ def _compute_one(
     if failures and raise_exc:
         raise _output_error(output, failures)
     return output
+
+
+def _compute_native(
+    program: Any,
+    input_data: ProgramInput,
+    *,
+    raise_exc: bool,
+    collect_logs: bool,
+    scratch_dir: StrOrPath | None,
+    rm_scratch_dir: bool,
+    options: Mapping[str, Any],
+    grant: tuple[int, tuple[str, ...]] | None,
+) -> ProgramOutput[ProgramInput, Data]:
+    """Run a program implementing ``qcdata.program.Program`` in this process.
+
+    Options that only codecs implement are rejected rather than ignored.
+    """
+    unsupported = [
+        name
+        for name in ("collect_files", "collect_wfn", "propagate_wfn", "options")
+        if options.get(name)
+    ]
+    if options.get("timeout") is not None:
+        unsupported.append("timeout")
+    if options.get("environment"):
+        unsupported.append("environment")
+    if unsupported:
+        error = InputError(
+            input_data.program,
+            f"{input_data.program} runs in this process as a native program, which "
+            f"does not support {', '.join(unsupported)}.",
+        )
+        output = ProgramOutput(
+            input_data=input_data,
+            results=empty_results(input_data),
+            success=False,
+            traceback=str(error),
+            error=ErrorInfo(kind=ErrorKind.input, message=str(error)),
+            execution=construct_execution(None, 0.0),
+        )
+        if raise_exc:
+            error.prog_output = output
+            raise error
+        return output
+    threads, gpus = grant if grant is not None else (None, ())
+    directory: Path | None = None
+    if scratch_dir is not None:
+        directory = Path(scratch_dir)
+        directory.mkdir(parents=True, exist_ok=True)
+    try:
+        return run_program(
+            program,
+            input_data,
+            raise_exc=raise_exc,
+            collect_logs=collect_logs,
+            threads=threads,
+            gpus=gpus,
+            scratch_dir=directory,
+            child_compute=children_callback(options, threads),
+        )
+    finally:
+        if directory is not None and rm_scratch_dir:
+            shutil.rmtree(directory, ignore_errors=True)
 
 
 def _output_error(

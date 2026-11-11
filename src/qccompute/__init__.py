@@ -9,3 +9,4 @@ except _metadata.PackageNotFoundError:
     __version__ = "0.0.0+local"
 
 from .main import compute, compute_args  # noqa: F401
+from .programs import get_program, register_program, session  # noqa: F401

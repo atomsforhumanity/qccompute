@@ -33,6 +33,7 @@ from .exceptions import (
     InputError,
     QCComputeBaseError,
 )
+from .programs import NativeProgramRequest, native_program_request
 from .runners import in_python_call, kill_running
 from .workers import WorkerDied, WorkerPool, supported
 
@@ -91,11 +92,16 @@ def visible_gpus(environment: Mapping[str, str] | None = None) -> list[str]:
 
 def _native_request(
     input_data: InputType, codec: qccodec.Codec | None
-) -> qccodec.NativeInput | None:
+) -> qccodec.NativeInput | NativeProgramRequest | None:
     """Return an input's native invocation, or None if it cannot be encoded.
 
+    A thread-safe native program's calculation returns its planned resources.
     Inputs that cannot be encoded run serially; computing them reports the error.
     """
+    if codec is None:
+        native = native_program_request(input_data)
+        if native is not None:
+            return native
     try:
         resolved = codec if codec is not None else qccodec.get_codec(input_data)
         return resolved.encode(input_data)
@@ -326,7 +332,9 @@ def compute_list(
         request = requests.get(index)
         if request is not None:
             held = resources.acquire(turns[index], request.threads, request.gpus)
-            if held[1] and index not in worker_codecs:
+            if isinstance(request, NativeProgramRequest):
+                run_options["_grant"] = (held[0], tuple(held[1]))
+            elif held[1] and index not in worker_codecs:
                 run_options["environment"] = {
                     **(options.get("environment") or {}),
                     "CUDA_VISIBLE_DEVICES": ",".join(held[1]),
@@ -419,14 +427,14 @@ def compute_list(
         return payload
 
     codec = options.get("codec")
-    requests: dict[int, qccodec.NativeInput] = {}
+    requests: dict[int, qccodec.NativeInput | NativeProgramRequest] = {}
     worker_codecs: dict[int, bytes | None] = {}
     batches: list[tuple[qccodec.Codec, list[int]]] = []
     if not in_python_call() and not _in_worker() and len(inputs) > 1:
         python: dict[int, qccodec.NativeInput] = {}
         for i, inp in enumerate(inputs):
             request = _native_request(inp, codec)
-            if isinstance(request, qccodec.SubprocessInput):
+            if isinstance(request, qccodec.SubprocessInput | NativeProgramRequest):
                 requests[i] = request
             elif isinstance(request, qccodec.PythonInput):
                 python[i] = request

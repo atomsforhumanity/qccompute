@@ -58,6 +58,7 @@ class Recording(ToyProgram):
         self.name = name
         self._thread_safe = thread_safe
         self.grants: list[tuple[int | None, tuple[str, ...]]] = []
+        self.scratches: list = []
 
     def capabilities(self) -> Capabilities:
         return (
@@ -66,7 +67,9 @@ class Recording(ToyProgram):
 
     def compute(self, inp, ctx):
         self.grants.append((ctx.threads, ctx.gpus))
+        assert ctx.scratch_dir is None  # nothing made until asked for
         assert ctx.scratch is not None and ctx.scratch.is_dir()
+        self.scratches.append(ctx.scratch)
         return (
             super()
             .compute(inp.model_copy(update={"program": "toy"}), ctx)
@@ -177,6 +180,7 @@ def test_lists_of_thread_safe_programs_run_with_grants():
     ]
     assert all(o.success for o in outs)
     assert {g[0] for g in recording.grants} == {2}
+    assert not any(p.exists() for p in recording.scratches)  # removed afterwards
 
 
 def test_lists_of_other_programs_run_one_at_a_time():

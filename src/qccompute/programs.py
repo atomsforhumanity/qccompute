@@ -10,6 +10,10 @@ over ``compute``.
 
 from __future__ import annotations
 
+import functools
+import os
+import platform
+import shutil
 import tempfile
 import threading
 import traceback
@@ -162,6 +166,12 @@ def _failed_output(
     )
 
 
+@functools.cache
+def _host() -> tuple[str, int | None]:
+    """This machine's name and logical CPU count, read once per process."""
+    return platform.node(), os.cpu_count()
+
+
 def run_program(
     program: Program,
     input_data: ProgramInput,
@@ -206,37 +216,43 @@ def run_program(
             spec, structure, threads=share, calctypes=calctypes, compute=child_compute
         )
 
-    with tempfile.TemporaryDirectory(prefix="qccompute-") as tmp:
-        directory = scratch_dir or Path(tmp)
-        ctx = RunContext(
-            threads=threads,
-            gpus=gpus,
-            scratch=directory,
-            compute=child_compute,  # type: ignore[arg-type]
-            open_session=open_child_session,
+    made: list[Path] = []
+
+    def make_scratch() -> Path:
+        made.append(Path(tempfile.mkdtemp(prefix="qccompute-")))
+        return made[-1]
+
+    ctx = RunContext(
+        threads=threads,
+        gpus=gpus,
+        scratch_dir=scratch_dir,
+        make_scratch=make_scratch,
+        compute=child_compute,  # type: ignore[arg-type]
+        open_session=open_child_session,
+    )
+    try:
+        output = program.compute(input_data, ctx)
+    except ProgramError as exc:  # a program may raise instead of returning
+        output = _failed_output(
+            input_data, exc.error, "".join(traceback.format_exception(exc)), start
         )
-        try:
-            output = program.compute(input_data, ctx)
-        except ProgramError as exc:  # a program may raise instead of returning
-            output = _failed_output(
-                input_data, exc.error, "".join(traceback.format_exception(exc)), start
-            )
-        except Exception as exc:  # noqa: BLE001 - a bug in the program
-            output = _failed_output(
-                input_data,
-                ErrorInfo(
-                    kind=ErrorKind.internal, message=f"{type(exc).__name__}: {exc}"
-                ),
-                "".join(traceback.format_exception(exc)),
-                start,
-            )
+    except Exception as exc:  # noqa: BLE001 - a bug in the program
+        output = _failed_output(
+            input_data,
+            ErrorInfo(kind=ErrorKind.internal, message=f"{type(exc).__name__}: {exc}"),
+            "".join(traceback.format_exception(exc)),
+            start,
+        )
+    finally:
+        for directory in made:  # only directories this run asked for
+            shutil.rmtree(directory, ignore_errors=True)
     # Keep the program's own timings and extras; add what the runner measured.
-    measured = construct_execution(scratch_dir, monotonic() - start)
+    hostname, host_cpu = _host()
     execution = output.execution.model_copy(
         update={
-            "wall_time": measured.wall_time,
-            "hostname": measured.hostname,
-            "host_cpu": measured.host_cpu,
+            "wall_time": round(monotonic() - start, 6),
+            "hostname": hostname,
+            "host_cpu": host_cpu,
             "scratch_dir": scratch_dir,
         }
     )

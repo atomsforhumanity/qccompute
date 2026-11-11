@@ -245,3 +245,62 @@ def test_registration_checks_the_protocol():
 def test_direct_calls_need_no_runner():
     out = ToyProgram().compute(toy_input(), RunContext())
     assert out.success
+
+
+class Fanout(ToyProgram):
+    """A driver that computes a list of children in one call, like a round of a driver."""
+
+    name = "fanout"
+
+    def compute(self, inp, ctx):
+        spec = inp.subprograms[0].model_dump()
+        children = [
+            ProgramInput.model_validate(
+                {**spec, "keywords": {"value": i}, "structure": inp.structure}
+            )
+            for i in range(4)
+        ]
+        outs = ctx.compute(children)
+        return ProgramOutput(
+            input_data=inp,
+            success=True,
+            results=SinglePointData(
+                provenance=Provenance(program="fanout", program_version="0"),
+                energy=sum(o.results.energy for o in outs),
+                extras={"pids": [o.results.extras["pid"] for o in outs]},
+            ),
+            resolved=Resolved(settings={}),
+        )
+
+
+def test_driver_children_never_go_to_worker_processes(monkeypatch):
+    """A driver's rounds are small and frequent: a worker round trip (about 100 ms)
+    would dwarf an in-process gradient (qcopt measured 30x on axtb through lists)."""
+    import os
+
+    from qccompute import parallel
+
+    def no_workers(*args, **kwargs):
+        raise AssertionError("a driver's children started a worker pool")
+
+    monkeypatch.setattr(parallel, "WorkerPool", no_workers)
+    import qccodec
+
+    from tests.test_parallel import PYTHON  # picklable: workers could receive it
+
+    qccodec.register(PYTHON)
+    try:
+        programs.register_program(Fanout())
+        inp = ProgramInput.model_validate(
+            {
+                "program": "fanout",
+                "calctype": "energy",
+                "structure": ARGON3,
+                "subprograms": [{"program": "library", "calctype": "energy"}],
+            }
+        )
+        out = qccompute.compute(inp, max_workers=4)
+    finally:
+        qccodec.unregister("library")
+    assert out.results.energy == 0 + 1 + 2 + 3
+    assert set(out.results.extras["pids"]) == {os.getpid()}

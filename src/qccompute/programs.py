@@ -286,12 +286,22 @@ def session(
 def children_callback(
     options: Mapping[str, Any], threads: int | None
 ) -> Callable[..., Any]:
-    """The child callback of a native calculation: ``compute`` within its grant."""
+    """The child callback of a native calculation: ``compute`` within its grant.
+
+    Lists of children never go to worker processes (see ``compute_children``).
+    """
     from .main import compute as qccompute
+    from .main import compute_children
 
     inherited = {
         k: options[k]
         for k in ("environment", "timeout", "executables", "collect_logs")
         if k in options and options[k] is not None
     }
-    return partial(qccompute, raise_exc=False, max_workers=threads, **inherited)
+
+    def compute(inputs: Any, previous: Any = None) -> Any:
+        if isinstance(inputs, ProgramInput):
+            return qccompute(inputs, raise_exc=False, **inherited)
+        return compute_children(inputs, max_workers=threads, **inherited)
+
+    return compute

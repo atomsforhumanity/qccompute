@@ -261,6 +261,7 @@ def compute_list(
     update_func: ListUpdate | None,
     print_logs: bool,
     options: Mapping[str, Any],
+    children: bool = False,
 ) -> list[ProgramOutput[InputType, Data]]:
     """Compute every input and return the outputs in input order.
 
@@ -277,6 +278,10 @@ def compute_list(
             output, from the thread running it, so it must be thread-safe.
         print_logs: Print each line of output prefixed with its input's index.
         options: The remaining ``compute`` arguments, applied to every input.
+        children: The inputs are a running calculation's children (a native
+            driver's child callback). Programs side by side and batches are allowed,
+            worker processes are not: a driver's rounds are small and frequent, and a
+            worker round trip (about 100 ms) would dwarf an in-process gradient.
 
     Raises:
         InputError: ``max_workers`` is not a positive integer, or an option cannot
@@ -430,7 +435,8 @@ def compute_list(
     requests: dict[int, qccodec.NativeInput | NativeProgramRequest] = {}
     worker_codecs: dict[int, bytes | None] = {}
     batches: list[tuple[qccodec.Codec, list[int]]] = []
-    if not in_python_call() and not _in_worker() and len(inputs) > 1:
+    top_level = not in_python_call() and not _in_worker()
+    if (top_level or children) and len(inputs) > 1:
         python: dict[int, qccodec.NativeInput] = {}
         for i, inp in enumerate(inputs):
             request = _native_request(inp, codec)
@@ -447,7 +453,13 @@ def compute_list(
                 for i in indices:
                     del python[i]
         # Starting a worker costs about a second; it pays only with company.
-        if supported() and len(python) > 1 and workers > 1:
+        if (
+            top_level
+            and not children
+            and supported()
+            and len(python) > 1
+            and workers > 1
+        ):
             for i, request in python.items():
                 reachable, payload = _codec_for_worker(inputs[i], codec)
                 if reachable:

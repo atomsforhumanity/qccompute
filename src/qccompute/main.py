@@ -459,6 +459,46 @@ def _compute_one(
     return output
 
 
+def compute_children(
+    inputs: Sequence[ProgramInput],
+    *,
+    max_workers: int | None = None,
+    environment: Mapping[str, str] | None = None,
+    timeout: float | None = None,
+    executables: Mapping[str, str] | None = None,
+    collect_logs: bool = True,
+) -> list[ProgramOutput[ProgramInput, Data]]:
+    """Compute a running calculation's children, failed or not, without worker processes.
+
+    Programs run side by side within ``max_workers`` threads and machine-learned
+    potentials sharing a model are batched, but nothing is sent to a worker process.
+    """
+    return compute_list(  # type: ignore[return-value]
+        _compute_one,
+        list(inputs),
+        compute_batch=_compute_batch,
+        max_workers=max_workers,
+        raise_exc=False,
+        update_func=None,
+        print_logs=False,
+        options={
+            "codec": None,
+            "environment": environment,
+            "scratch_dir": None,
+            "rm_scratch_dir": True,
+            "collect_logs": collect_logs,
+            "collect_files": False,
+            "collect_wfn": False,
+            "update_interval": None,
+            "propagate_wfn": False,
+            "options": None,
+            "timeout": timeout,
+            "executables": executables,
+        },
+        children=True,
+    )
+
+
 def _compute_native(
     program: Any,
     input_data: ProgramInput,

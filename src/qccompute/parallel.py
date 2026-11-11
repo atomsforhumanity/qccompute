@@ -338,7 +338,7 @@ def compute_list(
         if request is not None:
             held = resources.acquire(turns[index], request.threads, request.gpus)
             if isinstance(request, NativeProgramRequest):
-                run_options["_grant"] = (held[0], tuple(held[1]))
+                run_options["_grant"] = (held[0], tuple(held[1]), request.plan)
             elif held[1] and index not in worker_codecs:
                 run_options["environment"] = {
                     **(options.get("environment") or {}),
@@ -477,6 +477,10 @@ def compute_list(
     )
     resources = _Resources(workers, gpus)
 
+    if len(parallel) == 1:
+        # One calculation gains nothing from a pool; run it here.
+        serial = parallel + serial
+        parallel = []
     if parallel:
         threads = ThreadPoolExecutor(max_workers=min(workers, len(parallel)))
         futures: list[Future[None]] = [threads.submit(run, i) for i in parallel]

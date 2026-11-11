@@ -33,7 +33,9 @@ from qcdata import (
     Structure,
 )
 from qcdata.program import (
+    Capabilities,
     ComputeSession,
+    Plan,
     Program,
     ProgramError,
     RunContext,
@@ -63,6 +65,7 @@ __all__ = [
 
 _registered: dict[str, Program] = {}
 _found: dict[str, Program | None] = {}
+_capabilities: dict[str, Capabilities] = {}
 _lock = threading.Lock()
 
 
@@ -73,10 +76,13 @@ class NativeProgramRequest:
     Attributes:
         threads: CPU threads.
         gpus: Number of GPUs.
+        plan: The plan the resources came from, handed to the program so it does not
+            plan again.
     """
 
     threads: int
     gpus: int
+    plan: Plan
 
 
 def native_program_request(input_data: InputType) -> NativeProgramRequest | None:
@@ -89,13 +95,26 @@ def native_program_request(input_data: InputType) -> NativeProgramRequest | None
     if not isinstance(input_data, ProgramInput):
         return None
     program = get_program(input_data.program)
-    if program is None or not program.capabilities().thread_safe:
+    if program is None or not capabilities(program).thread_safe:
         return None
     try:
-        resources = program.plan(input_data).resources
+        plan = program.plan(input_data)
     except Exception:  # noqa: BLE001 - computing it reports the error
         return None
-    return NativeProgramRequest(threads=resources.threads, gpus=resources.gpus)
+    return NativeProgramRequest(
+        threads=plan.resources.threads, gpus=plan.resources.gpus, plan=plan
+    )
+
+
+def capabilities(program: Program) -> Capabilities:
+    """A program's capabilities, read once per process (they do not change)."""
+    with _lock:
+        caps = _capabilities.get(program.name)
+    if caps is None:
+        caps = program.capabilities()
+        with _lock:
+            _capabilities[program.name] = caps
+    return caps
 
 
 def register_program(program: Program) -> None:
@@ -111,6 +130,7 @@ def register_program(program: Program) -> None:
         raise TypeError(f"{program!r} does not implement qcdata.program.Program.")
     with _lock:
         _registered[program.name] = program
+        _capabilities.pop(program.name, None)
 
 
 def get_program(name: str) -> Program | None:
@@ -173,6 +193,7 @@ def run_program(
     gpus: tuple[str, ...] = (),
     scratch_dir: Path | None = None,
     child_compute: Callable[..., Any] | None = None,
+    plan: Plan | None = None,
 ) -> ProgramOutput[ProgramInput, Data]:
     """Run a native program in this process.
 
@@ -188,6 +209,7 @@ def run_program(
         child_compute: Computes child calculations (``compute`` with this
             calculation's options); also backs child sessions of programs without
             their own.
+        plan: The plan already made for this input, handed to the program.
 
     Returns:
         The program's output, with execution information filled in.
@@ -218,6 +240,7 @@ def run_program(
         gpus=gpus,
         scratch_dir=scratch_dir,
         make_scratch=make_scratch,
+        plan=plan,
         compute=child_compute,  # type: ignore[arg-type]
         open_session=open_child_session,
     )
@@ -238,19 +261,26 @@ def run_program(
         for directory in made:  # only directories this run asked for
             shutil.rmtree(directory, ignore_errors=True)
     # Keep the program's own timings and extras; add what the runner measured.
+    # Keep the program's own timings and extras; add what the runner measured. The
+    # program's output is trusted: copy it once, without validating it again.
     hostname, host_cpu = host_info()
-    execution = output.execution.model_copy(
-        update={
+    execution = type(output.execution).model_construct(
+        _fields_set=output.execution.model_fields_set
+        | {"wall_time", "hostname", "host_cpu", "scratch_dir"},
+        **{
+            **output.execution.__dict__,
             "wall_time": round(monotonic() - start, 6),
             "hostname": hostname,
             "host_cpu": host_cpu,
             "scratch_dir": scratch_dir,
-        }
+        },
     )
-    update: dict[str, Any] = {"execution": execution}
+    values: dict[str, Any] = {**output.__dict__, "execution": execution}
     if output.success and not collect_logs:
-        update["logs"] = None
-    output = output.model_copy(update=update)
+        values["logs"] = None
+    output = type(output).model_construct(
+        _fields_set=output.model_fields_set | {"execution"}, **values
+    )
     if not output.success and raise_exc:
         raise _error_for(output)
     return output
@@ -303,25 +333,37 @@ def session(
     return ComputeSession(compute, spec, structure, calctypes=allowed)
 
 
+class _Children:
+    """The child callback of a native calculation: ``compute`` within its grant.
+
+    Cheap to make (most programs never call it); the inherited options are read on
+    first use. Lists of children never go to worker processes (``compute_children``).
+    """
+
+    __slots__ = ("_options", "_threads", "_inherited")
+
+    def __init__(self, options: Mapping[str, Any], threads: int | None) -> None:
+        self._options = options
+        self._threads = threads
+        self._inherited: dict[str, Any] | None = None
+
+    def __call__(self, inputs: Any, previous: Any = None) -> Any:
+        from .main import compute as qccompute
+        from .main import compute_children
+
+        if self._inherited is None:
+            self._inherited = {
+                k: self._options[k]
+                for k in ("environment", "timeout", "executables", "collect_logs")
+                if k in self._options and self._options[k] is not None
+            }
+        if isinstance(inputs, ProgramInput):
+            return qccompute(inputs, raise_exc=False, **self._inherited)
+        return compute_children(inputs, max_workers=self._threads, **self._inherited)
+
+
 def children_callback(
     options: Mapping[str, Any], threads: int | None
 ) -> Callable[..., Any]:
-    """The child callback of a native calculation: ``compute`` within its grant.
-
-    Lists of children never go to worker processes (see ``compute_children``).
-    """
-    from .main import compute as qccompute
-    from .main import compute_children
-
-    inherited = {
-        k: options[k]
-        for k in ("environment", "timeout", "executables", "collect_logs")
-        if k in options and options[k] is not None
-    }
-
-    def compute(inputs: Any, previous: Any = None) -> Any:
-        if isinstance(inputs, ProgramInput):
-            return qccompute(inputs, raise_exc=False, **inherited)
-        return compute_children(inputs, max_workers=threads, **inherited)
-
-    return compute
+    """The child callback of a native calculation: ``compute`` within its grant."""
+    return _Children(options, threads)

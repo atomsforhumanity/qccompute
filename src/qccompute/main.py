@@ -286,11 +286,11 @@ def _compute_one(
     options: Mapping[str, Any] | None = None,
     timeout: float | None = None,
     executables: Mapping[str, str] | None = None,
-    _grant: tuple[int, tuple[str, ...]] | None = None,
+    _grant: tuple[int, tuple[str, ...], Any] | None = None,
 ) -> ProgramOutput[InputType, Data]:
     """Compute one input; ``compute`` documents every argument.
 
-    ``_grant`` is the (threads, GPUs) the list scheduler granted a native program.
+    ``_grant`` is the (threads, GPUs, plan) the list scheduler gave a native program.
     """
     if codec is None and isinstance(input_data, ProgramInput):
         program = get_program(input_data.program)
@@ -508,7 +508,7 @@ def _compute_native(
     scratch_dir: StrOrPath | None,
     rm_scratch_dir: bool,
     options: Mapping[str, Any],
-    grant: tuple[int, tuple[str, ...]] | None,
+    grant: tuple[int, tuple[str, ...], Any] | None,
 ) -> ProgramOutput[ProgramInput, Data]:
     """Run a program implementing ``qcdata.program.Program`` in this process.
 
@@ -541,7 +541,7 @@ def _compute_native(
             error.prog_output = output
             raise error
         return output
-    threads, gpus = grant if grant is not None else (None, ())
+    threads, gpus, plan = grant if grant is not None else (None, (), None)
     directory: Path | None = None
     if scratch_dir is not None:
         directory = Path(scratch_dir)
@@ -556,6 +556,7 @@ def _compute_native(
             gpus=gpus,
             scratch_dir=directory,
             child_compute=children_callback(options, threads),
+            plan=plan,
         )
     finally:
         if directory is not None and rm_scratch_dir:

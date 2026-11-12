@@ -1,7 +1,9 @@
 """Running programs that implement ``qcdata.program.Program`` directly, without a codec.
 
 AFH's own programs (linus, axtb, qcopt, ...) register an object under the
-``qcdata.programs`` entry points. ``compute`` finds them before codecs and calls
+``qcdata.programs`` entry points; tests and notebooks add others with
+``qcdata.program.register_program`` (also exported here). ``compute`` finds them with
+``qcdata.program.find_program``, the same lookup drivers use, before codecs, and calls
 ``program.compute(input, context)`` in this process, with a `RunContext` carrying the
 thread and GPU grant, a scratch directory, a callback for child calculations, and child
 sessions. `session` opens a session for any program: its own when it has them, else one
@@ -42,6 +44,7 @@ from qcdata.program import (
     Session,
     SessionProgram,
     find_program,
+    register_program,
     session_calctypes,
 )
 
@@ -63,9 +66,9 @@ __all__ = [
     "native_program_request",
 ]
 
-_registered: dict[str, Program] = {}
-_found: dict[str, Program | None] = {}
-_capabilities: dict[str, Capabilities] = {}
+# Keyed by the program object's id; the object is kept with its capabilities, so an id
+# is never reused while cached and a newly registered program is read afresh.
+_capabilities: dict[int, tuple[Program, Capabilities]] = {}
 _lock = threading.Lock()
 
 
@@ -107,34 +110,22 @@ def native_program_request(input_data: InputType) -> NativeProgramRequest | None
 
 
 def capabilities(program: Program) -> Capabilities:
-    """A program's capabilities, read once per process (they do not change)."""
+    """A program object's capabilities, read once per process (they do not change)."""
     with _lock:
-        caps = _capabilities.get(program.name)
-    if caps is None:
-        caps = program.capabilities()
-        with _lock:
-            _capabilities[program.name] = caps
+        cached = _capabilities.get(id(program))
+    if cached is not None and cached[0] is program:
+        return cached[1]
+    caps = program.capabilities()
+    with _lock:
+        _capabilities[id(program)] = (program, caps)
     return caps
 
 
-def register_program(program: Program) -> None:
-    """Make a program available to ``compute`` in this process, ahead of entry points.
-
-    Args:
-        program: An object implementing ``qcdata.program.Program``.
-
-    Raises:
-        TypeError: The object does not implement the protocol.
-    """
-    if not isinstance(program, Program):
-        raise TypeError(f"{program!r} does not implement qcdata.program.Program.")
-    with _lock:
-        _registered[program.name] = program
-        _capabilities.pop(program.name, None)
-
-
 def get_program(name: str) -> Program | None:
-    """The native program of this name: registered here, else installed.
+    """The native program of this name: registered in this process, else installed.
+
+    The same lookup as ``qcdata.program.find_program``, which drivers use for their
+    children.
 
     Args:
         name: The program's name, as in ``ProgramInput.program``.
@@ -142,12 +133,7 @@ def get_program(name: str) -> Program | None:
     Returns:
         The program, or None when only a codec (or nothing) provides it.
     """
-    with _lock:
-        if name in _registered:
-            return _registered[name]
-        if name not in _found:
-            _found[name] = find_program(name)
-        return _found[name]
+    return find_program(name)
 
 
 def _error_for(output: ProgramOutput[Any, Any]) -> QCComputeBaseError:

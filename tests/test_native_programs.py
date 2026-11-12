@@ -24,6 +24,8 @@ from qcdata.program import (
     Request,
     Resources,
     RunContext,
+    available_programs,
+    unregister_program,
 )
 from qcdata.testing.toy import ToyProgram, ToySession
 
@@ -129,7 +131,8 @@ class FiniteDifference(ToyProgram):
 def toy_registered():
     programs.register_program(ToyProgram())
     yield
-    programs._registered.clear()
+    for name in available_programs():
+        unregister_program(name)  # installed programs stay
 
 
 def test_native_programs_run_without_a_codec():

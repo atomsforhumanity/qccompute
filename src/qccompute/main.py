@@ -37,6 +37,7 @@ from .exceptions import (
     ExternalProgramError,
     InputError,
     ProgramNotFoundError,
+    ProgramTimeoutError,
     QCComputeBaseError,
 )
 from .execution import collect_files as read_files
@@ -707,12 +708,13 @@ def _compute_child(
                     "propagation.",
                 )
             child_input = codec.propagate_wfn(previous, child_input)
-    except Exception:
+    except Exception as exc:
         return ProgramOutput(
             input_data=child_input,
             results=empty_results(child_input),
             success=False,
             traceback=traceback.format_exc(),
+            error=_error_info(exc, child_input.program),
             execution=construct_execution(None, monotonic() - child_start),
         )
     return compute(
@@ -767,6 +769,7 @@ def _finalize_output(
             logs=logs if collect_logs or failures else None,
             traceback="\nAdditional failure:\n".join(detail for _, detail in failures)
             or None,
+            error=_error_info(failures[0][0], input_data.program) if failures else None,
             execution=execution,
         )
 
@@ -777,6 +780,27 @@ def _finalize_output(
         if type(result) is not type(empty_results(input_data)):
             result = empty_results(input_data)
         return build_output()
+
+
+def _error_info(exc: Exception, program: str) -> ErrorInfo:
+    """The typed error of a failed codec calculation, from its primary failure.
+
+    Codecs do not classify failures, so a program's reported failure, an unexplained
+    exit, a decoding failure and results that break the data contract are all kind
+    ``internal``.
+    """
+    error = _calculation_error(exc, program)
+    kind = ErrorKind.internal
+    if isinstance(error, ProgramTimeoutError):
+        kind = ErrorKind.timeout
+    elif isinstance(error, ProgramNotFoundError | CodecNotFoundError):
+        kind = ErrorKind.environment
+    elif isinstance(error, InputError):
+        kind = ErrorKind.input
+    # An unclassified failure keeps its exception type: "ValidationError: ...".
+    named = kind is ErrorKind.internal and not isinstance(exc, QCComputeBaseError)
+    message = f"{type(exc).__name__}: {exc}" if named else str(exc)
+    return ErrorInfo(kind=kind, message=message.strip())
 
 
 def _calculation_error(exc: Exception, program: str) -> QCComputeBaseError:

@@ -19,6 +19,7 @@ from qccodec import (
 from qccodec.exceptions import CalculationError, EncoderError, ParserError
 from qcdata import (
     CalcType,
+    ErrorKind,
     FileInput,
     ProgramInput,
     ProgramOutput,
@@ -245,6 +246,52 @@ def test_invalid_success_becomes_failed_output(
     assert not output.success and output.results.energy == -1
     assert output.traceback is not None
     assert "gradient" in output.traceback
+
+
+def test_failed_codec_outputs_carry_typed_errors(
+    prog_input_factory: Callable[..., ProgramInput],
+) -> None:
+    """Every failed output has an ErrorInfo, so callers branch on kind, not tracebacks."""
+
+    def encode(inp: ProgramInput) -> NativeInput:
+        """Refuse the input."""
+        raise EncoderError("bad input")
+
+    refused = compute(
+        prog_input_factory("energy"),
+        codec=Codec("test", calctypes=[CalcType.energy], encode=encode),
+        raise_exc=False,
+    )
+    assert refused.error is not None
+    assert refused.error.kind is ErrorKind.input
+    assert refused.error.message == "bad input"
+
+    # Results that break the data contract (axtb 0.1's codec under qcdata 0.24).
+    invalid = compute(
+        prog_input_factory("gradient"),
+        codec=local_codec(PythonInput(lambda: None)),
+        raise_exc=False,
+    )
+    assert invalid.error is not None
+    assert invalid.error.kind is ErrorKind.internal
+    assert invalid.error.message.startswith("ValidationError: ")
+
+    def decode(inp: ProgramInput, out: NativeOutput) -> SinglePointData:
+        """Fail to read the output."""
+        raise ParserError("missing gradient")
+
+    unread = compute(
+        prog_input_factory("gradient"),
+        codec=local_codec(PythonInput(lambda: None), decode),
+        raise_exc=False,
+    )
+    assert unread.error is not None
+    assert unread.error.kind is ErrorKind.internal
+    assert "missing gradient" in unread.error.message
+    good = compute(
+        prog_input_factory("energy"), codec=local_codec(PythonInput(lambda: None))
+    )
+    assert good.success and good.error is None
 
 
 def test_encoding_and_staging_errors_are_wrapped(

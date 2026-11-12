@@ -191,6 +191,22 @@ def test_lists_of_other_programs_run_one_at_a_time():
     assert {g[0] for g in serial.grants} == {None}  # not granted: its own settings
 
 
+def test_native_lists_stay_in_this_process(monkeypatch):
+    """Program state (warm starts, GPU contexts) lives in the caller's process, so a
+    top-level list of native programs never starts worker processes. axtb's study on
+    the codec path: worker rounds lost every warm start and paid about 0.25 s each."""
+    from qccompute import parallel
+
+    def no_workers(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("a list of native programs started a worker pool")
+
+    monkeypatch.setattr(parallel, "WorkerPool", no_workers)
+    programs.register_program(Recording("serial", thread_safe=False))
+    inputs = [toy_input(), toy_input(program="serial"), toy_input(), toy_input()]
+    outs = qccompute.compute(inputs, max_workers=4)
+    assert all(o.success for o in outs)
+
+
 def test_list_failures_are_grouped():
     with pytest.raises(ComputeErrors) as e:
         qccompute.compute([toy_input(), toy_input(fail="numerical")])

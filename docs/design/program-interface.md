@@ -350,8 +350,9 @@ code moves between in-process and worker by one line.
 - **Crashes:** a dead worker is `ErrorInfo(kind environment, code worker_died)` with the
   exit status and the tail of its stderr; the client can start a new one, and lineages
   on it are lost (the next step starts fresh, as its record shows). A worker that exits
-  on purpose (a poisoned GPU context) first answers the request in flight with its own
-  error (kind `backend`). In-process use has no such isolation, so qccompute prefers
+  on purpose first answers the request in flight with its own error: a GPU fault that
+  poisons the device context is kind `backend`, code `device_lost`, on which the serve loop
+  exits without needing to know the program. In-process use has no such isolation, so qccompute prefers
   workers for GPU and long runs.
 
 ### Resources and GPUs (packing)

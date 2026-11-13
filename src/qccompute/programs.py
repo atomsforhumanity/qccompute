@@ -16,7 +16,7 @@ import shutil
 import tempfile
 import threading
 import traceback
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
@@ -28,11 +28,13 @@ from qcdata import (
     Data,
     ErrorInfo,
     ErrorKind,
+    Frame,
     InputType,
     ProgramError,
     ProgramInput,
     ProgramOutput,
     ProgramSpec,
+    Request,
     Structure,
 )
 
@@ -71,6 +73,7 @@ __all__ = [
 # Keyed by the program object's id; the object is kept with its capabilities, so an id
 # is never reused while cached and a newly registered program is read afresh.
 _capabilities: dict[int, tuple[Program, Capabilities]] = {}
+_locks: dict[int, tuple[Program, threading.Lock]] = {}
 _lock = threading.Lock()
 
 
@@ -314,19 +317,97 @@ def session(
         inp = ProgramInput.from_spec(spec, structure)
     allowed = session_calctypes(calctypes) if calctypes else None
     program = get_program(inp.program)
-    if program is not None and isinstance(program, SessionProgram):
-        if capabilities(program).sessions:
-            return program.open_session(inp, RunContext(threads=threads), allowed)
-    if program is not None and allowed is None:
-        caps = capabilities(program)
-        method = inp.model.method if inp.model is not None else None
-        supported = (caps.methods or {}).get(method or "", caps.calctypes)
-        allowed = session_calctypes(None, supported & session_calctypes())
-    if compute is None:
-        from .main import compute as qccompute
+    opened: Session
+    if (
+        program is not None
+        and isinstance(program, SessionProgram)
+        and capabilities(program).sessions
+    ):
+        opened = program.open_session(inp, RunContext(threads=threads), allowed)
+    else:
+        if program is not None and allowed is None:
+            caps = capabilities(program)
+            method = inp.model.method if inp.model is not None else None
+            supported = (caps.methods or {}).get(method or "", caps.calctypes)
+            allowed = session_calctypes(None, supported & session_calctypes())
+        if compute is None:
+            from .main import compute as qccompute
 
-        compute = partial(qccompute, raise_exc=False, **compute_options)
-    return ComputeSession(compute, inp, calctypes=allowed)
+            compute = partial(qccompute, raise_exc=False, **compute_options)
+        opened = ComputeSession(compute, inp, calctypes=allowed)
+    if program is not None and not capabilities(program).thread_safe:
+        return _Serialized(opened, _program_lock(program))
+    return opened
+
+
+def _program_lock(program: Program) -> threading.Lock:
+    """One lock per program object, shared by all its sessions in this process."""
+    with _lock:
+        cached = _locks.get(id(program))
+        if cached is None or cached[0] is not program:
+            cached = (program, threading.Lock())
+            _locks[id(program)] = cached
+    return cached[1]
+
+
+class _Serialized:
+    """A session of a program that is not thread-safe, safe to call from threads.
+
+    Drivers may call the sessions they open from several threads at once (ten TS
+    searches side by side); the runner, not the driver, makes that safe. Sessions of a
+    program that does not declare ``thread_safe`` take turns on one lock per program;
+    codec children (separate processes) and thread-safe programs run side by side.
+    """
+
+    def __init__(self, session: Session, lock: threading.Lock):
+        self._session = session
+        self._lock = lock
+
+    @property
+    def program(self) -> str:
+        """The session's program."""
+        return self._session.program
+
+    @property
+    def program_version(self) -> str:
+        """The session's program version."""
+        return self._session.program_version
+
+    def compute(self, *args: Any, **kwargs: Any) -> Frame:
+        """See `qccompute.program.Session.compute`."""
+        with self._lock:
+            return self._session.compute(*args, **kwargs)
+
+    def compute_many(self, requests: Sequence[Request]) -> list[Frame]:
+        """See `qccompute.program.Session.compute_many`."""
+        with self._lock:
+            return self._session.compute_many(requests)
+
+    def reset(self, lineage: Any = ...) -> None:
+        """See `qccompute.program.Session.reset`."""
+        with self._lock:
+            self._session.reset(lineage)
+
+    def plan(self) -> Plan:
+        """See `qccompute.program.Session.plan`."""
+        return self._session.plan()
+
+    def close(self) -> None:
+        """Close the session."""
+        with self._lock:
+            self._session.close()
+
+    def __enter__(self) -> _Serialized:
+        """Use the session as a context manager."""
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        """Close the session."""
+        self.close()
+
+    def __getattr__(self, name: str) -> Any:
+        """The program's own extras on its session (``calctypes``, ...)."""
+        return getattr(self._session, name)
 
 
 class _Children:

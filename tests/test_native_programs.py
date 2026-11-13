@@ -329,3 +329,54 @@ def test_driver_children_never_go_to_worker_processes(monkeypatch):
         qccodec.unregister("library")
     assert out.results.energy == 0 + 1 + 2 + 3
     assert set(out.results.extras["pids"]) == {os.getpid()}
+
+
+class Exclusive(ToyProgram):
+    """Sessions that record how many requests ran at once; not thread-safe."""
+
+    def __init__(self, name: str, thread_safe: bool):
+        self.name = name
+        self._thread_safe = thread_safe
+        self.running = 0
+        self.most = 0
+        self._count = __import__("threading").Lock()
+
+    def capabilities(self) -> Capabilities:
+        return (
+            super().capabilities().model_copy(update={"thread_safe": self._thread_safe})
+        )
+
+    def open_session(self, inp, ctx, calctypes=None):
+        program = self
+        inner = super().open_session(inp.model_copy(update={"program": "toy"}), ctx)
+
+        class Counting:
+            def __getattr__(self, name):
+                return getattr(inner, name)
+
+            def compute(self, *args, **kwargs):
+                import time
+
+                with program._count:
+                    program.running += 1
+                    program.most = max(program.most, program.running)
+                time.sleep(0.02)
+                with program._count:
+                    program.running -= 1
+                return inner.compute(*args, **kwargs)
+
+        return Counting()
+
+
+@pytest.mark.parametrize("thread_safe", [False, True])
+def test_drivers_may_call_sessions_from_threads(thread_safe):
+    """The runner makes concurrent session calls safe; drivers need not ask."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    program = Exclusive(f"exclusive-{thread_safe}", thread_safe)
+    programs.register_program(program)
+    sessions = [qccompute.session(toy_input(program=program.name)) for _ in range(4)]
+    with ThreadPoolExecutor(4) as pool:
+        frames = list(pool.map(lambda s: s.compute(), sessions))
+    assert all(f.success for f in frames)
+    assert program.most > 1 if thread_safe else program.most == 1

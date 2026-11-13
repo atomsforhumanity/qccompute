@@ -317,7 +317,9 @@ class RunContext:
             calctypes: The calctypes the session may run (see `session_calctypes`).
 
         Returns:
-            The session; close it (or use it as a context manager) when done.
+            The session; close it (or use it as a context manager) when done. A
+            driver may call its sessions from several threads at once: qccompute makes
+            that safe, serializing sessions of programs that are not thread-safe.
 
         Raises:
             RuntimeError: The runner provides neither sessions nor a compute callback.
@@ -367,8 +369,15 @@ class Session(Protocol):
         program_version: The program's version.
     """
 
-    program: str
-    program_version: str
+    @property
+    def program(self) -> str:
+        """The program's name."""
+        ...
+
+    @property
+    def program_version(self) -> str:
+        """The program's version."""
+        ...
 
     def compute(
         self,

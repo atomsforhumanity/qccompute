@@ -373,6 +373,11 @@ class _Serialized:
         """The session's program version."""
         return self._session.program_version
 
+    @property
+    def input_data(self) -> ProgramInput:
+        """The input the session was opened with."""
+        return self._session.input_data
+
     def compute(self, *args: Any, **kwargs: Any) -> Frame:
         """See `qccompute.program.Session.compute`."""
         with self._lock:

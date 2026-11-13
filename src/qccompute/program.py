@@ -379,6 +379,11 @@ class Session(Protocol):
         """The program's version."""
         ...
 
+    @property
+    def input_data(self) -> ProgramInput:
+        """The input the session was opened with: its atoms, settings and defaults."""
+        ...
+
     def compute(
         self,
         positions: np.ndarray | None = None,
@@ -605,6 +610,11 @@ class ComputeSession:
         self.program = inp.program
         self.program_version = ""
         self._closed = False
+
+    @property
+    def input_data(self) -> ProgramInput:
+        """The input the session was opened with."""
+        return self._inp
 
     def _input(
         self, positions: np.ndarray | None, calctype: CalcType | str | None

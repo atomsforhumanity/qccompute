@@ -13,6 +13,7 @@ program, its session is usable directly (``ToySession(inp)``) and is the object
 from __future__ import annotations
 
 import difflib
+import json
 import time
 from collections.abc import Iterable, Mapping, Sequence
 from types import TracebackType
@@ -305,6 +306,15 @@ class ToySession:
         self._structure = inp.structure
         self._history: dict[str, np.ndarray] = {}
         self._closed = False
+
+    @property
+    def input_data(self) -> ProgramInput:
+        """The input the session was opened with."""
+        return self._inp
+
+    def lineages(self) -> list[Lineage]:
+        """The lineages with history (optional, beyond the protocol: for inspection)."""
+        return [json.loads(key) for key in self._history]
 
     def compute(
         self,

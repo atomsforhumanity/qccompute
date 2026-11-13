@@ -58,14 +58,34 @@ class ConformanceError(AssertionError):
     """A program does not meet the contract; the message lists every failed check."""
 
 
-def _contains_auto(value: Any) -> bool:
+def _auto_paths(value: Any, path: str = "") -> list[str]:
+    """Dotted paths of every ``"auto"`` left in a settings tree."""
     if isinstance(value, str):
-        return value.lower() == "auto"
+        return [path] if value.lower() == "auto" else []
     if isinstance(value, dict):
-        return any(_contains_auto(v) for v in value.values())
+        return [
+            p
+            for k, v in value.items()
+            for p in _auto_paths(v, f"{path}.{k}" if path else str(k))
+        ]
     if isinstance(value, list | tuple):
-        return any(_contains_auto(v) for v in value)
-    return False
+        return [p for i, v in enumerate(value) for p in _auto_paths(v, f"{path}[{i}]")]
+    return []
+
+
+def _without(settings: Mapping[str, Any], paths: Sequence[str]) -> dict[str, Any]:
+    """The settings tree without the given dotted paths."""
+    tree = {
+        k: _without(v, []) if isinstance(v, dict) else v for k, v in settings.items()
+    }
+    for path in paths:
+        *parents, leaf = path.split(".")
+        node: Any = tree
+        for key in parents:
+            node = node.get(key) if isinstance(node, dict) else None
+        if isinstance(node, dict):
+            node.pop(leaf, None)
+    return tree
 
 
 def _validator(schema: dict[str, Any]) -> Callable[[Any], list[str]] | None:
@@ -161,7 +181,7 @@ def check_program(
             errors = validate(dict(inp.keywords))
             check(f"{tag}: keywords match schema", not errors, "; ".join(errors))
 
-        # Plans resolve every auto and reproduce themselves.
+        # Plans resolve every auto the run does not decide, and reproduce themselves.
         try:
             plan = plan_of(program, inp)
         except ProgramError as e:
@@ -171,10 +191,12 @@ def check_program(
             check(f"{tag}: plan type", False, str(e))
             continue
         settings = plan.resolved.settings
+        deferred = plan.resolved.deferred
+        undeferred = [p for p in _auto_paths(settings) if p not in deferred]
         check(
-            f"{tag}: resolved has no auto",
-            not _contains_auto(settings),
-            str(settings),
+            f"{tag}: resolved has no auto but the deferred",
+            not undeferred,
+            f"{undeferred} (list settings the run decides in resolved.deferred)",
         )
         if validate is not None:
             errors = validate(settings)
@@ -224,8 +246,12 @@ def check_program(
             repr(prov),
         )
         check(
-            f"{tag}: output resolved equals plan",
-            out.resolved is not None and out.resolved.settings == settings,
+            f"{tag}: output resolved equals plan, deferred settings decided",
+            out.resolved is not None
+            and not _auto_paths(out.resolved.settings)
+            and not out.resolved.deferred
+            and _without(out.resolved.settings, deferred)
+            == _without(settings, deferred),
             repr(out.resolved),
         )
         if isinstance(results, SinglePointData):

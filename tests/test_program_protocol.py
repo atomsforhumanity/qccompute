@@ -572,3 +572,56 @@ def test_program_errors_keep_the_failed_frame_through_compute_sessions():
     assert e.value.frame.record["scf"]["iterations"] == 128
     failed = s.compute_many([Request()])[0]
     assert failed.record["scf"]["iterations"] == 128
+
+
+def test_plans_may_defer_what_the_run_decides():
+    """linus decides DF storage from free memory at the SCF's start: auto in the plan,
+    resolved in the output; anything else left auto is a conformance failure."""
+    from qcdata import Resolved
+
+    from qccompute.program import Plan
+
+    class Deferring(ToyProgram):
+        def __init__(self, declare: bool):
+            self.declare = declare
+
+        def plan(self, inp):
+            own = {k: v for k, v in inp.keywords.items() if k != "storage"}
+            plan = super().plan(inp.model_copy(update={"keywords": own}))
+            settings = {**plan.resolved.settings, "storage": {"kind": "auto"}}
+            resolved = Resolved(
+                settings=settings,
+                reasons={
+                    **plan.resolved.reasons,
+                    "storage.kind": "decided at run time",
+                },
+                deferred=["storage.kind"] if self.declare else [],
+            )
+            return Plan(resolved=resolved, resources=plan.resources)
+
+        def compute(self, inp, ctx):
+            out = super().compute(
+                inp.model_copy(
+                    update={
+                        "keywords": {
+                            k: v for k, v in inp.keywords.items() if k != "storage"
+                        }
+                    }
+                ),
+                ctx,
+            )
+            if not out.success:
+                return out.model_copy(update={"input_data": inp})
+            settings = {**out.resolved.settings, "storage": {"kind": "incore"}}
+            return out.model_copy(
+                update={"input_data": inp, "resolved": Resolved(settings=settings)}
+            )
+
+        def settings_schema(self, calctype):
+            schema = super().settings_schema(calctype)
+            props = {**schema["properties"], "storage": {"type": "object"}}
+            return {**schema, "properties": props}
+
+    check_program(Deferring(declare=True), [toy_input()])
+    with pytest.raises(ConformanceError, match="storage.kind"):
+        check_program(Deferring(declare=False), [toy_input()])

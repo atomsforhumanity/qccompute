@@ -29,6 +29,7 @@ classifiers = [
 geometric = ["qccodec[geometric]>=0.21.0"]
 tcpb = ["qccodec[tcpb]>=0.21.0"]
 all = ["qccodec[geometric,tcpb]>=0.21.0"]
+testing = ["jsonschema>=4.18"]
 
 [project.urls]
 Homepage = "https://github.com/atomsforhumanity/qccompute"

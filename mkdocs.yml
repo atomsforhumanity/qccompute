@@ -102,6 +102,9 @@ nav:
   #     - Why use QCCompute?: why.md
   - Programs:
       - Overview: programs/overview.md
+      - Programs and sessions (API): api/program.md
+      - The program interface (design): design/program-interface.md
+      - The AFH stack (design): design/architecture.md
       - Program pages and examples: https://qccodec.docs.afh.org/programs/
   - Examples:
       - Overview: examples/overview.md

@@ -1,9 +1,9 @@
-"""Running programs that implement ``qcdata.program.Program`` directly, without a codec.
+"""Running programs that implement `qccompute.program.Program` directly, without a codec.
 
 AFH's own programs (linus, axtb, qcopt, ...) register an object under the
-``qcdata.programs`` entry points; tests and notebooks add others with
-``qcdata.program.register_program`` (also exported here). ``compute`` finds them with
-``qcdata.program.find_program``, the same lookup drivers use, before codecs, and calls
+``qccompute.programs`` entry points; tests and notebooks add others with
+`register_program` (also exported here). ``compute`` finds them with
+`qccompute.program.find_program`, the same lookup drivers use, before codecs, and calls
 ``program.compute(input, context)`` in this process, with a `RunContext` carrying the
 thread and GPU grant, a scratch directory, a callback for child calculations, and child
 sessions. `session` opens a session for any program: its own when it has them, else one
@@ -29,23 +29,11 @@ from qcdata import (
     ErrorInfo,
     ErrorKind,
     InputType,
+    ProgramError,
     ProgramInput,
     ProgramOutput,
     ProgramSpec,
     Structure,
-)
-from qcdata.program import (
-    Capabilities,
-    ComputeSession,
-    Plan,
-    Program,
-    ProgramError,
-    RunContext,
-    Session,
-    SessionProgram,
-    find_program,
-    register_program,
-    session_calctypes,
 )
 
 from .exceptions import (
@@ -56,6 +44,20 @@ from .exceptions import (
     QCComputeBaseError,
 )
 from .execution import construct_execution, empty_results, host_info
+from .program import (
+    Capabilities,
+    ComputeSession,
+    Plan,
+    Program,
+    RunContext,
+    Session,
+    SessionProgram,
+    capabilities_of,
+    find_program,
+    plan_of,
+    register_program,
+    session_calctypes,
+)
 
 __all__ = [
     "register_program",
@@ -101,7 +103,7 @@ def native_program_request(input_data: InputType) -> NativeProgramRequest | None
     if program is None or not capabilities(program).thread_safe:
         return None
     try:
-        plan = program.plan(input_data)
+        plan = plan_of(program, input_data)
     except Exception:  # noqa: BLE001 - computing it reports the error
         return None
     return NativeProgramRequest(
@@ -115,7 +117,7 @@ def capabilities(program: Program) -> Capabilities:
         cached = _capabilities.get(id(program))
     if cached is not None and cached[0] is program:
         return cached[1]
-    caps = program.capabilities()
+    caps = capabilities_of(program)
     with _lock:
         _capabilities[id(program)] = (program, caps)
     return caps
@@ -124,7 +126,7 @@ def capabilities(program: Program) -> Capabilities:
 def get_program(name: str) -> Program | None:
     """The native program of this name: registered in this process, else installed.
 
-    The same lookup as ``qcdata.program.find_program``, which drivers use for their
+    The same lookup as `qccompute.program.find_program`, which drivers use for their
     children.
 
     Args:
@@ -206,14 +208,9 @@ def run_program(
     start = monotonic()
 
     def open_child_session(
-        spec: ProgramSpec,
-        structure: Structure,
-        share: int | None,
-        calctypes: frozenset[CalcType] | None,
+        inp: ProgramInput, share: int | None, calctypes: frozenset[CalcType] | None
     ) -> Session:
-        return session(
-            spec, structure, threads=share, calctypes=calctypes, compute=child_compute
-        )
+        return session(inp, threads=share, calctypes=calctypes, compute=child_compute)
 
     made: list[Path] = []
 
@@ -252,13 +249,16 @@ def run_program(
     hostname, host_cpu = host_info()
     execution = type(output.execution).model_construct(
         _fields_set=output.execution.model_fields_set
-        | {"wall_time", "hostname", "host_cpu", "scratch_dir"},
+        | {"wall_time", "hostname", "host_cpu", "scratch_dir", "threads"},
         **{
             **output.execution.__dict__,
             "wall_time": round(monotonic() - start, 6),
             "hostname": hostname,
             "host_cpu": host_cpu,
             "scratch_dir": scratch_dir,
+            "threads": output.execution.threads
+            if output.execution.threads is not None
+            else threads,
         },
     )
     values: dict[str, Any] = {**output.__dict__, "execution": execution}
@@ -273,8 +273,8 @@ def run_program(
 
 
 def session(
-    spec: ProgramSpec,
-    structure: Structure,
+    spec: ProgramInput | ProgramSpec,
+    structure: Structure | None = None,
     *,
     threads: int | None = None,
     calctypes: Iterable[CalcType | str] | None = None,
@@ -284,16 +284,17 @@ def session(
     """Open a session: one program and molecule at many geometries.
 
     Programs with sessions of their own (``capabilities().sessions``) open one, pinned
-    to the spec's settings and warm-started between geometries. For any other program
-    the session runs each geometry through ``compute``.
+    to the input's settings and warm-started between geometries; it is the program's
+    own session object (``linus.Session``), exactly what a direct user gets. For any
+    other program the session runs each geometry through ``compute``.
 
     Args:
-        spec: The program, model, and keywords; ``spec.calctype`` is the default
-            request type.
-        structure: The atoms, charge, multiplicity, and first geometry.
+        spec: The input (program, model, keywords, structure; its calctype and
+            geometry are the defaults of a request), or a spec with ``structure``.
+        structure: With a spec: the atoms, charge, multiplicity and first geometry.
         threads: The session's CPU threads (None: the program's settings).
-        calctypes: The calctypes the session may run (default: the spec's, with lower
-            derivatives); the keywords are checked against them.
+        calctypes: The calctypes the session may run (default: everything the method
+            supports; declaring narrows it); the keywords are checked against them.
         compute: Computes inputs for a session over ``compute``; by default
             ``qccompute.compute`` with ``compute_options`` and ``raise_exc=False``.
         **compute_options: Options for ``qccompute.compute`` (``environment``,
@@ -303,20 +304,29 @@ def session(
         The session; use it as a context manager, or close it.
 
     Raises:
-        qcdata.program.ProgramError: The program rejects the spec.
+        qcdata.ProgramError: The program rejects the input.
     """
-    allowed = session_calctypes(spec, calctypes)
-    program = get_program(spec.program)
+    if isinstance(spec, ProgramInput):
+        inp = spec
+    else:
+        if structure is None:
+            raise TypeError("A session from a ProgramSpec needs its structure.")
+        inp = ProgramInput.from_spec(spec, structure)
+    allowed = session_calctypes(calctypes) if calctypes else None
+    program = get_program(inp.program)
     if program is not None and isinstance(program, SessionProgram):
-        if program.capabilities().sessions:
-            return program.open_session(
-                spec, structure, RunContext(threads=threads), allowed
-            )
+        if capabilities(program).sessions:
+            return program.open_session(inp, RunContext(threads=threads), allowed)
+    if program is not None and allowed is None:
+        caps = capabilities(program)
+        method = inp.model.method if inp.model is not None else None
+        supported = (caps.methods or {}).get(method or "", caps.calctypes)
+        allowed = session_calctypes(None, supported & session_calctypes())
     if compute is None:
         from .main import compute as qccompute
 
         compute = partial(qccompute, raise_exc=False, **compute_options)
-    return ComputeSession(compute, spec, structure, calctypes=allowed)
+    return ComputeSession(compute, inp, calctypes=allowed)
 
 
 class _Children:

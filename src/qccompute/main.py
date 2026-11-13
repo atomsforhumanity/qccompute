@@ -511,7 +511,7 @@ def _compute_native(
     options: Mapping[str, Any],
     grant: tuple[int, tuple[str, ...], Any] | None,
 ) -> ProgramOutput[ProgramInput, Data]:
-    """Run a program implementing ``qcdata.program.Program`` in this process.
+    """Run a program implementing `qccompute.program.Program` in this process.
 
     Options that only codecs implement are rejected rather than ignored.
     """

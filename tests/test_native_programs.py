@@ -1,4 +1,4 @@
-"""Programs implementing qcdata.program.Program run without a codec."""
+"""Programs implementing qccompute.program.Program run without a codec."""
 
 from typing import Any
 
@@ -8,30 +8,30 @@ from qcdata import (
     CalcType,
     ErrorKind,
     ExecutionInfo,
+    ProgramError,
     ProgramInput,
     ProgramOutput,
     ProgramSpec,
     Provenance,
+    Request,
     Resolved,
     SinglePointData,
     Structure,
 )
-from qcdata.program import (
+
+import qccompute
+from qccompute import programs
+from qccompute.exceptions import ComputeErrors, ExternalProgramError, InputError
+from qccompute.program import (
     Capabilities,
     ComputeSession,
     Plan,
-    ProgramError,
-    Request,
     Resources,
     RunContext,
     available_programs,
     unregister_program,
 )
-from qcdata.testing.toy import ToyProgram, ToySession
-
-import qccompute
-from qccompute import programs
-from qccompute.exceptions import ComputeErrors, ExternalProgramError, InputError
+from qccompute.testing.toy import ToyProgram, ToySession
 
 ARGON3 = Structure(
     symbols=["Ar", "Ar", "Ar"],
@@ -108,7 +108,9 @@ class FiniteDifference(ToyProgram):
             for sign in (1, -1):
                 d = np.zeros_like(x)
                 d[k] = sign * step
-                requests.append(Request((x + d).reshape(-1, 3), CalcType.energy))
+                requests.append(
+                    Request(positions=(x + d).reshape(-1, 3), calctype=CalcType.energy)
+                )
         with ctx.session(child, inp.structure, threads=1) as s:
             results = s.compute_many(requests)
         energies = np.array([r.results.energy for r in results])

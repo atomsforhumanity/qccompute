@@ -92,11 +92,16 @@ with qccompute.session(inp) as s:
     hessian = s.compute(new_positions, "hessian")
 ```
 
-A program with sessions of its own hands back its own session object, so the numbers are
-exactly those of the program used directly; any other program gets a session over
-`compute`. A failed request raises `ProgramError` and the session stays usable;
-`compute_many` runs every request, then raises `qcdata.ProgramErrors`, whose `results`
-holds every frame in request order.
+Only a program with sessions of its own (`capabilities().sessions`) warm-starts: it
+hands back its own session object, so the numbers are exactly those of the program used
+directly. Any other program (most external programs, tblite, a `FunctionProgram`) gets a
+session over `compute`, which computes every request from scratch
+(`record["warm_start"]` is false): a convenience, not a speed-up. A failed request raises
+`ProgramError` and the session stays usable; `compute_many` runs every request, then
+raises `qcdata.ProgramErrors`, whose `results` holds every frame in request order.
+Lineages name separate histories in one session (both branches of an IRC), `seed`
+starts one from another, and `commit=False` reads a history without moving it; see
+[Sessions, lineages and seeds](examples/sessions.md).
 
 ## A share of the machine: the Runner
 

@@ -110,5 +110,6 @@ nav:
       - Overview: examples/overview.md
       - File Input: examples/file_input.md
       - Many calculations at once: examples/many_calculations.md
+      - Sessions, lineages and seeds: examples/sessions.md
       - A program from functions: examples/function_program.md
   - Changelog: https://github.com/atomsforhumanity/qccompute/blob/master/CHANGELOG.md

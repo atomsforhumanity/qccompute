@@ -329,6 +329,7 @@ def test_options_are_checked():
 
 
 def test_the_default_runner_is_one_and_made_on_first_use():
+    assert qccompute.default_runner is default_runner  # exported
     assert default_runner() is default_runner()
     assert default_runner().isolation == "auto"
     with pytest.raises(ValueError, match="backend"):

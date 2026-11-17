@@ -535,12 +535,10 @@ class Session(Protocol):
         lineages may run concurrently within the grant. The results equal running the
         requests one at a time, each with the thread count it got.
 
-        Args:
-            requests: The evaluations.
-
         Every request runs, failed ones included; then, if any failed, the call
-        raises one `qcdata.ProgramErrors` group holding each failure's `qcdata.ProgramError`
-        and every frame in request order (failed frames in place).
+        raises one `qcdata.ProgramErrors` group holding each failure's
+        `qcdata.ProgramError` and every frame in request order (failed frames in
+        place).
 
         Args:
             requests: The evaluations.
@@ -981,7 +979,18 @@ def unregister_program(name: str) -> None:
 
 
 def available_programs() -> list[str]:
-    """Names of the registered and installed programs."""
+    """Names of the programs qccompute can find, without loading any.
+
+    The programs registered in this process and those installed packages offer
+    under the ``qccompute.programs`` entry points. A package may offer a program whose
+    executable is not on this machine (qccodec offers every external program it has
+    an adapter for: ORCA, Psi4, TeraChem, ...); running it then fails with kind
+    ``environment``. An external program's ``numerics`` says ``not installed`` when its
+    executable cannot be found.
+
+    Returns:
+        The names, sorted.
+    """
     with _registry_lock:
         registered = set(_registered)
     return sorted(registered | set(_entry_points()))

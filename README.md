@@ -35,6 +35,7 @@ inp = ProgramInput(
 
 out = qccompute.compute(inp)                 # one input -> ProgramOutput
 outs = qccompute.compute([inp] * 8)          # a list runs side by side -> list
+future = qccompute.submit(inp)               # start one -> Future of its output
 with qccompute.session(inp) as s:            # one molecule at many geometries
     frame = s.compute(water.geometry * 1.01)
 ```

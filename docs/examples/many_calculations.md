@@ -73,3 +73,6 @@ with qccompute.Runner(threads=32) as runner:
 
 Stored outputs come first, then each as it finishes. With `raise_exc=True` (the default)
 failures are held back and raised together after the last success.
+
+When the next calculations depend on earlier ones, submit each as its inputs become
+known and get a future of its output: see [Dynamic workflows](dynamic_workflows.md).

@@ -174,6 +174,18 @@ network or a report can cite the exact run and read it back with
 `store.get(key, run=...)`. A store implements `key`, `get`, `put` and `tag`
 (`qccompute.runner.Store`); qcstore is one.
 
+## One calculation at a time, as futures
+
+`qccompute.submit(inp)` (and `Runner.submit`) starts a calculation and returns a
+`concurrent.futures.Future` of its output, for workflows whose next step depends on the
+last: per reaction, the IRC starts as soon as its transition-state search ends, with no
+stage barriers. Submitted calculations share the runner's threads as a list's do; a
+stored result resolves at once. See [Dynamic workflows](examples/dynamic_workflows.md).
+
+A program that is not thread-safe (qcopt) runs one calculation at a time per process.
+The runner warns the first time one waits for its turn; `Runner(isolation="process")`
+runs them side by side in worker processes.
+
 ## Progress
 
 Programs can report what they are doing while they run (qcopt: one event per step).

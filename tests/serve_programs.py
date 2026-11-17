@@ -133,6 +133,31 @@ class StepperSession(ToySession):
         return super().compute_many(requests)
 
 
+class Serial(ToyProgram):
+    """The toy, not thread-safe (like qcopt), sleeping ``sleep`` seconds per call."""
+
+    name = "serial"
+
+    def capabilities(self):
+        caps = super().capabilities()
+        return caps.model_copy(update={"thread_safe": False, "batches": False})
+
+    def _own(self, inp):
+        keywords = {k: v for k, v in inp.keywords.items() if k != "sleep"}
+        return inp.model_copy(update={"program": "toy", "keywords": keywords})
+
+    def plan(self, inp):
+        return super().plan(self._own(inp))
+
+    def compute(self, inp, ctx=None):
+        start = time.monotonic()
+        time.sleep(inp.keywords.get("sleep", 0))
+        out = super().compute(self._own(inp), ctx)
+        extras = {"pid": os.getpid(), "start": start, "end": time.monotonic()}
+        results = out.results.model_copy(update={"extras": extras})
+        return out.model_copy(update={"input_data": inp, "results": results})
+
+
 class IsolatedGPU(Isolated):
     """The isolated toy, planning one GPU (a GPU program in a worker of its own)."""
 
@@ -202,4 +227,5 @@ noisy = Noisy()
 isolated = Isolated()
 stateless = Stateless()
 stepper = Stepper()
+serial = Serial()
 isolated_gpu = IsolatedGPU()

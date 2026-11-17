@@ -28,9 +28,10 @@ import sys
 import threading
 import time
 import traceback
+import warnings
 import weakref
 from collections.abc import Iterable, Iterator, Mapping, Sequence
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Protocol, overload
@@ -83,6 +84,7 @@ __all__ = [
     "Store",
     "FILES",
     "compute",
+    "submit",
     "session",
     "default_runner",
 ]
@@ -275,8 +277,47 @@ class _Entry:
     def __init__(self, program: Program, caps: Capabilities, spec: str) -> None:
         self.program = program
         self.caps = caps
-        self.lock = None if caps.thread_safe else _program_lock(program)
+        self.lock = (
+            None if caps.thread_safe else _Turns(_program_lock(program), program.name)
+        )
         self.spec = spec
+
+
+class _Turns:
+    """A program's lock as one runner takes it: the first wait is a warning.
+
+    Calculations of a program that is not thread-safe take turns in this process.
+    When one has to wait for another (threads calling ``compute``, futures, a list),
+    they run one at a time where the caller may expect them side by side, so the
+    runner warns once per program, naming the way out.
+    """
+
+    __slots__ = ("_lock", "_name", "_warned")
+
+    def __init__(self, lock: threading.Lock, name: str) -> None:
+        self._lock = lock
+        self._name = name
+        self._warned = False
+
+    def __enter__(self) -> None:
+        """Take the program's turn, warning the first time it has to wait."""
+        if self._lock.acquire(blocking=False):
+            return
+        if not self._warned:
+            self._warned = True
+            warnings.warn(
+                f"Calculations of {self._name} are waiting their turn: it is not "
+                "thread-safe, so this process runs them one at a time. "
+                "Runner(isolation='process') runs them side by side, each in a "
+                "worker process.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+        self._lock.acquire()
+
+    def __exit__(self, *exc: object) -> None:
+        """Give the turn back."""
+        self._lock.release()
 
 
 _locks: dict[int, tuple[Program, threading.Lock]] = {}
@@ -486,6 +527,16 @@ def _subprogram_results(
     return outputs[0] if one else outputs
 
 
+def _resolved(out: Output, failure: ProgramError | None) -> Future[Output]:
+    """A future already done: the output, or its failure."""
+    future: Future[Output] = Future()
+    if failure is not None:
+        future.set_exception(failure)
+    else:
+        future.set_result(out)
+    return future
+
+
 def _put(
     store: Store,
     key: str,
@@ -566,7 +617,14 @@ class _Grant:
         self._per_gpu = per_gpu
         self._used = 0.0
         self._turn = 0
+        self._skipped: set[int] = set()
         self._ready = threading.Condition()
+
+    def add_gpus(self, gpus: Sequence[str]) -> None:
+        """Give a budget made without GPUs these, when a task first asks for one."""
+        with self._ready:
+            if not self._slots:
+                self._slots = {g: self._per_gpu for g in gpus}
 
     def share(self, threads: int, gpus: int) -> float:
         """The share of the budget a task with these threads and GPUs takes."""
@@ -588,13 +646,29 @@ class _Grant:
                     and sum(1 for n in self._slots.values() if n > 0) >= gpus
                 )
             )
-            self._turn += 1
+            self._next()
             self._used += share
             devices = tuple(g for g, n in self._slots.items() if n > 0)[:gpus]
             for g in devices:
                 self._slots[g] -= 1
             self._ready.notify_all()
         return threads, devices, share
+
+    def _next(self) -> None:
+        """Pass the turn on, past turns given up (call with the condition held)."""
+        self._turn += 1
+        while self._turn in self._skipped:
+            self._skipped.discard(self._turn)
+            self._turn += 1
+
+    def skip(self, turn: int) -> None:
+        """Give up a turn that will never be taken (a future cancelled before it ran)."""
+        with self._ready:
+            if turn == self._turn:
+                self._next()
+            elif turn > self._turn:
+                self._skipped.add(turn)
+            self._ready.notify_all()
 
     def release(self, devices: tuple[str, ...], share: float) -> None:
         """Return a finished task's room."""
@@ -712,6 +786,11 @@ class Runner:
         self._pools_changed = threading.Condition()
         self._all_workers: weakref.WeakSet[Worker] = weakref.WeakSet()
         self._closed = False
+        # Submitted calculations: their threads, the runner's budget, the next turn.
+        self._submitting = threading.Lock()
+        self._futures: ThreadPoolExecutor | None = None
+        self._budget: _Grant | None = None
+        self._turns = 0
 
     def __repr__(self) -> str:
         """Show the runner's share of the machine."""
@@ -930,7 +1009,14 @@ class Runner:
         worker.close()
 
     def close(self) -> None:
-        """Stop this runner's worker processes; it cannot run in workers afterwards."""
+        """Stop this runner's worker processes; it cannot run in workers afterwards.
+
+        Submitted calculations that have not started are cancelled.
+        """
+        with self._submitting:
+            futures, self._futures = self._futures, None
+        if futures is not None:
+            futures.shutdown(wait=False, cancel_futures=True)
         with self._pools_changed:
             self._closed = True
             self._pools.clear()
@@ -1220,6 +1306,131 @@ class Runner:
                 done,
             )
         return done
+
+    def submit(
+        self,
+        inp: Input,
+        *,
+        store: Store | None = None,
+        timeout: float | None = None,
+        rerun: bool = False,
+        tags: Sequence[str] = (),
+        meta: Mapping[str, Any] | None = None,
+        progress: ProgressCallback | None = None,
+    ) -> Future[Output]:
+        """Start one calculation and return at once: a future of its output.
+
+        For workflows whose next calculations depend on earlier ones (per reaction, a
+        transition-state search, then the IRC from its saddle, then both ends
+        minimized), many at once and with no stage barriers: submit each calculation
+        when its inputs are known, and the next as each future finishes
+        (``concurrent.futures.wait``, ``as_completed`` or ``add_done_callback``).
+
+        A stored output, or an input its program refuses, resolves the future before
+        this returns. The others are planned now and run in the runner's threads:
+        every submitted calculation of the runner is packed into its threads and GPUs
+        as a list's are, admitted in the order submitted. They share the machine
+        with each other, not with `compute` calls, which take their own share.
+
+        Args:
+            inp: The input.
+            store: See `compute`.
+            timeout: See `compute`; counted from when the calculation starts.
+            rerun: See `compute`.
+            tags: See `compute`.
+            meta: See `compute`.
+            progress: See `compute`; the calculation's events, from the threads
+                that run it.
+
+        Returns:
+            The future: its ``result()`` is the output, or raises
+            `qcdata.ProgramError` with the failed output, as `compute` does.
+            Cancelling it before it starts (``future.cancel()``) skips the
+            calculation.
+        """
+        if (tags or meta) and store is None:
+            raise ValueError("tags and meta are stored with runs: pass a store.")
+        if timeout is not None and not timeout > 0:
+            raise ValueError("timeout must be a positive number of seconds.")
+        key = ""
+        if store is not None:
+            key, hit = self._lookup(store, inp, rerun)
+            if hit is not None:
+                if tags:
+                    store.tag(key, *tags)
+                return _resolved(hit, None if hit.success else _error(hit))
+        try:
+            entry, plan = self._plan(inp)
+        except Exception as e:  # noqa: BLE001 - refused before running
+            out, failure = _refused(inp, e, self.identities(inp))
+            if store is not None:
+                _put(store, key, out, tags, meta)
+            return _resolved(out, failure)
+        task = _Task(0, inp, entry, plan, _threads(inp, plan, self.threads))
+        with self._submitting:
+            if self._futures is None:
+                self._futures = ThreadPoolExecutor(
+                    self.threads, thread_name_prefix="qccompute-submit"
+                )
+            if self._budget is None:
+                self._budget = _Grant(self.threads, (), self.per_gpu)
+            budget, turn = self._budget, self._turns
+            if task.gpus:
+                budget.add_gpus(self.gpus)
+            self._turns += 1
+            future = self._futures.submit(
+                self._submitted,
+                budget,
+                turn,
+                task,
+                timeout,
+                progress,
+                (store, key, tags, meta),
+            )
+
+        def cancelled(done: Future[Output]) -> None:  # its turn is never taken
+            if done.cancelled():
+                budget.skip(turn)
+
+        future.add_done_callback(cancelled)
+        return future
+
+    def _submitted(
+        self,
+        budget: _Grant,
+        turn: int,
+        task: _Task,
+        timeout: float | None,
+        progress: ProgressCallback | None,
+        stored: tuple[Store | None, str, Sequence[str], Mapping[str, Any] | None],
+    ) -> Output:
+        """Run a submitted calculation in its turn, within the runner's budget.
+
+        ``stored`` is the store, the input's key, the tags and meta to store the run
+        with (no store: None).
+        """
+        held, granted, share = budget.acquire(turn, task.threads, task.gpus)
+        memory = self._host_memory()
+        try:
+            out, failure = self._execute(
+                task.inputs[0],
+                held,
+                granted,
+                None if memory is None else memory * share,
+                timeout,
+                task.plan,
+                task.entry,
+                None,
+                progress,
+            )
+        finally:
+            budget.release(granted, share)
+        store, key, tags, meta = stored
+        if store is not None:
+            _put(store, key, out, tags, meta)
+        if failure is not None:
+            raise failure
+        return out
 
     def as_completed(
         self,
@@ -1663,7 +1874,7 @@ class _Guarded:
     def __init__(
         self,
         session: Session,
-        lock: threading.Lock | None,
+        lock: _Turns | None,
         parent: RunContext | None = None,
     ) -> None:
         self._session = session
@@ -1855,6 +2066,42 @@ def compute(
         tags=tags,
         meta=meta,
         raise_exc=raise_exc,
+        progress=progress,
+    )
+
+
+def submit(
+    inp: Input,
+    *,
+    store: Store | None = None,
+    timeout: float | None = None,
+    rerun: bool = False,
+    tags: Sequence[str] = (),
+    meta: Mapping[str, Any] | None = None,
+    progress: ProgressCallback | None = None,
+) -> Future[Output]:
+    """Start one calculation on this machine: `Runner.submit` of the default runner.
+
+    Args:
+        inp: The input.
+        store: See `Runner.compute`.
+        timeout: See `Runner.compute`.
+        rerun: See `Runner.compute`.
+        tags: See `Runner.compute`.
+        meta: See `Runner.compute`.
+        progress: See `Runner.compute`.
+
+    Returns:
+        A future of the output; ``result()`` raises `qcdata.ProgramError` for a
+        failed calculation.
+    """
+    return default_runner().submit(
+        inp,
+        store=store,
+        timeout=timeout,
+        rerun=rerun,
+        tags=tags,
+        meta=meta,
         progress=progress,
     )
 

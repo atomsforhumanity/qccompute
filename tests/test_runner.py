@@ -3,6 +3,8 @@
 import os
 import threading
 import time
+import warnings
+from concurrent.futures import FIRST_COMPLETED, Future, wait
 from typing import Any
 
 import numpy as np
@@ -423,7 +425,10 @@ def test_lists_run_side_by_side_with_their_planned_grants():
 def test_lists_of_programs_that_are_not_thread_safe_take_turns():
     serial = NoSessions("serial", thread_safe=False)
     register_program(serial)
-    outs = Runner(threads=4).compute([toy_input(program="serial") for _ in range(4)])
+    with pytest.warns(RuntimeWarning, match="isolation='process'"):
+        outs = Runner(threads=4).compute(
+            [toy_input(program="serial") for _ in range(4)]
+        )
     assert all(o.success for o in outs)
     assert serial.most == 1
 
@@ -935,8 +940,12 @@ def test_sessions_may_be_called_from_threads(thread_safe):
     program = NoSessions(f"exclusive-{thread_safe}", thread_safe)
     register_program(program)
     sessions = [qccompute.session(toy_input(program=program.name)) for _ in range(4)]
-    with ThreadPoolExecutor(4) as pool:
-        frames = list(pool.map(lambda s: s.compute(), sessions))
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        with ThreadPoolExecutor(4) as pool:
+            frames = list(pool.map(lambda s: s.compute(), sessions))
+    waited = [w for w in caught if "waiting their turn" in str(w.message)]
+    assert len(waited) == (0 if thread_safe else 1)  # once per runner and program
     assert all(f.success for f in frames)
     assert program.most > 1 if thread_safe else program.most == 1
 
@@ -995,6 +1004,124 @@ def test_a_session_of_a_worker_program_without_sessions_uses_its_pool():
     assert all(f.success for f in frames)
     assert len({f.results.extras["pid"] for f in frames}) == 2  # two workers
     assert elapsed < 4 * 0.2 + 0.4  # two at a time, after the workers start
+
+
+# ------------------------------------------------------------------------ submit
+
+
+def test_submit_returns_a_future_of_the_output():
+    recording = Recording("rec")
+    register_program(recording)
+    future = qccompute.submit(toy_input(program="rec"))
+    assert isinstance(future, Future)
+    out = future.result(timeout=10)
+    assert out.success and out.input_data.program == "rec"
+    failed = qccompute.submit(toy_input(program="rec", fail="convergence"))
+    with pytest.raises(ProgramError) as e:
+        failed.result(timeout=10)
+    assert e.value.error.kind is ErrorKind.convergence
+    assert e.value.output.input_data.keywords["fail"] == "convergence"
+    # An input its program refuses resolves at once, without running.
+    refused = qccompute.submit(toy_input(program="rec", sigmaa=1.0))
+    assert refused.done() and refused.exception().error.code == "unknown_key"
+    # A store hit resolves at once; a run is stored and names its run.
+    store = FakeStore()
+    first = qccompute.submit(toy_input(program="rec"), store=store, tags=["a"])
+    assert first.result(timeout=10).execution.store_run.endswith("/run-1")
+    ran = len(recording.contexts)
+    hit = qccompute.submit(toy_input(program="rec"), store=store, tags=["b"])
+    assert hit.done() and len(recording.contexts) == ran
+    assert hit.result() is first.result()
+    assert store.tags[store.key(toy_input(program="rec"))] == {"a", "b"}
+    with pytest.raises(ValueError):
+        qccompute.submit(toy_input(), tags=["x"])
+    events = []
+    register_program(serve_programs.stepper)
+    qccompute.submit(toy_input(program="stepper"), progress=events.append).result()
+    assert [e["path"] for e in events] == [["stepper"]] * 3
+
+
+def test_submitted_calculations_share_the_runners_threads():
+    """Packed as a list's, admitted in the order submitted."""
+    recording = Recording("rec")
+    register_program(recording)
+    with Runner(threads=4) as runner:
+        futures = [
+            runner.submit(toy_input(program="rec", epsilon=0.01 * (i + 1)))
+            for i in range(12)
+        ]
+        assert all(f.result(timeout=10).success for f in futures)
+        assert recording.most == 4
+        recording.most = 0
+        two = [runner.submit(toy_input(program="rec", threads=2)) for _ in range(6)]
+        assert all(f.result(timeout=10).success for f in two)
+        assert recording.most == 2
+        assert {c.threads for c in recording.contexts[-6:]} == {2}
+
+
+def test_a_cancelled_submission_gives_up_its_turn():
+    register_program(serve_programs.serial)
+    with Runner(threads=1) as runner:
+        slow = runner.submit(toy_input(program="serial", sleep=0.2))
+        pending = [runner.submit(toy_input(program="serial")) for _ in range(3)]
+        assert pending[1].cancel()
+        assert slow.result(timeout=10).success
+        assert pending[0].result(timeout=10).success
+        assert pending[2].result(timeout=10).success  # no turn left waiting
+
+
+def test_dynamic_workflows_need_no_stage_barriers():
+    """Per reaction: search, then IRC, then both ends, as each step finishes (#55)."""
+    register_program(serve_programs.serial)
+
+    def step(stage, reaction, seconds):
+        return toy_input(
+            program="serial", epsilon=0.01 + reaction / 100 + stage / 10, sleep=seconds
+        )
+
+    stages = {0: [0.05, 0.6], 1: [0.05, 0.05]}  # per reaction: search, IRC
+    with Runner(threads=4, isolation="process") as runner:
+        futures = {runner.submit(step(0, r, stages[0][r])): (0, r) for r in (0, 1)}
+        ends: dict[int, Any] = {}
+        while futures:
+            done, _ = wait(futures, return_when=FIRST_COMPLETED)
+            for future in done:
+                stage, r = futures.pop(future)
+                out = future.result()
+                ends.setdefault(r, []).append(out.results.extras)
+                if stage == 0:
+                    futures[runner.submit(step(1, r, stages[1][r]))] = (1, r)
+                elif stage == 1:  # both ends of the IRC
+                    for side in (2, 3):
+                        futures[runner.submit(step(side, r, 0.0))] = (side, r)
+    # Reaction 0 finished all its steps before reaction 1's search ended.
+    assert max(e["end"] for e in ends[0]) < ends[1][0]["end"]
+    assert len(ends[0]) == len(ends[1]) == 4
+
+
+def test_waiting_on_a_programs_lock_warns_once_and_names_the_way_out():
+    """8 threads chaining compute(one) of qcopt serialised silently (#55)."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    register_program(serve_programs.serial)
+    inputs = [toy_input(program="serial", epsilon=e, sleep=0.1) for e in (1, 2, 3)]
+    with Runner(threads=3) as runner:
+        with pytest.warns(RuntimeWarning, match="isolation='process'") as caught:
+            with ThreadPoolExecutor(3) as pool:
+                outs = list(pool.map(runner.compute, inputs))
+        assert len([w for w in caught if "serial" in str(w.message)]) == 1
+        spans = sorted(
+            (o.results.extras["start"], o.results.extras["end"]) for o in outs
+        )
+        assert all(
+            a[1] <= b[0] for a, b in zip(spans, spans[1:], strict=False)
+        )  # one at a time
+    with Runner(threads=3, isolation="process") as runner:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")  # no warning: each in its own worker
+            with ThreadPoolExecutor(3) as pool:
+                outs = list(pool.map(runner.compute, inputs))
+        assert len({o.results.extras["pid"] for o in outs}) > 1
 
 
 # ---------------------------------------------------------------------- progress

@@ -1,7 +1,8 @@
 """Run AFH programs: one input or many, in this process or in workers, with a store.
 
-``qccompute.compute(inp)`` runs a calculation on this machine and ``qccompute.session(inp)``
-opens a session; both are the methods of the default `Runner`
+``qccompute.compute(inp)`` runs a calculation on this machine, ``qccompute.submit(inp)``
+starts one and returns a future of its output, and ``qccompute.session(inp)`` opens a
+session; all are the methods of the default `Runner`
 (``qccompute.default_runner()``). Programs implement the
 protocol in `qccompute.program`; external programs come with ``qccompute[qccodec]``.
 """
@@ -15,10 +16,11 @@ except _metadata.PackageNotFoundError:
     __version__ = "0.0.0+local"
 
 from .program import RunContext, register_program
-from .runner import Runner, compute, default_runner, session
+from .runner import Runner, compute, default_runner, session, submit
 
 __all__ = [
     "compute",
+    "submit",
     "session",
     "Runner",
     "default_runner",

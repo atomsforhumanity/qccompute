@@ -223,10 +223,20 @@ threads run eight at a time.
 ## The runner
 
 `Runner(threads=None, gpus="auto", backend="local", isolation="auto", per_gpu=1)` with
-`compute` (one input or a list), `as_completed` and `session`. Every call takes the same
-options: `store`, `timeout`, `rerun`, `tags`, `meta`, `raise_exc` and `progress`. `qccompute.compute`
-and `qccompute.session` are the methods of the default runner: this machine (every core
-this process may use, every visible GPU), made on first use, never reconfigured.
+`submit` (one input; returns a `concurrent.futures.Future` of its output), `compute`
+(one input or a list), `as_completed` and `session`. Every call takes the same options:
+`store`, `timeout`, `rerun`, `tags`, `meta`, `raise_exc` (not `submit`: its future
+raises) and `progress`. `qccompute.compute`, `qccompute.submit` and `qccompute.session`
+are the methods of the default runner: this machine (every core this process may use,
+every visible GPU), made on first use, never reconfigured.
+
+`submit` is for workflows whose next calculation depends on the last (per reaction, a
+transition-state search, the IRC from its saddle, then both ends), many at once with no
+stage barriers. A stored output, or an input its program refuses, resolves the future
+before `submit` returns; the others are planned at once and run in the runner's threads.
+A runner's submitted calculations are packed into its threads and GPUs as a list's are,
+admitted in the order submitted; `compute` calls take their own share, as before.
+Cancelling a future before it starts skips its calculation.
 
 Every input goes one path: find the program, plan it (an input its program refuses
 fails without running), place it (this process, or a worker process for programs with
@@ -282,7 +292,10 @@ What the runner grants, in `ctx`:
   calculation asks for, and they are left out of its key.
 
 **Placement.** A program that may share the process runs in its threads; one that is not
-thread-safe takes turns on a lock per program. Worker processes are kept for the next
+thread-safe takes turns on a lock per program. The first time one of its calculations
+waits for its turn (threads calling `compute`, futures, a list), the runner warns once
+(`RuntimeWarning`) that they run one at a time and that `isolation="process"` runs them
+side by side. Worker processes are kept for the next
 call until the runner closes, in pools. A worker sees exactly the GPUs granted to it
 (`CUDA_VISIBLE_DEVICES`, empty for none). Workers are pooled by program and GPUs,
 whatever the threads of the calls they serve, because a program's state (a model

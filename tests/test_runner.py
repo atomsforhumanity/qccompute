@@ -225,6 +225,67 @@ def test_one_input_runs_in_process_with_the_threads_it_asks_for():
     assert "total" in out.execution.timings
 
 
+def test_a_plan_may_ask_for_every_thread():
+    """Resources(threads=None): all of the runner's threads, or of the parent's grant."""
+    spans: list[tuple[str, float, float]] = []
+
+    class Asks(NoSessions):
+        def __init__(self, name, threads):
+            super().__init__(name)
+            self._asks = threads
+
+        def plan(self, inp):
+            plan = super().plan(inp.model_copy(update={"program": "toy"}))
+            return plan.model_copy(update={"resources": Resources(threads=self._asks)})
+
+        def compute(self, inp, ctx=None):
+            start = time.perf_counter()
+            out = super().compute(inp, ctx)
+            spans.append((self.name, start, time.perf_counter()))
+            return out
+
+    every, one = Asks("every", None), Asks("one", 1)
+    register_program(every)
+    register_program(one)
+    with Runner(threads=4) as runner:
+        runner.compute(toy_input(program="every"))  # a single input: all 4
+        runner.compute(toy_input(program="every", threads=2))  # the keyword wins
+        with runner.session(toy_input(program="every")) as s:  # a session: all 4
+            s.compute()
+        assert [c.threads for c in every.contexts] == [4, 2, 4]
+        # In a list it is a full share: it runs alone, the 1-thread ones side by side.
+        spans.clear()
+        inputs = [toy_input(program="one", epsilon=0.01 * (i + 1)) for i in range(6)]
+        inputs.insert(3, toy_input(program="every"))
+        assert all(o.success for o in runner.compute(inputs))
+        assert one.most > 1
+        (_, start, end), *_ = (span for span in spans if span[0] == "every")
+        others = [span for span in spans if span[0] == "one"]
+        assert all(e <= start or s >= end for _, s, e in others)
+
+    class Parent(FiniteDifference):
+        """Asks for 3 threads; its subprogram asks for all of them."""
+
+        name = "parent3"
+
+        def plan(self, inp):
+            return Plan(resolved=Resolved(), resources=Resources(threads=3))
+
+        def compute(self, inp, ctx=None):
+            child = inp.subprograms[0]
+            ctx.compute(ProgramInput.from_spec(child, inp.structure))
+            with ctx.session(child, inp.structure) as session:
+                session.compute()
+            return super().compute(inp, ctx)
+
+    register_program(Parent())
+    del every.contexts[:]
+    with Runner(threads=8) as runner:
+        runner.compute(fd_input("every").model_copy(update={"program": "parent3"}))
+    # compute and session get the parent's whole grant; fd's own session asks for 1
+    assert [c.threads for c in every.contexts][:2] == [3, 3]
+
+
 def test_threads_come_from_the_keyword_else_the_plan_capped_at_the_runner():
     class Planned(Recording):
         def plan(self, inp):

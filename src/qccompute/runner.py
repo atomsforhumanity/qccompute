@@ -13,7 +13,7 @@ and how to pack a list), place it (this process, or a worker process for program
 cannot share one), call ``compute`` or ``compute_batch`` with a
 `qccompute.program.RunContext`, and record the execution. A calculation gets the threads
 it asks for: its ``threads`` keyword, else its plan's (1 unless the program says
-otherwise), at most the runner's. A failed calculation raises `qcdata.ProgramError` with
+otherwise; None: all of them), at most the runner's. A failed calculation raises `qcdata.ProgramError` with
 the failed output as its ``output``; a list runs everything first and raises
 `qcdata.ProgramErrors`.
 """
@@ -370,11 +370,14 @@ def _threads(inp: Input, plan: Plan, cap: int) -> int:
     """The threads a calculation gets: what it asks for, at most ``cap``.
 
     It asks with its ``threads`` keyword, else through its plan
-    (``Plan.resources.threads``, 1 unless the program says otherwise).
+    (``Plan.resources.threads``: 1 unless the program says otherwise; None for all of
+    ``cap``, the runner's threads or a subprogram's parent grant).
     """
     requested = inp.keywords.get("threads") if isinstance(inp, ProgramInput) else None
     if isinstance(requested, bool) or not isinstance(requested, int) or requested < 1:
         requested = plan.resources.threads
+    if requested is None:
+        return cap
     return max(1, min(requested, cap))
 
 
@@ -903,7 +906,8 @@ class Runner:
         Every input is planned first: an input its program refuses fails at once,
         without running. A calculation gets the threads it asks for: its ``threads``
         keyword, else its plan's (``Plan.resources.threads``: 1 unless the program
-        says otherwise), at most the runner's ``threads``. A list's calculations are
+        says otherwise, None for all of them), at most the runner's ``threads``. In a
+        list, a calculation that asks for all of them runs alone. A list's calculations are
         packed into the runner's threads and GPUs by what they ask for; inputs of a
         program with batches go to it together.
 
@@ -1380,10 +1384,9 @@ def default_runner() -> Runner:
     """The runner of ``qccompute.compute``: this machine, made on first use.
 
     It shares every core this process may use and every visible GPU (each calculation
-    gets the threads it asks for, 1 unless its input or program says more), runs
+    gets the threads it asks for: 1 unless its input or program says more), runs
     programs in this process unless they cannot share it, and closes its workers at
-    exit. It
-    cannot be reconfigured; make a `Runner` for anything else.
+    exit. It cannot be reconfigured; make a `Runner` for anything else.
     """
     global _default
     if _default is None:

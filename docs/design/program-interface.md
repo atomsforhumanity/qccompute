@@ -69,8 +69,8 @@ always passes one. It carries the calculation's share of the machine and the way
 subprograms:
 
 - `threads`, `gpus`: the grant. The threads are what the input asks for (its `threads`
-  keyword, else `plan.resources.threads`, which is 1 unless the program says more), at
-  most the runner's (or, for a subprogram, the parent's grant). A program uses the
+  keyword, else `plan.resources.threads`: 1 unless the program says more, and None for
+  all there is), at most the runner's (or, for a subprogram, the parent's grant). A program uses the
   smaller of its own request and the grant, or the grant when it requested nothing; a
   capped request is a `resource_capped` warning.
 - `memory_gib`, `device_memory_gib`: host and GPU memory, following the calculation's
@@ -169,9 +169,12 @@ dispatcher (a batch system, Kubernetes) gives the process its cores, memory and 
 runner shares them out. Each calculation gets the threads it asks for (its `threads`
 keyword, else its plan's: 1 unless the program says more), at most the runner's; a
 session likewise, and a subprogram at most its parent's grant (or the share the parent
-gives a session with `threads=`). Asking for nothing never means "the whole machine": a
-3-atom tblite gradient ran in 1.2 ms on one thread and 221 ms (10 CPU-seconds) with 46.
-A list's calculations are admitted in input order while their shares sum to at most one; a calculation's share is
+gives a session with `threads=`). A program that scales with whatever it is given (a DFT
+code) plans `threads: None`: all of the runner's threads (all of the parent's grant for a
+subprogram), and in a list a full share, so it runs alone. The input's `threads` keyword
+still wins. Asking for nothing never means "the whole machine": a 3-atom tblite gradient
+ran in 1.2 ms on one thread and 221 ms (10 CPU-seconds) with 46. A list's calculations
+are admitted in input order while their shares sum to at most one; a calculation's share is
 the larger of its share of the threads and its share of the GPUs, where each of k
 calculations on one GPU counts as 1/k of it. Host memory and GPU memory follow the share.
 There are no memory estimates and no memory scheduling.

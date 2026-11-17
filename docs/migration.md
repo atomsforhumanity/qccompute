@@ -24,7 +24,8 @@ out = qccompute.compute(inp)
 
 A calculation gets the threads it asks for: its `threads` keyword
 (`keywords={"threads": 8}`), else what its program's plan says (1 unless the program
-states more), at most the runner's. It no longer gets every core of the machine.
+states more, or all of them for a program that plans `None`), at most the runner's. It no
+longer gets every core of the machine by default.
 
 `compute` takes `store`, `timeout`, `rerun`, `tags`, `meta` and `raise_exc`. The
 removed options:
@@ -100,7 +101,7 @@ raises `qcdata.ProgramErrors` when any failed, with every frame in `results`.
 | `qccompute.get_program` | `qccompute.program.find_program` |
 | `qccompute.utils.available_programs` | `qccompute.program.available_programs` |
 | `check_program(..., children=...)` | register the subprograms; `check_program` also checks the thread grant |
-| the runner granted every core | `plan(inp).resources.threads` is what the runner grants when the input has no `threads` keyword (default 1): a program that wants more by default says how many |
+| the runner granted every core | `plan(inp).resources.threads` is what the runner grants when the input has no `threads` keyword (default 1): a program that wants more says how many, or `None` for all the runner (or parent grant) has |
 
 A program may declare `numerics(spec)`, which a store uses to tell runs of different code
 apart; without it the version stands in. A `FunctionProgram`'s version and numerics are a

@@ -114,8 +114,9 @@ core this process may use (its CPU affinity and cgroup quota) and every visible 
 made on first use and cannot be reconfigured.
 
 Each calculation gets the threads it asks for: its `threads` keyword, else what its
-program's plan says (1 unless the program states more), at most the runner's. A 3-atom
-gradient does not get 128 threads because the machine has them; ask for more with
+program's plan says (1 unless the program states more; a program that scales, such as a
+DFT code, may ask for all of the runner's), at most the runner's. A 3-atom gradient does
+not get 128 threads because the machine has them; ask for more with
 `keywords={"threads": 8}`. Sessions and subprograms get threads the same way.
 
 A `Runner` of your own takes a share:

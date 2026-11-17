@@ -155,8 +155,10 @@ class Resources(QCDataBaseModel):
     Attributes:
         threads: CPU threads the calculation asks for when its input has no
             ``threads`` keyword: the runner grants this many, at most its own. The
-            default is 1; a program that runs faster on more threads by default says
-            how many (a small molecule rarely gains from more than a few).
+            default is 1. None asks for all the runner has (for a subprogram, all of
+            its parent's grant): for a program that scales with whatever it is given
+            (a DFT code). In a list such a calculation is a full share, so it runs
+            alone. A small molecule rarely gains from more than a few.
         memory_gib: Host memory (GiB), if known.
         gpus: Number of GPUs.
         device_memory_gib: Memory per GPU (GiB), if capped; several calculations may
@@ -165,7 +167,7 @@ class Resources(QCDataBaseModel):
             itself, e.g. for clean timings.
     """
 
-    threads: int = 1
+    threads: int | None = 1
     memory_gib: float | None = None
     gpus: int = 0
     device_memory_gib: float | None = None
@@ -279,7 +281,8 @@ class RunContext:
 
     Attributes:
         threads: CPU threads granted: what the input asks for (its ``threads``
-            keyword, else ``plan.resources.threads``), at most the runner's. None: not
+            keyword, else ``plan.resources.threads``; all of them when that is
+            None), at most the runner's. None: not
             granted (a direct call).
         gpus: Identifiers of the GPUs granted (as for ``CUDA_VISIBLE_DEVICES``).
         memory_gib: Host memory granted (GiB): the calculation's share of the

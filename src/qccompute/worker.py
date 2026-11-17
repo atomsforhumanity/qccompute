@@ -233,8 +233,9 @@ class Worker:
     def _drain(self) -> None:
         """Keep the end of the worker's stderr (its logs), so its pipe never fills."""
         assert self._proc.stderr is not None
-        for line in self._proc.stderr:
-            self._stderr.append(line.decode("utf-8", "replace"))
+        with self._proc.stderr:  # closed at the worker's end
+            for line in self._proc.stderr:
+                self._stderr.append(line.decode("utf-8", "replace"))
 
     @property
     def alive(self) -> bool:
@@ -537,6 +538,8 @@ class Worker:
             "environment", f"The worker for {self.spec} is closed.", code="worker_died"
         )
         self._calls.close_all()  # sessions its program opened here
+        if self._proc.poll() is not None and self._proc.stdout is not None:
+            self._proc.stdout.close()
         if self._dir is not None:
             shutil.rmtree(self._dir, ignore_errors=True)
 

@@ -1,7 +1,11 @@
 site_name: qccompute
-site_url: https://qccompute.docs.afh.org/
+# The Docs workflow builds the next branch's docs with DOCS_SITE_URL set to
+# https://qccompute.docs.afh.org/next/; their pages then show a pre-release banner
+# (overrides/main.html).
+site_url: !ENV [DOCS_SITE_URL, "https://qccompute.docs.afh.org/"]
 theme:
   name: material
+  custom_dir: overrides
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default

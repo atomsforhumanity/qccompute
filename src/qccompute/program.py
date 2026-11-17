@@ -123,6 +123,11 @@ __all__ = [
 #: The entry point group programs register under.
 ENTRY_POINT_GROUP = "qccompute.programs"
 
+#: The program that runs a `qcdata.FileInput` (a command with its files, not a
+#: `qcdata.ProgramInput`): the one program name the protocol reserves; qccodec registers
+#: it. Its numerics identity is a FileInput run's identity.
+FILES = "files"
+
 
 class Capabilities(QCDataBaseModel):
     """What a program can do and how it may be run.
@@ -349,6 +354,19 @@ def _ordinal(gpu: str, visible: list[str] | None) -> int | None:
     return next((int(row[0]) for row in rows if _same_gpu(gpu, row[1])), None)
 
 
+def _program_names(spec: ProgramSpec | FileInput) -> set[str]:
+    """The programs an input or spec names: its own and its subprograms', recursively."""
+    if not isinstance(spec, ProgramSpec):
+        return {FILES}
+    names: set[str] = set()
+    pending = [spec]
+    while pending:
+        spec = pending.pop()
+        names.add(spec.program)
+        pending.extend(spec.subprograms)
+    return names
+
+
 class _Subprograms(Protocol):
     """What runs a calculation's subprograms: a `Runner`, or a worker's client."""
 
@@ -411,6 +429,8 @@ class RunContext:
         "_scratch",
         "_made",
         "_runner",
+        "_calling",
+        "_named",
     )
 
     def __init__(
@@ -448,6 +468,10 @@ class RunContext:
         self._scratch = scratch
         self._made = False
         self._runner = runner
+        # The input(s) whose subprogram tree names the programs ctx may run, set by a
+        # runner (several for a batch); None: no check. Their names, on first use.
+        self._calling: Sequence[ProgramInput | FileInput] | None = None
+        self._named: frozenset[str] | None = None
 
     def __repr__(self) -> str:
         """Show the grant."""
@@ -534,6 +558,35 @@ class RunContext:
             self._scratch = None
             self._made = False
 
+    def _check_named(self, inputs: Iterable[ProgramInput | FileInput]) -> None:
+        """Refuse a subprogram that the calling input's subprogram tree does not name.
+
+        A run's identities are those of the programs its input names, so a program it
+        ran without naming would be missing from them, and a store would reuse the
+        run after that program changed. Every program a subprogram's input names
+        (its own and its subprograms') must be named.
+
+        Raises:
+            ProgramError: Kind ``input``, code ``unnamed_subprogram``.
+        """
+        if self._calling is None:
+            return
+        if self._named is None:
+            self._named = frozenset().union(*map(_program_names, self._calling))
+        for inp in inputs:
+            missing = _program_names(inp) - self._named
+            if missing:
+                name = ", ".join(sorted(missing))
+                raise ProgramError.of(
+                    "input",
+                    f"This calculation runs {name}, which its input does not name. "
+                    f"Name {name} among the input's subprograms (it names "
+                    f"{sorted(self._named)}): a run's identities are those of the "
+                    "programs its input names, so a store could reuse it after "
+                    f"{name} changed.",
+                    code="unnamed_subprogram",
+                )
+
     def _get_runner(self) -> _Subprograms:
         """The runner of this calculation's subprograms: its own, else the default."""
         if self._runner is None:
@@ -566,13 +619,28 @@ class RunContext:
         A subprogram's failure that the program lets escape fails it with kind
         ``program`` and the subprogram's error as ``cause``.
 
+        Every program a subprogram's input names must be named by this calculation's
+        input, among its subprograms (recursively), so that the run's identities cover
+        every program it used; another is refused, whatever ``raise_exc``.
+
         Args:
             inputs: One input, or a list of independent inputs.
             raise_exc: Raise for failures; False returns failed outputs.
 
         Returns:
             The output, or the outputs in input order.
+
+        Raises:
+            ProgramError: A subprogram failed (with ``raise_exc``); or kind ``input``,
+                code ``unnamed_subprogram``: the input does not name the program.
+            ProgramErrors: Some subprograms of a list failed (with ``raise_exc``).
         """
+        if self._calling is not None:
+            one = isinstance(inputs, ProgramInput | FileInput)
+            inputs = [inputs] if one else list(inputs)
+            self._check_named(inputs)
+            if one:
+                inputs = inputs[0]
         return self._get_runner()._subcompute(inputs, self, raise_exc)
 
     def session(
@@ -599,6 +667,11 @@ class RunContext:
             The session; close it (or use it as a context manager) when done. It may be
             called from several threads at once: the runner serializes sessions of
             programs that are not thread-safe.
+
+        Raises:
+            ProgramError: The program refuses the input; or kind ``input``, code
+                ``unnamed_subprogram``: this calculation's input does not name it
+                (see `compute`).
         """
         if isinstance(spec, ProgramInput):
             inp = spec
@@ -606,6 +679,7 @@ class RunContext:
             if structure is None:
                 raise TypeError("A session from a ProgramSpec needs its structure.")
             inp = ProgramInput.from_spec(spec, structure)
+        self._check_named((inp,))
         return self._get_runner()._subsession(inp, calctypes, threads, self)
 
 

@@ -336,6 +336,8 @@ class Host:
         if isinstance(self.program, BatchProgram):
             try:
                 outs = list(self.program.compute_batch(inputs, ctx))  # type: ignore[arg-type]
+            except MessageError:  # the message refused (a client's subprogram call)
+                raise
             except Exception as e:  # noqa: BLE001 - a bug: every input fails with it
                 outs = [_failed(i, e, self.program.name) for i in inputs]
         else:
@@ -350,6 +352,8 @@ class Host:
         """One output, failed or not: a ProgramError or a bug becomes a failed output."""
         try:
             return self.program.compute(inp, ctx)  # type: ignore[arg-type]
+        except MessageError:  # the message refused (a client's subprogram call)
+            raise
         except Exception as e:  # noqa: BLE001 - failures are results on the wire
             return _failed(inp, e, self.program.name)
         finally:

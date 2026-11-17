@@ -108,7 +108,12 @@ subprograms:
 - `plan`: the runner's plan of the input, so the program need not plan again.
 - `scratch`: a directory, made on first use and removed when the call returns.
 - `compute(inputs, raise_exc=True)` and `session(spec, structure, threads=, calctypes=)`:
-  subprograms, within the grant.
+  subprograms, within the grant. They run only programs the calculation's input names,
+  its own and its subprograms' recursively, and every program a subprogram's input
+  names must be among them; another is refused (kind `input`, code
+  `unnamed_subprogram`), so a run's identities cover every program it used. A program
+  that decides at run time which programs to run (a path method that minimizes its
+  ends) names each in its input's subprograms.
 
 `ctx is None` means a direct call: the program uses its own settings. A program with
 subprograms has no route of its own to programs, so called directly it returns
@@ -264,7 +269,9 @@ A store files runs by two identities, kept apart:
 
 - *which calculation*: the key, `qcdata.calculation_key(inp)`, the input as given;
 - *which code produced the numbers*: the run's identities, `{program: numerics}` for the
-  input's program and every subprogram it names, recursively. A program named with
+  input's program and every subprogram it names, recursively. A calculation runs no
+  program its input does not name (`ctx` refuses it), so these are every program
+  that made the numbers. A program named with
   several specs (g-xTB gradients with GFN2 Hessians, one program) has its distinct
   identities sorted and joined by `;` (`"gfn2:5;gxtb-2.0.1:7"`). `given` results add no
   identities: they are data in the input, so already in the key.

@@ -136,7 +136,18 @@ class Relay(ToyProgram):
         )
 
 
+class Stray(Relay):
+    """In a worker of its own, runs a toy calculation its input does not name."""
+
+    name = "stray"
+
+    def compute(self, inp, ctx=None):
+        child = inp.model_copy(update={"program": "toy", "subprograms": []})
+        return ctx.compute(child).model_copy(update={"input_data": inp})
+
+
 device_lost = DeviceLost()
+stray = Stray()
 relay = Relay()
 noisy = Noisy()
 isolated = Isolated()

@@ -17,6 +17,7 @@ from qcdata import (
     ProgramErrors,
     ProgramInput,
     ProgramOutput,
+    ProgramSpec,
     Provenance,
     Request,
     Resolved,
@@ -967,6 +968,75 @@ def test_a_failed_subprogram_fails_its_parent_with_kind_program():
     assert e.value.output.error == error
 
 
+def test_subprograms_must_be_named_by_the_input():
+    """So a run's identities cover every program it used (#56)."""
+
+    class Path(ToyProgram):  # like mepd's NEB: minimizes its ends with fd, through ctx
+        name = "path"
+
+        def capabilities(self):
+            return super().capabilities().model_copy(update={"sessions": False})
+
+        def plan(self, inp):
+            return Plan(resolved=Resolved(), resources=Resources())
+
+        def compute(self, inp, ctx=None):
+            ends = fd_input("toy")
+            if inp.keywords.get("session"):
+                with ctx.session(ends.subprograms[0], ARGON3) as s:
+                    s.compute()
+            ctx.compute([ends] if inp.keywords.get("list") else ends)
+            return ProgramOutput(
+                input_data=inp,
+                success=True,
+                results=SinglePointData(
+                    provenance=Provenance(program="path"), energy=0.0
+                ),
+            )
+
+    register_program(Path())
+    register_program(FiniteDifference())
+    toy_spec = fd_input("toy").subprograms[0]
+    fd_spec = ProgramSpec(program="fd", calctype="gradient", subprograms=[toy_spec])
+    names_toy = toy_input("energy", program="path").model_copy(
+        update={"subprograms": [toy_spec]}
+    )
+    for keywords in ({}, {"list": True}):
+        with pytest.raises(ProgramError) as e:
+            qccompute.compute(names_toy.model_copy(update={"keywords": keywords}))
+        assert e.value.error.kind is ErrorKind.input
+        assert e.value.error.code == "unnamed_subprogram"
+        assert "fd" in e.value.error.message
+    # fd itself named, but not its own subprogram: refused too.
+    fd_alone = fd_spec.model_copy(update={"subprograms": []})
+    with pytest.raises(ProgramError) as e:
+        qccompute.compute(names_toy.model_copy(update={"subprograms": [fd_alone]}))
+    assert e.value.error.code == "unnamed_subprogram"
+    assert "toy" in e.value.error.message
+    # Named, it runs, and the run's identities cover both.
+    named = names_toy.model_copy(update={"subprograms": [fd_spec]})
+    out = qccompute.compute(named)
+    assert set(out.execution.identities) == {"path", "fd", "toy"}
+    assert qccompute.compute(named.model_copy(update={"keywords": {"session": True}}))
+    # A session of an unnamed program is refused as well.
+    fd_only = toy_input("energy", program="path", session=True).model_copy(
+        update={"subprograms": [fd_alone]}
+    )
+    with pytest.raises(ProgramError) as e:
+        qccompute.compute(fd_only)
+    assert e.value.error.code == "unnamed_subprogram"
+    # From a worker, its calls come back here and are checked here.
+    register_program(serve_programs.stray)
+    with Runner(threads=2) as runner:
+        with pytest.raises(ProgramError) as e:
+            runner.compute(toy_input(program="stray"))
+        assert e.value.error.code == "unnamed_subprogram"
+        out = runner.compute(
+            toy_input(program="stray").model_copy(update={"subprograms": [toy_spec]})
+        )
+        assert out.success
+
+
 def test_subprogram_lists_and_their_failures():
     seen = []
 
@@ -1439,28 +1509,39 @@ def test_memory_keywords_replace_the_share():
             caps = super().capabilities()
             return caps.model_copy(update={"batches": False, "sessions": False})
 
+        def _toy(self, inp):
+            return inp.model_copy(update={"program": "toy", "subprograms": []})
+
         def plan(self, inp):
-            plan = super().plan(inp.model_copy(update={"program": "toy"}))
+            plan = super().plan(self._toy(inp))
             return plan.model_copy(update={"resources": Resources(threads=2, gpus=1)})
 
         def compute(self, inp, ctx=None):
-            child = inp.model_copy(update={"program": "memory"})
+            child = self._toy(inp).model_copy(update={"program": "memory"})
             asks = {"memory_gib": 50, "device_memory_gib": 30}
             ctx.compute(child.model_copy(update={"keywords": asks}))
             ctx.compute([child, child])
             return (
                 super()
-                .compute(inp.model_copy(update={"program": "toy"}), ctx)
+                .compute(self._toy(inp), ctx)
                 .model_copy(update={"input_data": inp})
             )
 
     register_program(Parent())
     del memory.contexts[:]
+    child = {"program": "memory", "calctype": "gradient", "model": {"method": "lj"}}
     with Runner(threads=4, gpus=["0", "1"], per_gpu=2) as runner:
         runner._gpus = {"0": 40.0, "1": 40.0}
         runner._memory = 64.0
         # Each parent: half the threads, so 32 GiB, and 20 GiB of its GPU.
-        runner.compute([toy_input(program="memory-parent", epsilon=e) for e in (1, 2)])
+        runner.compute(
+            [
+                toy_input(program="memory-parent", epsilon=e).model_copy(
+                    update={"subprograms": [ProgramSpec.model_validate(child)]}
+                )
+                for e in (1, 2)
+            ]
+        )
     granted = sorted((c.memory_gib, c.device_memory_gib) for c in memory.contexts)
     assert granted == [(16.0, 20.0)] * 4 + [(32.0, 20.0)] * 2
 

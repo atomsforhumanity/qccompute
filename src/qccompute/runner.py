@@ -52,6 +52,7 @@ from qcdata import (
 )
 
 from .program import (
+    FILES,
     BatchProgram,
     Capabilities,
     ComputeSession,
@@ -86,11 +87,6 @@ __all__ = [
 
 Input = ProgramInput | FileInput
 Output = ProgramOutput[Any, Any]
-
-#: The program that runs a `qcdata.FileInput` (a command with its files, not a
-#: `qcdata.ProgramInput`): the one program name the protocol reserves; qccodec registers
-#: it. Its numerics identity is a FileInput run's identity.
-FILES = "files"
 
 # Kinds a stored failure is reused for: determined by the input, so the same code fails
 # them the same way (kind program counts when its cause is one of these).
@@ -794,8 +790,9 @@ class Runner:
         plan: Plan | None,
         inp: Input | None = None,
         parent: RunContext | None = None,
+        batch: Sequence[Input] | None = None,
     ) -> RunContext:
-        """A calculation's context: its grant, and its memory.
+        """A calculation's context: its grant, its memory, the programs it may run.
 
         Host memory is ``memory``: the runner's (or a parent's grant) for a
         calculation alone, its share of it in a list. Device memory is 1/k of each
@@ -803,6 +800,9 @@ class Runner:
         ``memory_gib`` or ``device_memory_gib`` keyword replaces either, at most the
         runner's memory or the GPU's, or for a subprogram (``parent``) the parent's
         grant: a parent's grant holds its children. Memory is never scheduled.
+
+        Its subprograms may be the programs its input names (``inp``, or for a batch
+        each of ``batch``), as `RunContext.compute` checks.
         """
         host_limit, device_limit = self._limits(parent)
         device: float | None = None
@@ -816,7 +816,7 @@ class Runner:
             memory = _asked(inp, "memory_gib", memory, host_limit)
             if devices:
                 device = _asked(inp, "device_memory_gib", device, gpu)
-        return RunContext(
+        ctx = RunContext(
             threads=threads,
             gpus=devices,
             memory_gib=None if memory is None else round(memory, 3),
@@ -825,6 +825,8 @@ class Runner:
             plan=plan,
             runner=self,
         )
+        ctx._calling = (inp,) if inp is not None else batch
+        return ctx
 
     def _limits(self, parent: RunContext | None) -> tuple[float | None, float | None]:
         """What a calculation's memory may reach: host (GiB) and per GPU (None: all).
@@ -1370,7 +1372,9 @@ class Runner:
             yield task.indices[0], out, failure
             return
         entry = task.entry
-        ctx = self._context(threads, devices, memory, timeout, None, None, parent)
+        ctx = self._context(
+            threads, devices, memory, timeout, None, None, parent, task.inputs
+        )
         start = time.perf_counter()
         worker = None
         try:

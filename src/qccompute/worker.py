@@ -64,7 +64,7 @@ from .program import (
     find_program,
     plan_of,
 )
-from .serve import Host
+from .serve import Host, MessageError
 
 __all__ = ["Worker", "WorkerSession", "THREAD_VARIABLES", "PATH_VARIABLE"]
 
@@ -469,22 +469,31 @@ class _Parent:
             raise _not_found(inp)
         return plan_of(program, inp)
 
-    def _grant(self) -> RunContext:
+    def _grant(self, inputs: Sequence[ProgramInput] = ()) -> RunContext:
+        """The grant of the calculation in flight, once it may run these inputs.
+
+        A program it does not name is refused as the call itself (``ok: false``), as
+        `RunContext.compute` refuses it in process: not a subprogram's failure.
+        """
         if self.ctx is None:
             raise ProgramError.of(
                 "internal", "a subprogram call came with no calculation in flight"
             )
+        try:
+            self.ctx._check_named(inputs)
+        except ProgramError as e:
+            raise MessageError.of(e) from None
         return self.ctx
 
     def compute(
         self, inp: ProgramInput, ctx: RunContext | None = None
     ) -> ProgramOutput[Any, Data]:
-        return self._grant().compute(inp, raise_exc=False)
+        return self._grant([inp]).compute(inp, raise_exc=False)
 
     def compute_batch(
         self, inputs: Sequence[ProgramInput], ctx: RunContext | None = None
     ) -> list[ProgramOutput[Any, Data]]:
-        return self._grant().compute(list(inputs), raise_exc=False)
+        return self._grant(inputs).compute(list(inputs), raise_exc=False)
 
     def open_session(
         self,

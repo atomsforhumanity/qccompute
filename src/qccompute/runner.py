@@ -520,24 +520,31 @@ class _Grant:
 
 
 class _Task:
-    """One unit of a list: an input, or a batch of one program's inputs."""
+    """One unit of a list: an input, or a batch of one program's inputs.
+
+    A batch asks for what its inputs ask for together: the sum of their threads, at
+    most the list's (the batch program divides them among its inputs), and the most
+    GPUs any of them asks for (a batch runs its inputs together on its devices).
+    """
 
     __slots__ = ("indices", "inputs", "entry", "threads", "gpus", "plan")
 
     def __init__(
-        self,
-        indices: list[int],
-        inputs: list[Input],
-        entry: _Entry,
-        plan: Plan,
-        threads: int,
+        self, index: int, inp: Input, entry: _Entry, plan: Plan, threads: int
     ) -> None:
-        self.indices = indices
-        self.inputs = inputs
+        self.indices = [index]
+        self.inputs = [inp]
         self.entry = entry
         self.threads = threads
         self.gpus = plan.resources.gpus
         self.plan = plan
+
+    def add(self, index: int, inp: Input, plan: Plan, threads: int, cap: int) -> None:
+        """Add an input to a batch, with the threads it asks for (at most ``cap``)."""
+        self.indices.append(index)
+        self.inputs.append(inp)
+        self.threads = min(cap, self.threads + threads)
+        self.gpus = max(self.gpus, plan.resources.gpus)
 
 
 # ---------------------------------------------------------------------------- runner
@@ -909,7 +916,8 @@ class Runner:
         says otherwise, None for all of them), at most the runner's ``threads``. In a
         list, a calculation that asks for all of them runs alone. A list's calculations are
         packed into the runner's threads and GPUs by what they ask for; inputs of a
-        program with batches go to it together.
+        program with batches go to it together, with the sum of their threads (at most
+        the runner's), which the program divides among them.
 
         Args:
             inputs: One input, or a list of them (of any programs).
@@ -1089,12 +1097,11 @@ class Runner:
             if entry.caps.batches and isinstance(entry.program, BatchProgram):
                 task = batches.get(id(entry))
                 if task is not None:
-                    task.indices.append(i)
-                    task.inputs.append(inp)
+                    task.add(i, inp, plan, wanted, threads)
                     continue
-                task = batches[id(entry)] = _Task([i], [inp], entry, plan, wanted)
+                task = batches[id(entry)] = _Task(i, inp, entry, plan, wanted)
             else:
-                task = _Task([i], [inp], entry, plan, wanted)
+                task = _Task(i, inp, entry, plan, wanted)
             tasks.append(task)
         if not tasks:
             return

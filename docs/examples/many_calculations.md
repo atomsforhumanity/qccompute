@@ -36,7 +36,9 @@ outputs = qccompute.compute(inputs)
    for programs that are not thread-safe); programs that cannot (they capture the
    process's output streams, as Python libraries run by qccodec do) run in worker
    processes, which stay alive for the next call. A program that evaluates many inputs at
-   once (`compute_batch`, machine-learned potentials) gets all of its inputs together.
+   once (`compute_batch`, machine-learned potentials, qcopt) gets all of its inputs
+   together, with the threads they ask for together (at most the runner's), and divides
+   them among its inputs: 100 one-thread searches as one batch get 100 threads.
 
 ## Failures
 

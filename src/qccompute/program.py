@@ -716,6 +716,11 @@ class BatchProgram(Program, Protocol):
     ) -> list[ProgramOutput[ProgramInput, Data]]:
         """Run many calculations together.
 
+        Under a runner, ``ctx`` is the batch's grant: the sum of its inputs' threads
+        (at most the runner's) and the most GPUs any of them asks for. The program
+        divides it among the inputs (one thread each to N one-thread searches run
+        side by side).
+
         Returns:
             One output per input, in order; a failed calculation is a failed output
             in its place (``ProgramOutput.failure``), and so is an input the program

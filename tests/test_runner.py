@@ -501,6 +501,38 @@ def test_batch_programs_get_their_inputs_together():
     assert outs[-1].error.kind is ErrorKind.numerical
 
 
+def test_a_batch_gets_the_threads_of_its_inputs_together():
+    """N 1-thread inputs as one batch get N threads, at most the runner's (#39)."""
+    granted = []
+
+    class Batching(ToyProgram):
+        name = "batching"
+
+        def compute_batch(self, inputs, ctx=None):
+            granted.append((len(inputs), ctx.threads))
+            toy = [i.model_copy(update={"program": "toy"}) for i in inputs]
+            return [
+                o.model_copy(update={"input_data": i})
+                for i, o in zip(inputs, super().compute_batch(toy, ctx), strict=True)
+            ]
+
+    register_program(Batching())
+
+    def batch(n, **kw):
+        return [
+            toy_input(program="batching", epsilon=0.01 * (i + 1), **kw)
+            for i in range(n)
+        ]
+
+    with Runner(threads=8) as runner:
+        runner.compute(batch(8))  # each asks for 1
+        runner.compute(batch(3))
+        runner.compute(batch(20))  # at most the runner's
+        runner.compute(batch(3, threads=2))  # the keyword, summed
+        runner.compute(batch(2) + [toy_input(), toy_input()])  # beside other tasks
+    assert granted == [(8, 8), (3, 3), (20, 8), (3, 6), (2, 2)]
+
+
 # ------------------------------------------------------------------------- store
 
 
@@ -728,7 +760,9 @@ def test_subprogram_lists_and_their_failures():
     )
     with Runner(threads=2) as runner:
         assert runner.compute(inp).success
-        assert seen == [[1, 1, 1, 1]]  # each child got its planned thread
+        # The toy batches: the four children ask for 4 threads together, capped at
+        # the parent's 2, and the toy runs them one after another with both.
+        assert seen == [[2, 2, 2, 2]]
         failing = inp.model_copy(
             update={
                 "subprograms": [

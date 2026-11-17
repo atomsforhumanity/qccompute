@@ -1353,7 +1353,7 @@ wheels = [
 
 [[package]]
 name = "qccodec"
-version = "0.22.0a2"
+version = "0.22.0a3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "packaging" },
@@ -1362,9 +1362,9 @@ dependencies = [
     { name = "qcref" },
     { name = "tomli-w" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/5c/61/031cb38c85660ab6f676a89bcaa07e7c12e9e56c5c9d507d1b8811401e4a/qccodec-0.22.0a2.tar.gz", hash = "sha256:facbbad1f718d64ef7de6dc5cdfdc28c30b258bcca6a75cd5e926bae46a3d8bd", size = 1158007, upload-time = "2026-11-17T03:06:18.006Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/97/4f/de883ca76171ebe82a8d8aaa29c7b784dc1db81d3c93db941d73eea12f3e/qccodec-0.22.0a3.tar.gz", hash = "sha256:487573e13a87f85b11238201fa1a9136f502081621510e180c5fbe4653e3f57b", size = 1172381, upload-time = "2026-11-17T04:06:09.696Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f3/b9/b146080b4cf15af4a208fae5164d4b131895df08669e70c3c2d8a2e8a558/qccodec-0.22.0a2-py3-none-any.whl", hash = "sha256:eadb71894f5e7b2ef15ee72654431d9fb0498edc5edd908efc1ef9be0db6b318", size = 139749, upload-time = "2026-11-17T03:06:16.412Z" },
+    { url = "https://files.pythonhosted.org/packages/2b/55/456db68ba7a50769c093416297bb95b60284823fb082fdf4f93ff690d68b/qccodec-0.22.0a3-py3-none-any.whl", hash = "sha256:44688e73d3b7a4dcbacce4b56151978b7a2c7b0c00e17a5016ee68097c4b25a6", size = 147278, upload-time = "2026-11-17T04:06:08.34Z" },
 ]
 
 [[package]]

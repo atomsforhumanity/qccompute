@@ -27,8 +27,8 @@ A calculation gets the threads it asks for: its `threads` keyword
 states more, or all of them for a program that plans `None`), at most the runner's. It no
 longer gets every core of the machine by default.
 
-`compute` takes `store`, `timeout`, `rerun`, `tags`, `meta` and `raise_exc`. The
-removed options:
+`compute` takes `store`, `timeout`, `rerun`, `tags`, `meta`, `raise_exc` and `progress`.
+The removed options:
 
 | 0.22 option | 0.23 |
 |---|---|
@@ -40,7 +40,7 @@ removed options:
 | `collect_files=` | gone for `ProgramInput`; a `FileInput` returns every file the command wrote |
 | `collect_wfn=`, `propagate_wfn=` | gone; a program's own session keeps its warm start between steps |
 | `options={"collect_rotamers": True}` (CREST) | the keyword `{"output": {"rotamers": True}}` |
-| `print_logs=`, `update_func=`, `update_interval=` | gone: logs arrive with the output |
+| `print_logs=`, `update_func=`, `update_interval=` | gone: logs arrive with the output; `progress=` receives the events programs emit while they run |
 | `max_workers=` | `qccompute.Runner(threads=...)` |
 | `compute_args(...)` | build a `ProgramInput` |
 
@@ -79,14 +79,15 @@ except qcdata.ProgramError as e:
 `compute(list)` packs calculations by what each program's plan asks for, within the
 runner's threads and GPUs, instead of within `max_workers`. A program that evaluates
 many inputs at once gets them together; there is no `batch_size` or `batch_index` in
-`execution.extras` beyond what a program records. `Runner.as_completed` yields outputs
-as they finish.
+`execution.extras` beyond what a program records, and the batch's wall time is
+`execution.timings["batch"]`. `Runner.as_completed` yields outputs as they finish, and
+`qccompute.submit(inp)` returns a `concurrent.futures.Future` of one output.
 
 ## Sessions
 
 `qccompute.session(spec, structure, threads=..., **compute_options)` is
-`qccompute.session(inp, calctypes=None)`: build the input with
-`ProgramInput.from_spec(spec, structure)`. `compute_many` now runs every request and then
+`qccompute.session(inp, calctypes=None, threads=None, progress=None)`: build the input
+with `ProgramInput.from_spec(spec, structure)`. `compute_many` now runs every request and then
 raises `qcdata.ProgramErrors` when any failed, with every frame in `results`.
 
 ## Programs
@@ -98,7 +99,8 @@ raises `qcdata.ProgramErrors` when any failed, with every frame in `results`.
 | `Capabilities.driver` | gone: a program runs subprograms through `ctx.compute` and `ctx.session` |
 | `Capabilities.gpu` | gone: a calculation's GPUs are its plan's (`plan.resources.gpus`) |
 | `Resources.exclusive` | gone: the runner never gave a calculation the machine to itself; run it alone, or on a `Runner` of its own |
-| `RunContext(compute=..., open_session=..., make_scratch=..., scratch_dir=..., progress=...)` | runners make contexts; `ctx.compute()`, `ctx.session()`, `ctx.scratch`, `ctx.timeout` |
+| `RunContext(compute=..., open_session=..., make_scratch=..., scratch_dir=..., progress=...)` | runners make contexts; `ctx.compute()`, `ctx.session()`, `ctx.scratch`, `ctx.timeout`, `ctx.progress` (None unless the caller listens) |
+| a program ran any program through its context | `ctx.compute` and `ctx.session` run only programs the input names among its subprograms (kind `input`, code `unnamed_subprogram`) |
 | `compute_batch` | returns failures in place, refused inputs included |
 | `qccompute.get_program` | `qccompute.program.find_program` |
 | `qccompute.utils.available_programs` | `qccompute.program.available_programs` |

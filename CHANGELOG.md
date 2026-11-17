@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [unreleased]
 
+## [0.23.0a3] - 2026-11-17
+
+### Changed
+
+- **Breaking:** a batch's `ctx.threads` is the sum of its inputs' planned threads, capped at the runner's (or the parent's grant); its GPUs are the most any input asks for. A list of 32 qcopt TS searches on 8 cores went from 9.5 s to 3.1 s.
+- **Breaking:** a calculation's GPUs come from `plan.resources.gpus`, whatever `caps.gpu` says; a single top-level call no longer takes every GPU. Workers see only their granted GPUs (`CUDA_VISIBLE_DEVICES=""` when none).
+- **Breaking:** `Store.put(output, *, tags=(), meta=None)`: the store reads identities from `output.execution.identities`.
+- **Breaking:** `ComputeSession(..., *, program_version)` is required; a session's `program_version` is known at open.
+- **Breaking:** `FunctionProgram` and the toy program refuse the `accuracy` keyword with code `no_effect`. A `ComputeSession` passes a request's accuracy on as the `accuracy` keyword. Requires qcdata 0.24.0a4.
+
+### Added
+
+- `execution.identities` on every output that ran: single inputs, lists, batches, refusals, failures, subprogram outputs, worker programs.
+- Worker pools: GPU workers are pooled by program and GPUs (at most `per_gpu`), shared by calls and sessions; CPU workers by program and threads. 8 AIMNet2 sessions share one worker instead of starting eight.
+- In-process timeouts: once a calculation's time runs out, its `ctx.compute` and `ctx.session` calls fail with kind `timeout` without running, so a program with subprograms stops at its next step. Programs in workers are still killed.
+
+### Fixed
+
+- A batch ran on one thread (#39).
+- A GPU program started a second worker for a list's batch, loading its model twice.
+- Faster worker reads when no array files are present.
+
+
 ## [0.23.0a2] - 2026-11-17
 
 ### Changed

@@ -4,6 +4,7 @@ from typing import Any
 
 import numpy as np
 import pytest
+from pydantic import ValidationError
 from qcdata import (
     Accuracy,
     CalcType,
@@ -19,6 +20,7 @@ from qcdata import (
 
 from qccompute.program import (
     BatchProgram,
+    Capabilities,
     ComputeSession,
     Program,
     RunContext,
@@ -730,3 +732,9 @@ def test_runner_numbers_gpus_as_nvidia_smi_does(monkeypatch):
     assert "CUDA_DEVICE_ORDER" not in module.os.environ
     monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "-1")
     assert visible_gpus() == {}
+
+
+def test_capabilities_have_no_gpu_flag():
+    """GPUs are a plan's, not a capability: nothing read Capabilities.gpu (alpha 4)."""
+    with pytest.raises(ValidationError):
+        Capabilities.model_validate({"calctypes": ["energy"], "gpu": True})

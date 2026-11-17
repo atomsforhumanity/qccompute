@@ -96,6 +96,7 @@ raises `qcdata.ProgramErrors` when any failed, with every frame in `results`.
 | `compute(self, inp, ctx)` returned a failed output | `compute(self, inp, ctx=None)` raises `ProgramError` (with `output=`) |
 | `local_context(...)` for direct calls of a program with subprograms | with `ctx=None` it returns `qccompute.compute(inp)` |
 | `Capabilities.driver` | gone: a program runs subprograms through `ctx.compute` and `ctx.session` |
+| `Capabilities.gpu` | gone: a calculation's GPUs are its plan's (`plan.resources.gpus`) |
 | `RunContext(compute=..., open_session=..., make_scratch=..., scratch_dir=..., progress=...)` | runners make contexts; `ctx.compute()`, `ctx.session()`, `ctx.scratch`, `ctx.timeout` |
 | `compute_batch` | returns failures in place, refused inputs included |
 | `qccompute.get_program` | `qccompute.program.find_program` |

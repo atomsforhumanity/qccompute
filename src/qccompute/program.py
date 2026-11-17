@@ -140,9 +140,9 @@ class Capabilities(QCDataBaseModel):
             in threads of one process (the program releases the GIL and shares no
             mutable state); the runner then runs them side by side in threads instead
             of one at a time.
-        gpu: Whether it can use GPUs, for people and tools that list programs. The
-            runner grants a calculation the GPUs its plan asks for
-            (`Resources.gpus`), whatever this says.
+
+    Whether a calculation uses GPUs is its plan's (`Resources.gpus`), not a
+    capability: a program whose subprograms use GPUs plans theirs.
     """
 
     calctypes: frozenset[CalcType]
@@ -151,7 +151,6 @@ class Capabilities(QCDataBaseModel):
     batches: bool = False
     in_process: bool = True
     thread_safe: bool = False
-    gpu: bool = False
 
 
 class Resources(QCDataBaseModel):
@@ -171,9 +170,9 @@ class Resources(QCDataBaseModel):
             alone. A small molecule rarely gains from more than a few.
         memory_gib: Host memory the calculation expects to use (GiB), if known;
             informational, not scheduled.
-        gpus: GPUs the calculation uses: the runner grants this many, whatever the
-            program's capabilities say (a program whose subprograms use GPUs plans
-            theirs). A program in a worker sees only those granted.
+        gpus: GPUs the calculation uses: the runner grants this many (a program
+            whose subprograms use GPUs plans theirs). A program in a worker sees only
+            those granted.
         device_memory_gib: Memory per GPU the calculation expects to use (GiB), if
             known; informational, not scheduled (``per_gpu`` sets how many
             calculations share a GPU).

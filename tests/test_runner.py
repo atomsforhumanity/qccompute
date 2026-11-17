@@ -62,10 +62,9 @@ def toy_input(
 class Recording(ToyProgram):
     """The toy, recording each run's context; optionally not thread-safe."""
 
-    def __init__(self, name: str, thread_safe: bool = True, gpu: bool = False):
+    def __init__(self, name: str, thread_safe: bool = True):
         self.name = name
         self._thread_safe = thread_safe
-        self._gpu = gpu
         self.contexts: list[RunContext] = []
         self.scratches: list = []
         self.running = 0
@@ -79,7 +78,6 @@ class Recording(ToyProgram):
             .model_copy(
                 update={
                     "thread_safe": self._thread_safe,
-                    "gpu": self._gpu,
                     "batches": False,
                 }
             )
@@ -1167,20 +1165,20 @@ def test_shares_pack_threads_and_gpus_and_memory_follows():
         assert by_threads[3] == pytest.approx(3 * memory / 4, rel=1e-3)
 
 
-def test_gpus_come_from_the_plan_whatever_the_capabilities_say():
-    """A calculation gets the GPUs its plan asks for; caps.gpu decides nothing (#40)."""
+def test_gpus_come_from_the_plan():
+    """A calculation gets the GPUs its plan asks for (#40); no capability says (a4)."""
 
     class Planned(NoSessions):  # its sessions run through compute
-        def __init__(self, name, gpus, gpu):
-            super().__init__(name, gpu=gpu)
+        def __init__(self, name, gpus):
+            super().__init__(name)
             self._wanted = gpus
 
         def plan(self, inp):
             plan = super().plan(inp.model_copy(update={"program": "toy"}))
             return plan.model_copy(update={"resources": Resources(gpus=self._wanted)})
 
-    one = Planned("one-gpu", 1, gpu=False)  # a parent of GPU children, say
-    none = Planned("no-gpu", 0, gpu=True)  # a GPU program on the CPU this time
+    one = Planned("one-gpu", 1)  # a parent of GPU children, say
+    none = Planned("no-gpu", 0)  # a GPU program on the CPU this time
     register_program(one)
     register_program(none)
 

@@ -710,8 +710,7 @@ class Runner:
         """The GPUs of a calculation: as many as its plan asks for, of ``devices``.
 
         ``devices`` are those it may use (a parent's grant); None: the runner's. The
-        plan decides, whatever the program's capabilities say: a program whose
-        subprograms use GPUs plans theirs.
+        plan decides: a program whose subprograms use GPUs plans theirs.
         """
         wanted = plan.resources.gpus
         if not wanted:

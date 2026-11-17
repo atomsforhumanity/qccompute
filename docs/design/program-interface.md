@@ -42,7 +42,7 @@ The object implements `qccompute.program.Program`, structurally:
 |---|---|
 | `name` | the program's name, as in `ProgramInput.program` |
 | `version()` | the program's version |
-| `capabilities()` | calctypes, methods with their calctypes, `sessions`, `batches`, `in_process`, `thread_safe`, `gpu`; a `Capabilities` or a plain mapping |
+| `capabilities()` | calctypes, methods with their calctypes, `sessions`, `batches`, `in_process`, `thread_safe`; a `Capabilities` or a plain mapping |
 | `settings_schema(calctype)` | the JSON Schema of `keywords` and of `resolved.settings` |
 | `record_schema(calctype)` | the JSON Schema of `ProgramOutput.record` |
 | `plan(inp)` | a dry run: validates (kind `input` with a did-you-mean for unknown keys), resolves every `"auto"`, and says what the calculation needs (`Resources`: threads, GPUs) |
@@ -78,8 +78,8 @@ subprograms:
   all there is), at most the runner's (or, for a subprogram, the parent's grant). A program uses the
   smaller of its own request and the grant, or the grant when it requested nothing; a
   capped request is a `resource_capped` warning. The GPUs are as many as its plan asks
-  for (`plan.resources.gpus`), of the runner's or the parent's, whatever its capabilities
-  say: a program whose subprograms use GPUs plans theirs and passes them on.
+  for (`plan.resources.gpus`), of the runner's or the parent's: a program whose
+  subprograms use GPUs plans theirs and passes them on.
 - `device_ordinals()`: the granted GPUs as this process's CUDA device ordinals, so every
   program maps a grant alike. `gpus` names them as `CUDA_VISIBLE_DEVICES` does (indices
   or `GPU-`/`MIG-` UUIDs). When the process's `CUDA_VISIBLE_DEVICES` is set, a GPU's

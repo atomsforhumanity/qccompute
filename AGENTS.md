@@ -12,7 +12,7 @@ Instructions for AI coding agents (and a quick reference for people) working in 
 
 ## The qc* suite
 
-Dependencies point one way: qcref -> qcdata -> qccompute, with qccodec an optional add-on (`qccompute[qccodec]`) that depends on qcdata and qcref and registers its programs with qccompute through entry points. Never import a package that sits later in that order, and keep changes that span packages in separate pull requests, released in that order.
+Dependencies point one way: qcref -> qcdata -> qccompute -> qccodec. qccodec depends on qccompute and registers its programs with it through entry points; qccompute reaches qccodec only through the optional extra `qccompute[qccodec]` and never imports it. Never import a package that sits later in that order, and keep changes that span packages in separate pull requests, released in that order.
 
 ## Commands
 

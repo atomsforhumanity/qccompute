@@ -1470,7 +1470,7 @@ tcpb = [
 
 [[package]]
 name = "qccompute"
-version = "0.22.0"
+version = "0.22.1"
 source = { editable = "." }
 default-groups = ["dev", "docs"]
 dependencies = [
@@ -1515,11 +1515,11 @@ docs = [
 
 [package.metadata]
 requires-dist = [
-    { name = "qccodec", specifier = ">=0.21.0" },
-    { name = "qccodec", extras = ["geometric"], marker = "extra == 'geometric'", specifier = ">=0.21.0" },
-    { name = "qccodec", extras = ["geometric", "tcpb"], marker = "extra == 'all'", specifier = ">=0.21.0" },
-    { name = "qccodec", extras = ["tcpb"], marker = "extra == 'tcpb'", specifier = ">=0.21.0" },
-    { name = "qcdata", specifier = ">=0.23.1" },
+    { name = "qccodec", specifier = ">=0.21.0,<0.22" },
+    { name = "qccodec", extras = ["geometric"], marker = "extra == 'geometric'", specifier = ">=0.21.0,<0.22" },
+    { name = "qccodec", extras = ["geometric", "tcpb"], marker = "extra == 'all'", specifier = ">=0.21.0,<0.22" },
+    { name = "qccodec", extras = ["tcpb"], marker = "extra == 'tcpb'", specifier = ">=0.21.0,<0.22" },
+    { name = "qcdata", specifier = ">=0.23.1,<0.24" },
 ]
 provides-extras = ["geometric", "tcpb", "all"]
 

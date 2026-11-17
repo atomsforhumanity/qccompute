@@ -6,8 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [unreleased]
 
+## [0.22.1] - 2026-11-17
+
 ### Changed
 
+- Requires `qcdata<0.24` and `qccodec<0.22`. The next releases of the qc* stack change these interfaces without compatibility, so this release line keeps resolving to a working set.
 - Moved documentation from `qccompute.docs.atomsforhumanity.org` to `qccompute.docs.afh.org`.
 
 ## [0.22.0] - 2026-10-23

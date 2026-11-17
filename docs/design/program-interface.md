@@ -278,9 +278,11 @@ with the failed output and the logs when it fails.
 
 ## Cost
 
-On one core, `qccompute.compute` adds about 4 µs to a direct call of a `FunctionProgram`
-and about 9 µs for the toy program (finding it, planning it, its context, recording the
-execution); the runner hands its plan on in `ctx.plan`, so a program need not plan twice. Through qccodec, a trivial external
+On one core, `qccompute.compute` adds about 7 µs to a direct call of a `FunctionProgram`
+with a `version` and about 10 µs for the toy program (finding it, planning it, its
+context, recording the execution and the identities); a `FunctionProgram` without a
+`version` adds about 6 µs more, the digest of its functions that is its identity. The
+runner hands its plan on in `ctx.plan`, so a program need not plan twice. Through qccodec, a trivial external
 command takes about 0.26 ms more than launching it in a fresh directory by hand. A worker
 round trip for the toy program costs about 0.14 ms (JSON on a pipe), and starting a
 worker about 0.15 s plus the program's own imports, once.

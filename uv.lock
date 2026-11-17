@@ -1413,7 +1413,7 @@ docs = [
 requires-dist = [
     { name = "jsonschema", marker = "extra == 'testing'", specifier = ">=4.18" },
     { name = "qccodec", marker = "extra == 'qccodec'", specifier = ">=0.22.0a4" },
-    { name = "qcdata", specifier = ">=0.24.0a6" },
+    { name = "qcdata", specifier = ">=0.24.0a7" },
     { name = "threadpoolctl", specifier = ">=3.1" },
 ]
 provides-extras = ["qccodec", "testing"]
@@ -1443,7 +1443,7 @@ docs = [
 
 [[package]]
 name = "qcdata"
-version = "0.24.0a6"
+version = "0.24.0a7"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "eval-type-backport" },
@@ -1455,9 +1455,9 @@ dependencies = [
     { name = "toml" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/23/c1/c48235354a45d404db22c43bdc04dafccf7238519a16372ab341846f18c9/qcdata-0.24.0a6.tar.gz", hash = "sha256:8a8b878a08fe8dcd175ff8ca6eb82030354dd0806429d37fc54fcbedff14bd1c", size = 1463875, upload-time = "2026-11-17T07:19:12.157Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/5b/7c/b0757933be96b00f805da1a4f2a15d4e9c757a865836bf4f098976f8d97b/qcdata-0.24.0a7.tar.gz", hash = "sha256:2958f20e70c9b9e50a7030f46c4a896f6f2a22b87efdaf4438888075a287f7b2", size = 1469988, upload-time = "2026-11-17T20:06:33.434Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/8d/68/c29d17d58c8e217b6016818d60423f4bbd87c6e7fe24bd0364f127114a6b/qcdata-0.24.0a6-py3-none-any.whl", hash = "sha256:9bbc713e738ba1297e2411167a949b0e99c030ddaafc5437bfee3a857bf4f81a", size = 79306, upload-time = "2026-11-17T07:19:10.818Z" },
+    { url = "https://files.pythonhosted.org/packages/86/ff/8ad14d49084ac4e7f5dee275b4365ed640cf2e957fbeaaa188e71e1eebc2/qcdata-0.24.0a7-py3-none-any.whl", hash = "sha256:6a7abd22dab884a17e4b09ff1ee46bad1d4da72abba1e5470b27582251e57ceb", size = 80400, upload-time = "2026-11-17T20:06:31.89Z" },
 ]
 
 [[package]]

@@ -1257,9 +1257,12 @@ def register_program(program: Program) -> None:
     For programs that are not installed packages: in tests, notebooks and scripts.
     Runners in this process find it through `find_program`, and so do the
     subprograms of a program in a worker process (geomeTRIC's gradients), which run
-    back in this process. A registered program that itself needs a worker process
-    (``in_process=False``, or a runner with ``isolation="process"``) must be a
-    top-level attribute of an importable module, which the worker imports.
+    back in this process. A registered program that itself runs in a worker process
+    (``in_process=False``, or a runner with ``isolation="process"``) reaches it as a
+    top-level attribute of an importable module when it is one, else pickled: its
+    class and what it holds must then be importable in the worker (nothing defined
+    in the script being run, no lambdas or closures), or running it there fails
+    with kind ``environment``, saying so.
 
     Args:
         program: An object implementing `Program`.

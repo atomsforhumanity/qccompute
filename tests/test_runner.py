@@ -1,10 +1,13 @@
 """The Runner: one path for one input or many, failures that raise, ctx, the store hook."""
 
 import os
+import subprocess
+import sys
 import threading
 import time
 import warnings
 from concurrent.futures import FIRST_COMPLETED, Future, wait
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -1284,7 +1287,9 @@ def test_a_failed_subprogram_fails_its_parent_with_kind_program():
 def test_subprograms_must_be_named_by_the_input():
     """So a run's identities cover every program it used (#56)."""
 
-    class Path(ToyProgram):  # like mepd's NEB: minimizes its ends with fd, through ctx
+    class PathSearch(
+        ToyProgram
+    ):  # like mepd's NEB: minimizes its ends with fd, through ctx
         name = "path"
 
         def capabilities(self):
@@ -1307,7 +1312,7 @@ def test_subprograms_must_be_named_by_the_input():
                 ),
             )
 
-    register_program(Path())
+    register_program(PathSearch())
     register_program(FiniteDifference())
     toy_spec = fd_input("toy").subprograms[0]
     fd_spec = ProgramSpec(program="fd", calctype="gradient", subprograms=[toy_spec])
@@ -1453,6 +1458,58 @@ def test_isolation_process_runs_every_program_in_a_worker():
         with runner.session(toy_input()) as s:
             assert type(s).__name__ == "WorkerSession"
             assert s.compute().success
+
+
+def test_registered_instances_reach_workers_pickled(tmp_path):
+    """An instance no module holds, made in a script, runs in a worker (#62)."""
+    from qccompute.program import FunctionProgram
+
+    copy = serve_programs.Isolated()
+    copy.name = "isolated-copy"  # held by no module: pickled for the worker
+    register_program(copy)
+    shadow = serve_programs.Isolated()
+    shadow.name = "xtb"  # registered ahead of an installed program of that name
+    register_program(shadow)
+    with Runner(threads=1) as runner:
+        out = runner.compute(toy_input(program="isolated-copy"))
+        assert out.results.extras["pid"] != os.getpid()
+        assert runner.compute(toy_input(program="xtb")).results.extras["pid"]
+
+        class Scripted(serve_programs.Isolated):  # as if defined in the script run
+            name = "scripted"
+
+        Scripted.__module__ = "__main__"
+        register_program(Scripted())
+        with pytest.raises(ProgramError) as e:
+            runner.compute(toy_input(program="scripted"))
+        assert e.value.error.kind is ErrorKind.environment
+        assert "script being run" in e.value.error.message
+    register_program(FunctionProgram("lambda", lambda x: (0.0, 0 * x)))
+    lam = toy_input(program="lambda").model_copy(update={"model": None})
+    assert qccompute.compute(lam).success  # in process: fine
+    with Runner(threads=1, isolation="process") as runner:
+        with pytest.raises(ProgramError) as e:
+            runner.compute(lam)
+        assert "cannot rebuild it" in e.value.error.message
+    # The issue's case, end to end: a script registers an instance it made.
+    script = tmp_path / "script.py"
+    script.write_text(
+        "import os, sys\n"
+        f"sys.path.insert(0, {str(Path(__file__).parents[1])!r})\n"
+        "import qccompute\n"
+        "from tests import serve_programs\n"
+        "from tests.test_runner import toy_input\n"
+        "program = serve_programs.Isolated()\n"
+        "program.name = 'mine'\n"
+        "qccompute.register_program(program)\n"
+        "with qccompute.Runner(threads=1) as runner:\n"
+        "    out = runner.compute(toy_input(program='mine'))\n"
+        "print(out.results.extras['pid'] != os.getpid())\n"
+    )
+    ran = subprocess.run(
+        [sys.executable, str(script)], capture_output=True, text=True, timeout=120
+    )
+    assert ran.stdout.strip() == "True", ran.stderr
 
 
 def test_subprograms_of_worker_programs_run_in_the_client():

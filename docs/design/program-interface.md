@@ -29,7 +29,8 @@ and may have subprograms (`ProgramSpec`s in its input) that it runs through the 
 Running many programs, with logic between them, is a workflow: plain Python.
 
 A program registers an instance under the `qccompute.programs` entry point group, or in a
-process with `qccompute.register_program`:
+process with `qccompute.register_program` (a registered program that runs in a worker
+reaches it by its module attribute, else pickled; see **Workers**):
 
 ```toml
 [project.entry-points."qccompute.programs"]
@@ -351,6 +352,15 @@ The runner needs four methods of a store (`qccompute.runner.Store`): `key(inp)`,
 `python -m qccompute.serve PROGRAM` hosts one program's calculations and sessions in its
 own process, so a crash ends the worker and not its caller, and a program keeps its state
 between calls. `qccompute.worker.Worker` is its client.
+
+- **Which program:** `PROGRAM` is an installed program's name, a `module:attribute`, or
+  `pickle:PATH`. A runner names an installed program (the object its entry point
+  names) by its name, a registered one by the module attribute that holds it, and any
+  other registered instance (one made in a script) by a pickle of it, written once per
+  process to a private directory. A pickle stores classes and functions by reference,
+  so they must be importable in the worker; one that holds a lambda, a closure, or
+  anything defined in the script being run cannot be rebuilt there, and running it in
+  a worker fails with kind `environment`, saying so.
 
 - **Transport:** stdin and stdout, one JSON message per line, one client per connection;
   `--socket PATH` serves a Unix socket on the same framing.

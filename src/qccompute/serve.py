@@ -6,7 +6,9 @@
 A worker keeps a program alive between calls (warm starts, a live GPU context) and
 isolates it: a crash ends the worker, not its caller. The program is found by name
 (`qccompute.program.find_program`: registered in this process, else the
-``qccompute.programs`` entry points) or given as ``module:attribute``. The loop uses only
+``qccompute.programs`` entry points), given as ``module:attribute``, or as
+``pickle:PATH``, a file holding it pickled (a runner's, for a program registered in
+its process that no module holds). The loop uses only
 qcdata and the protocol, and knows nothing of the program beyond it. Design:
 ``docs/design/program-interface.md``, "Workers".
 
@@ -67,6 +69,7 @@ import importlib
 import itertools
 import json
 import os
+import pickle
 import socket
 import sys
 import threading
@@ -137,11 +140,19 @@ class MessageError(Exception):
 
 
 def load_program(spec: str) -> Program:
-    """The program named ``spec`` (`find_program`), or the object at ``module:attribute``.
+    """The program a spec names.
+
+    A name (`find_program`), the object at ``module:attribute``, or ``pickle:PATH``:
+    a file holding the program pickled, which a runner writes for a program
+    registered in its process that no module holds (`qccompute.runner._worker_spec`).
 
     Raises:
         SystemExit: No such program.
     """
+    if spec.startswith("pickle:"):
+        with open(spec.removeprefix("pickle:"), "rb") as f:
+            loaded: Program = pickle.load(f)
+        return loaded
     if ":" in spec:
         module, attr = spec.split(":", 1)
         program: Program = getattr(importlib.import_module(module), attr)

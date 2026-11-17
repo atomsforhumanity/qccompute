@@ -21,13 +21,18 @@ the failed output as its ``output``; a list runs everything first and raises
 from __future__ import annotations
 
 import atexit
+import io
 import math
 import os
+import pickle
 import platform
+import shutil
 import sys
+import tempfile
 import threading
 import time
 import traceback
+import types
 import warnings
 import weakref
 from collections.abc import Iterable, Iterator, Mapping, Sequence
@@ -272,15 +277,22 @@ def _device_names(devices: Sequence[str]) -> list[str]:
 class _Entry:
     """A program as a runner places it: its capabilities, lock and worker spec."""
 
-    __slots__ = ("program", "caps", "lock", "spec")
+    __slots__ = ("program", "caps", "lock", "_spec")
 
-    def __init__(self, program: Program, caps: Capabilities, spec: str) -> None:
+    def __init__(self, program: Program, caps: Capabilities) -> None:
         self.program = program
         self.caps = caps
         self.lock = (
             None if caps.thread_safe else _Turns(_program_lock(program), program.name)
         )
-        self.spec = spec
+        self._spec: str | None = None
+
+    @property
+    def spec(self) -> str:
+        """How a worker process finds the program (`_worker_spec`), on first use."""
+        if self._spec is None:
+            self._spec = _worker_spec(self.program)
+        return self._spec
 
 
 class _Turns:
@@ -334,20 +346,92 @@ def _program_lock(program: Program) -> threading.Lock:
     return held[1]
 
 
-def _worker_spec(program: Program) -> str:
-    """How a worker process finds a program: its name, or ``module:attribute``.
+#: A worker spec naming a file that holds the program pickled (`_worker_spec`).
+PICKLED = "pickle:"
 
-    Installed programs are found by name. A program registered in this process is
-    found in a worker only if it is a top-level attribute of an importable module.
+_specs: dict[int, tuple[Program, str]] = {}
+_pickles: str | None = None  # this process's directory of pickled programs
+
+
+def _worker_spec(program: Program) -> str:
+    """How a worker process finds a program: its name, ``module:attribute``, or a pickle.
+
+    An installed program (the object its entry point names) is found by name; a
+    registered one that is a top-level attribute of its class's module, by that.
+    Any other instance (one made in a script, ``register_program(Program(...))``) is
+    pickled once per process into a private directory, removed at exit, and the
+    worker loads it: its class and everything it holds must be importable there.
+
+    Raises:
+        ProgramError: Kind ``environment``: the program cannot be pickled for a
+            worker (it holds a lambda, a closure, a lock, or something defined in
+            the script being run).
     """
-    if program.name in _entry_points():
+    with _locks_guard:
+        held = _specs.get(id(program))
+        if held is not None and held[0] is program:
+            return held[1]
+        spec = _find_spec(program)
+        _specs[id(program)] = (program, spec)
+        return spec
+
+
+def _find_spec(program: Program) -> str:
+    """`_worker_spec`, uncached (call under ``_locks_guard``)."""
+    global _pickles
+    entry = _entry_points().get(program.name)
+    if entry is not None and entry.load() is program:
         return program.name
     module = type(program).__module__
     if module != "__main__":
         for name, value in vars(sys.modules.get(module, object())).items():
             if value is program:
                 return f"{module}:{name}"
-    return program.name
+    try:
+        data = _portable_pickle(program)
+    except Exception as e:  # noqa: BLE001 - PicklingError, TypeError, AttributeError
+        raise ProgramError.of(
+            "environment",
+            f"{program.name} is registered in this process, but a worker process "
+            f"cannot rebuild it: {e}. Run it in this process (isolation='auto', for "
+            "a program that may share it), make it a top-level attribute of an "
+            "importable module, or install it under the qccompute.programs entry "
+            "points.",
+        ) from None
+    if _pickles is None:
+        _pickles = tempfile.mkdtemp(prefix="qccompute-programs-")
+        atexit.register(shutil.rmtree, _pickles, ignore_errors=True)
+    path = Path(_pickles) / f"{len(_specs)}-{program.name}.pickle"
+    path.write_bytes(data)
+    return f"{PICKLED}{path}"
+
+
+class _Portable(pickle.Pickler):
+    """A pickler refusing references a worker process could not import.
+
+    Pickle stores classes and functions by reference, which a worker resolves by
+    importing them; the script this process runs (``__main__``) is not importable
+    there, so a reference into it is refused here rather than in the worker.
+    """
+
+    def reducer_override(self, obj: Any) -> Any:
+        """Refuse a class or function of ``__main__``; pickle the rest as usual."""
+        if (
+            isinstance(obj, type | types.FunctionType)
+            and getattr(obj, "__module__", None) == "__main__"
+        ):
+            raise pickle.PicklingError(
+                f"{obj.__qualname__} is defined in the script being run (__main__), "
+                "which a worker cannot import"
+            )
+        return NotImplemented
+
+
+def _portable_pickle(program: Program) -> bytes:
+    """The program pickled for a worker process (`_Portable`)."""
+    buffer = io.BytesIO()
+    _Portable(buffer, protocol=pickle.HIGHEST_PROTOCOL).dump(program)
+    return buffer.getvalue()
 
 
 def _failure(
@@ -849,7 +933,7 @@ class Runner:
         if entry is not None and entry.program is program:
             return entry
         with self._entries_lock:
-            entry = _Entry(program, capabilities_of(program), _worker_spec(program))
+            entry = _Entry(program, capabilities_of(program))
             self._entries[id(program)] = entry
         return entry
 

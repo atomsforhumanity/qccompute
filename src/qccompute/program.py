@@ -69,6 +69,7 @@ from types import TracebackType
 from typing import Any, Protocol, overload, runtime_checkable
 
 import numpy as np
+from pydantic import BaseModel
 from qcdata import (
     Accuracy,
     CalcType,
@@ -738,7 +739,10 @@ class ComputeSession:
     `qcdata.ProgramError` on failure; a list with ``raise_exc=False`` returns failed
     outputs in place). It keeps no history: every request starts fresh
     (``warm_start`` false), so ``lineage``, ``seed`` and ``commit`` change nothing. A
-    ``hessian`` result without a gradient is completed by a gradient calculation.
+    request's ``accuracy`` becomes the ``accuracy`` keyword of the input it computes,
+    replacing the session input's own; a program with no convergence settings refuses
+    it (``no_effect``). A ``hessian`` result without a gradient is completed by a
+    gradient calculation.
 
     Args:
         compute: Computes one input, or a list with ``raise_exc=False``.
@@ -771,24 +775,32 @@ class ComputeSession:
         return self._inp
 
     def _input(
-        self, positions: np.ndarray | None, calctype: CalcType | str | None
+        self,
+        positions: np.ndarray | None,
+        calctype: CalcType | str | None,
+        accuracy: Accuracy | float | None = None,
     ) -> ProgramInput:
+        """The session's input at a request's positions, calctype and accuracy."""
         calctype = CalcType(calctype) if calctype is not None else self._inp.calctype
         check_session_calctype(calctype, self.calctypes)
-        if positions is None:
-            return self._inp.model_copy(update={"calctype": calctype})
-        geometry = np.asarray(positions, dtype=float).reshape(-1, 3)
-        if geometry.shape != np.asarray(self._structure.geometry).shape:
-            raise ProgramError.of(
-                "input",
-                f"positions have {geometry.shape[0]} atoms; the session's structure "
-                f"has {len(self._structure.symbols)}",
-            )
         # The input is already valid; copies skip validating it again on every step.
-        structure = self._structure.model_copy(update={"geometry": geometry})
-        return self._inp.model_copy(
-            update={"calctype": calctype, "structure": structure}
-        )
+        update: dict[str, Any] = {"calctype": calctype}
+        target = Accuracy.of(accuracy, calctype)
+        if target is not None:  # plain JSON, as qcdata stores keywords
+            plain = BaseModel.model_dump(target, mode="json", exclude_none=True)
+            update["keywords"] = {**self._inp.keywords, "accuracy": plain}
+        if positions is not None:
+            geometry = np.asarray(positions, dtype=float).reshape(-1, 3)
+            if geometry.shape != np.asarray(self._structure.geometry).shape:
+                raise ProgramError.of(
+                    "input",
+                    f"positions have {geometry.shape[0]} atoms; the session's "
+                    f"structure has {len(self._structure.symbols)}",
+                )
+            update["structure"] = self._structure.model_copy(
+                update={"geometry": geometry}
+            )
+        return self._inp.model_copy(update=update)
 
     def _as_frame(self, out: ProgramOutput[Any, Any]) -> Frame:
         """An output as a frame, with ``warm_start`` false in its record."""
@@ -836,7 +848,8 @@ class ComputeSession:
         Args:
             positions: Atomic positions (bohr); None: the input's own.
             calctype: ``energy``, ``gradient`` or ``hessian``; None: the input's.
-            accuracy: Ignored: a stateless session runs its input's settings.
+            accuracy: The input's ``accuracy`` keyword for this request (a number
+                targets the calctype's highest derivative); None: the input's own.
             lineage: Ignored: a stateless session keeps no history.
             outputs: Not supported; must be empty.
             seed: Ignored, like ``lineage``.
@@ -856,7 +869,7 @@ class ComputeSession:
                 "A session over compute takes optional outputs from the input's "
                 "keywords, not per request.",
             )
-        return self._one(self._input(positions, calctype))
+        return self._one(self._input(positions, calctype, accuracy))
 
     def compute_many(self, requests: Sequence[Request]) -> list[Frame]:
         """Evaluate many geometries in one call to compute.
@@ -881,7 +894,7 @@ class ComputeSession:
                     raise ProgramError.of(
                         "unsupported", "per-request outputs need a program session"
                     )
-                inputs.append(self._input(r.positions, r.calctype))
+                inputs.append(self._input(r.positions, r.calctype, r.accuracy))
                 places.append(i)
             except ProgramError as e:
                 geometry = (
@@ -1310,8 +1323,9 @@ class FunctionProgram:
         """Check the input: a structure, a supported calctype, no keywords.
 
         Raises:
-            ProgramError: Kind ``input`` (``unknown_key``, no structure) or
-                ``unsupported``.
+            ProgramError: Kind ``input`` (``unknown_key``; ``no_effect`` for the shared
+                keyword ``accuracy``, since the functions have nothing to converge; no
+                structure) or ``unsupported``.
         """
         if inp.calctype not in self._caps.calctypes:
             raise ProgramError.of(
@@ -1321,11 +1335,19 @@ class FunctionProgram:
             )
         if inp.structure is None:
             raise ProgramError.of("input", f"{self.name} needs a structure.")
+        unknown = sorted(set(inp.keywords) - {"accuracy"})
+        if unknown:
+            raise ProgramError.of(
+                "input",
+                f"{self.name} has no settings; unknown {unknown}.",
+                code="unknown_key",
+            )
         if inp.keywords:
             raise ProgramError.of(
                 "input",
-                f"{self.name} has no settings; unknown {sorted(inp.keywords)}.",
-                code="unknown_key",
+                f"{self.name} has no convergence settings, so the keyword accuracy "
+                "has no effect; leave it out.",
+                code="no_effect",
             )
         return _EMPTY_PLAN
 

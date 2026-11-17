@@ -123,6 +123,11 @@ _RECORD_SCHEMA: dict[str, Any] = {
             "type": "integer",
             "description": "Index of the evaluation within its session (0: first).",
         },
+        "accuracy": {
+            "type": "object",
+            "description": "A session request's accuracy target, met exactly: the "
+            "potential has no convergence thresholds.",
+        },
     },
 }
 
@@ -158,6 +163,13 @@ def _resolve(spec: ProgramInput | ProgramSpec) -> Plan:
     if spec.model is None or spec.model.method.lower() != "lj":
         raise ProgramError.of("input", f"{NAME} has one method, 'lj'.")
     kw = dict(spec.keywords)
+    if "accuracy" in kw:  # the shared keyword; an exact potential converges nothing
+        raise ProgramError.of(
+            "input",
+            f"{NAME} has no convergence settings, so the keyword accuracy has no "
+            "effect; leave it out.",
+            code="no_effect",
+        )
     _check_keys(kw, _SETTINGS_SCHEMA)
     epsilon = kw.get("epsilon", 0.01)
     if not isinstance(epsilon, int | float) or epsilon <= 0:
@@ -343,7 +355,8 @@ class ToySession:
         Args:
             positions: Atomic positions (bohr); None: the input's own.
             calctype: ``energy``, ``gradient`` or ``hessian``; None: the input's.
-            accuracy: Ignored: the potential is exact.
+            accuracy: Recorded as met (record key ``accuracy``, no thresholds):
+                the potential is exact.
             lineage: The history this evaluation continues.
             outputs: ``pair_energies`` puts every pair's energy in the record.
             seed: Lineages to start from when ``lineage`` has no history.
@@ -417,6 +430,14 @@ class ToySession:
         }
         if "pair_energies" in wanted:
             record["pair_energies"] = values["pairs"]
+        target = Accuracy.of(r.accuracy, calctype)
+        if target is not None:
+            record["accuracy"] = {
+                "target": target.model_dump(
+                    exclude_none=True, exclude={"qcdata_version"}
+                ),
+                "thresholds": {},
+            }
         frame = Frame(
             structure=self._structure.model_copy(update={"geometry": x}),
             results=_single_point(values),

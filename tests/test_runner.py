@@ -715,6 +715,59 @@ def test_sessions_are_the_programs_own_in_process():
     assert e.value.error.kind is ErrorKind.environment
 
 
+def test_accuracy_targets_reach_programs():
+    """The shared keyword accuracy, and a request's target in a session (#35)."""
+    from qcdata import Accuracy
+
+    from qccompute.program import FunctionProgram
+
+    # Programs with nothing to converge refuse the keyword, but the toy's own session
+    # records a request's target as met.
+    target = {"accuracy": {"gradient": 1e-6}}
+    for program in ("toy", "bowl"):
+        register_program(FunctionProgram("bowl", lambda x: (0.0, 0 * x)))
+        with pytest.raises(ProgramError) as e:
+            qccompute.compute(toy_input(program=program, **target))
+        assert e.value.error.code == "no_effect"
+    with qccompute.session(toy_input()) as s:
+        assert "accuracy" not in s.compute().record
+        frame = s.compute(accuracy=1e-6)
+        assert frame.record["accuracy"] == {
+            "target": {"gradient": 1e-6},
+            "thresholds": {},
+        }
+
+    # A session over compute passes a request's target on as the input's keyword.
+    seen = []
+
+    class Converging(NoSessions):
+        @staticmethod
+        def _own(inp):
+            keywords = {k: v for k, v in inp.keywords.items() if k != "accuracy"}
+            return inp.model_copy(update={"keywords": keywords})
+
+        def plan(self, inp):
+            return super().plan(self._own(inp))
+
+        def compute(self, inp, ctx=None):
+            seen.append(inp.keywords.get("accuracy"))
+            out = super().compute(self._own(inp), ctx)
+            return out.model_copy(update={"input_data": inp})
+
+    register_program(Converging("converging"))
+    inp = toy_input(program="converging", accuracy={"energy": 1e-8})
+    with qccompute.session(inp) as s:
+        s.compute()  # the input's own target
+        s.compute(accuracy=1e-6)  # a number targets the highest derivative
+        s.compute_many([Request(accuracy=Accuracy(hessian=1e-4)), Request()])
+    assert seen == [
+        {"energy": 1e-8},
+        {"gradient": 1e-6},
+        {"hessian": 1e-4},
+        {"energy": 1e-8},
+    ]
+
+
 @pytest.mark.parametrize("thread_safe", [False, True])
 def test_sessions_may_be_called_from_threads(thread_safe):
     """The runner makes concurrent session calls safe; callers need not ask."""

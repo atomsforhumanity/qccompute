@@ -13,7 +13,7 @@ from concurrent.futures import FIRST_COMPLETED, wait
 import qccompute
 from qcdata import ProgramError, ProgramInput
 
-gxtb = {"program": "axtb", "model": {"method": "gxtb-v2.0.1"}, "keywords": {"accuracy": 0.01}}
+gxtb = {"program": "axtb", "model": {"method": "gxtb-v2.0.1"}}
 children = [{**gxtb, "calctype": "gradient"}, {**gxtb, "calctype": "hessian"}]
 
 

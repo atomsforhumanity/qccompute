@@ -139,7 +139,8 @@ outputs = qccompute.compute(inputs, store=store, tags=["screen-1"], meta={"by": 
 With a store, every input is looked up first and only misses run; every run is stored.
 A store files runs by the calculation's key (the input as given,
 `qcdata.calculation_key`) and by the *identities* of the programs that made them:
-`{program: numerics}` for the input's program and every subprogram it names. A stored run
+`{program: numerics}` for the input's program and every subprogram it names (a program
+named with several specs has its identities joined by `;`). A stored run
 is reused only when its identities are those of the programs that would run now; a
 stored failure only when the input determines it (kind `input`, `unsupported` or
 `convergence`, or `program` with such a cause), never one of the machine or the moment

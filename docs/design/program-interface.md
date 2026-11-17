@@ -184,7 +184,10 @@ A store files runs by two identities, kept apart:
 
 - *which calculation*: the key, `qcdata.calculation_key(inp)`, the input as given;
 - *which code produced the numbers*: the run's identities, `{program: numerics}` for the
-  input's program and every subprogram it names, recursively.
+  input's program and every subprogram it names, recursively. A program named with
+  several specs (g-xTB gradients with GFN2 Hessians, one program) has its distinct
+  identities sorted and joined by `;` (`"gfn2:5;gxtb-2.0.1:7"`). `given` results add no
+  identities: they are data in the input, so already in the key.
 
 With `compute(..., store=store)` the runner computes the input's identities from the
 programs it would run now, looks the key up with them, and returns a stored run only if

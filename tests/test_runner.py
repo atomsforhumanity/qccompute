@@ -536,7 +536,7 @@ def test_identities_name_every_program_a_calculation_runs():
             ]
         }
     )
-    assert runner.identities(two)["epochs"] == "lj-1 + x-2"
+    assert runner.identities(two)["epochs"] == "lj-1;x-2"
 
 
 def test_warm_started_outputs_are_never_stored():

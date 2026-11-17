@@ -759,8 +759,9 @@ class Runner:
 
         ``{name: numerics}``, by name, recursively through the subprograms' own
         subprograms, from the programs this runner would run now, each asked with its
-        own spec (`qccompute.program.numerics_of`). A program named twice with
-        different identities gets them all, sorted and joined by ``" + "``. A program
+        own spec (`qccompute.program.numerics_of`). A program named with several specs
+        gets its distinct identities sorted and joined by ``";"``
+        (``"gfn2:5;gxtb-2.0.1:7"``), so the map stays ``{program: string}``. A program
         that is not installed is left out.
 
         Args:
@@ -780,7 +781,7 @@ class Runner:
             if program is not None:
                 found.setdefault(spec.program, set()).add(numerics_of(program, spec))
             pending.extend(spec.subprograms)
-        return {name: " + ".join(sorted(found[name])) for name in sorted(found)}
+        return {name: ";".join(sorted(found[name])) for name in sorted(found)}
 
     def _lookup(
         self, store: Store, inp: Input, rerun: bool

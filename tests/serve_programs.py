@@ -64,7 +64,11 @@ class Isolated(ToyProgram):
             os._exit(9)
         time.sleep(inp.keywords.get("sleep", 0))
         out = super().compute(self._own(inp), ctx)
-        extras = {"pid": os.getpid(), "devices": os.environ["CUDA_VISIBLE_DEVICES"]}
+        extras = {
+            "pid": os.getpid(),
+            "devices": os.environ["CUDA_VISIBLE_DEVICES"],
+            "ordinals": ctx.device_ordinals() if ctx is not None else None,
+        }
         results = out.results.model_copy(update={"extras": extras})
         return out.model_copy(update={"input_data": inp, "results": results})
 

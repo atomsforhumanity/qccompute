@@ -1233,6 +1233,7 @@ def test_workers_with_gpus_are_shared_by_sessions_and_calls():
         )
         assert {o.results.extras["pid"] for o in [out, *batch]} == set(seen)
         assert out.results.extras["devices"] == "7"  # it sees its grant
+        assert out.results.extras["ordinals"] == [0]  # as CUDA device 0 (#49)
         assert [s.compute().success for s in sessions] == [True] * 3
         for s in sessions:
             s.close()
@@ -1247,6 +1248,7 @@ def test_workers_with_gpus_are_shared_by_sessions_and_calls():
         assert len(set(seen[:2])) == 2 and seen[2] in seen[:2]
         out = runner.compute(toy_input(program="isolated"))
         assert out.results.extras["devices"] == ""  # it sees no GPU: none granted
+        assert out.results.extras["ordinals"] == []
         for s in sessions:
             s.close()
 

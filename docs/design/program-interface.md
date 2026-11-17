@@ -80,6 +80,18 @@ subprograms:
   capped request is a `resource_capped` warning. The GPUs are as many as its plan asks
   for (`plan.resources.gpus`), of the runner's or the parent's, whatever its capabilities
   say: a program whose subprograms use GPUs plans theirs and passes them on.
+- `device_ordinals()`: the granted GPUs as this process's CUDA device ordinals, so every
+  program maps a grant alike. `gpus` names them as `CUDA_VISIBLE_DEVICES` does (indices
+  or `GPU-`/`MIG-` UUIDs). When the process's `CUDA_VISIBLE_DEVICES` is set, a GPU's
+  ordinal is its position there: a worker is started with `CUDA_VISIBLE_DEVICES` set to
+  its grant, so its GPUs are 0, 1, ...; in the runner's process GPU `"2"` of
+  `CUDA_VISIBLE_DEVICES=1,2` is ordinal 1. When it is unset, an index is its own ordinal
+  and a UUID is the index `nvidia-smi` gives it. `nvidia-smi` numbers GPUs in PCI bus
+  order and CUDA by default may not, so a runner that finds its GPUs with `nvidia-smi`
+  sets `CUDA_DEVICE_ORDER=PCI_BUS_ID` (unless it is set) when it is made, for its
+  process and its workers; a process that starts CUDA before it makes a runner sets it
+  itself. A dispatcher's `CUDA_VISIBLE_DEVICES` is never changed. A granted GPU the
+  process cannot see fails with kind `environment`.
 - `memory_gib`, `device_memory_gib`: host and GPU memory, following the calculation's
   share (below).
 - `timeout`: the seconds left. A program that starts processes kills them when it runs

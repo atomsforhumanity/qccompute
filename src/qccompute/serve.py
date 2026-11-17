@@ -93,6 +93,7 @@ from .program import (
     RunContext,
     Session,
     SessionProgram,
+    _cuda_visible_devices,
     capabilities_of,
     failed_frame,
     find_program,
@@ -445,9 +446,7 @@ class Host:
     def _ctx(self, ctx: dict[str, Any] | None) -> RunContext:
         fields = dict(ctx or {})
         gpus = tuple(str(g) for g in fields.pop("gpus", None) or ())
-        visible = tuple(
-            g for g in os.environ.get("CUDA_VISIBLE_DEVICES", "").split(",") if g
-        )
+        visible = tuple(_cuda_visible_devices() or ())
         if gpus and gpus != visible:
             raise MessageError(
                 f"this worker's GPUs are {list(visible)}, fixed at its start; ctx asks "

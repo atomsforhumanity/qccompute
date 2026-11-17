@@ -56,7 +56,9 @@ from __future__ import annotations
 
 import functools
 import hashlib
+import os
 import shutil
+import subprocess
 import tempfile
 import threading
 import time
@@ -258,6 +260,83 @@ def check_session_calctype(
         )
 
 
+def _cuda_visible_devices() -> list[str] | None:
+    """This process's ``CUDA_VISIBLE_DEVICES`` as a list; None when it is unset.
+
+    CUDA stops at the first entry that names no device, so the list does too: a
+    negative index (``-1``) or an empty entry ends it (``"-1"`` hides every GPU).
+
+    Returns:
+        The identifiers in order (indices, ``GPU-`` or ``MIG-`` UUIDs), or None.
+    """
+    value = os.environ.get("CUDA_VISIBLE_DEVICES")
+    if value is None:
+        return None
+    ids: list[str] = []
+    for entry in value.split(","):
+        entry = entry.strip()
+        if not entry or entry.startswith("-"):
+            break
+        ids.append(entry)
+    return ids
+
+
+@functools.cache
+def _nvidia_smi_gpus() -> tuple[tuple[str, str, float | None], ...]:
+    """The NVIDIA GPUs ``nvidia-smi`` lists: index, UUID and memory (GiB, if known).
+
+    ``nvidia-smi`` numbers GPUs in PCI bus order, whatever ``CUDA_VISIBLE_DEVICES``
+    says. Read once per process; empty when there is no ``nvidia-smi`` or it fails.
+    """
+    try:
+        result = subprocess.run(
+            [
+                "nvidia-smi",
+                "--query-gpu=index,uuid,memory.total",
+                "--format=csv,noheader,nounits",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=True,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return ()
+    rows: list[tuple[str, str, float | None]] = []
+    for line in result.stdout.splitlines():
+        fields = [f.strip() for f in line.split(",")]
+        if len(fields) != 3 or not fields[0]:
+            continue
+        try:
+            memory = float(fields[2]) / 1024 if fields[2] else None
+        except ValueError:
+            memory = None
+        rows.append((fields[0], fields[1], memory))
+    return tuple(rows)
+
+
+def _same_gpu(a: str, b: str) -> bool:
+    """Whether two GPU identifiers name one device: equal, or a UUID and its prefix."""
+    if a == b:
+        return True
+    uuid = ("GPU-", "MIG-")
+    return (
+        a.startswith(uuid)
+        and b.startswith(uuid)
+        and (a.startswith(b) or b.startswith(a))
+    )
+
+
+def _ordinal(gpu: str, visible: list[str] | None) -> int | None:
+    """The CUDA ordinal of one GPU identifier in this process, if it can be found."""
+    if visible is not None:
+        return next((i for i, v in enumerate(visible) if _same_gpu(gpu, v)), None)
+    if gpu.isdigit():
+        return int(gpu)
+    rows = _nvidia_smi_gpus()
+    return next((int(i) for i, uuid, _ in rows if _same_gpu(gpu, uuid)), None)
+
+
 class _Subprograms(Protocol):
     """What runs a calculation's subprograms: a `Runner`, or a worker's client."""
 
@@ -289,7 +368,8 @@ class RunContext:
             keyword, else ``plan.resources.threads``; all of them when that is
             None), at most the runner's. None: not
             granted (a direct call).
-        gpus: Identifiers of the GPUs granted (as for ``CUDA_VISIBLE_DEVICES``).
+        gpus: Identifiers of the GPUs granted (as for ``CUDA_VISIBLE_DEVICES``:
+            indices or UUIDs); `device_ordinals` gives this process's CUDA ordinals.
         memory_gib: Host memory granted (GiB): the calculation's share of the
             runner's memory. None: not known.
         device_memory_gib: Memory granted on each GPU (GiB): 1/k of it when k
@@ -369,6 +449,48 @@ class RunContext:
         if self._deadline is None:
             return None
         return max(0.0, self._deadline - time.monotonic())
+
+    def device_ordinals(self) -> list[int]:
+        """The granted GPUs as CUDA device ordinals in this process, in grant order.
+
+        A program selects its devices with these (``torch.device("cuda", i)``,
+        ``cudaSetDevice(i)``), so every program maps a grant alike:
+
+        - When this process's ``CUDA_VISIBLE_DEVICES`` is set, a GPU's ordinal is its
+          position there. A worker process is started with ``CUDA_VISIBLE_DEVICES``
+          set to its grant, so its GPUs are 0, 1, ...; in the runner's process GPU
+          ``"2"`` of ``CUDA_VISIBLE_DEVICES=1,2`` is ordinal 1. UUIDs (``GPU-...``,
+          ``MIG-...``) match by value or unique prefix.
+        - When it is unset, an index is its own ordinal, and a UUID is the index
+          ``nvidia-smi`` gives it. ``nvidia-smi`` numbers GPUs in PCI bus order, so a
+          runner that lists them with it sets ``CUDA_DEVICE_ORDER=PCI_BUS_ID`` (unless
+          set), for CUDA to number them alike. A process that starts CUDA before it
+          makes its runner sets that itself.
+
+        Returns:
+            One ordinal per granted GPU; empty when none is granted.
+
+        Raises:
+            ProgramError: Kind ``environment``: a granted GPU is not one this process
+                can see.
+        """
+        if not self.gpus:
+            return []
+        visible = _cuda_visible_devices()
+        ordinals: list[int] = []
+        for gpu in self.gpus:
+            ordinal = _ordinal(gpu, visible)
+            if ordinal is None:
+                where = (
+                    f"in this process's CUDA_VISIBLE_DEVICES ({','.join(visible)!r})"
+                    if visible is not None
+                    else "among the GPUs nvidia-smi lists"
+                )
+                raise ProgramError.of(
+                    "environment", f"The granted GPU {gpu!r} is not {where}."
+                )
+            ordinals.append(ordinal)
+        return ordinals
 
     @property
     def scratch(self) -> Path:

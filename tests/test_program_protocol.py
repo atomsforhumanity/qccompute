@@ -669,3 +669,64 @@ def test_plans_may_defer_what_the_run_decides():
     check_program(Deferring(declare=True), [toy_input()])
     with pytest.raises(ConformanceError, match="storage.kind"):
         check_program(Deferring(declare=False), [toy_input()])
+
+
+# ---------------------------------------------------------------- device ordinals (#49)
+
+
+def test_device_ordinals_are_positions_in_cuda_visible_devices(monkeypatch):
+    """With CUDA_VISIBLE_DEVICES set, a granted GPU's ordinal is its position there."""
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "1,2,5")
+    assert RunContext().device_ordinals() == []
+    assert RunContext(gpus=["2"]).device_ordinals() == [1]
+    assert RunContext(gpus=["5", "1"]).device_ordinals() == [2, 0]
+    # In a worker, CUDA_VISIBLE_DEVICES is the grant: its GPUs are 0, 1, ...
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "7")
+    assert RunContext(gpus=["7"]).device_ordinals() == [0]
+    # UUIDs match by value or a unique prefix; MIG instances likewise.
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "GPU-aaaa-1111,GPU-bbbb-2222,MIG-cc-3")
+    assert RunContext(gpus=["GPU-bbbb-2222"]).device_ordinals() == [1]
+    assert RunContext(gpus=["GPU-bbbb"]).device_ordinals() == [1]
+    assert RunContext(gpus=["MIG-cc-3"]).device_ordinals() == [2]
+    # CUDA stops at the first entry that names no device.
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0,-1,1")
+    with pytest.raises(ProgramError) as info:
+        RunContext(gpus=["1"]).device_ordinals()
+    assert info.value.error.kind is ErrorKind.environment
+    assert "'1'" in info.value.error.message
+
+
+def test_device_ordinals_without_cuda_visible_devices(monkeypatch):
+    """Unset: an index is its own ordinal, a UUID its nvidia-smi index (PCI order)."""
+    from qccompute import program as module
+
+    monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
+    rows = (("0", "GPU-aaaa-1111", 80.0), ("1", "GPU-bbbb-2222", 24.0))
+    monkeypatch.setattr(module, "_nvidia_smi_gpus", lambda: rows)
+    assert RunContext(gpus=["0", "3"]).device_ordinals() == [0, 3]
+    assert RunContext(gpus=["GPU-bbbb"]).device_ordinals() == [1]
+    with pytest.raises(ProgramError, match="nvidia-smi"):
+        RunContext(gpus=["GPU-cccc"]).device_ordinals()
+
+
+def test_runner_numbers_gpus_as_nvidia_smi_does(monkeypatch):
+    """GPUs listed by nvidia-smi: CUDA_DEVICE_ORDER=PCI_BUS_ID unless set (#49)."""
+    from qccompute import runner as module
+    from qccompute.runner import Runner, visible_gpus
+
+    rows = (("0", "GPU-aaaa-1111", 80.0), ("1", "GPU-bbbb-2222", None))
+    monkeypatch.setattr(module, "_nvidia_smi_gpus", lambda: rows)
+    monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
+    monkeypatch.delenv("CUDA_DEVICE_ORDER", raising=False)
+    assert visible_gpus() == {"0": 80.0, "1": None}
+    assert module.os.environ["CUDA_DEVICE_ORDER"] == "PCI_BUS_ID"
+    monkeypatch.setenv("CUDA_DEVICE_ORDER", "FASTEST_FIRST")  # the user's stands
+    Runner(threads=1)
+    assert module.os.environ["CUDA_DEVICE_ORDER"] == "FASTEST_FIRST"
+    # A dispatcher's CUDA_VISIBLE_DEVICES is left as it is, UUIDs and all.
+    monkeypatch.delenv("CUDA_DEVICE_ORDER")
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "GPU-bbbb-2222,0")
+    assert visible_gpus() == {"GPU-bbbb-2222": None, "0": 80.0}
+    assert "CUDA_DEVICE_ORDER" not in module.os.environ
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "-1")
+    assert visible_gpus() == {}

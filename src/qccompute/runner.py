@@ -24,7 +24,6 @@ import atexit
 import math
 import os
 import platform
-import subprocess
 import sys
 import threading
 import time
@@ -61,7 +60,10 @@ from .program import (
     RunContext,
     Session,
     SessionProgram,
+    _cuda_visible_devices,
     _entry_points,
+    _nvidia_smi_gpus,
+    _same_gpu,
     capabilities_of,
     failed_frame,
     find_program,
@@ -187,36 +189,43 @@ def memory_gib() -> float | None:
         return None
 
 
+def _pci_bus_order() -> None:
+    """Have CUDA number GPUs as ``nvidia-smi`` does, when the runner names them so.
+
+    With ``CUDA_VISIBLE_DEVICES`` unset, a runner's GPUs are ``nvidia-smi``'s indices,
+    which follow PCI bus order; CUDA's own order may differ unless
+    ``CUDA_DEVICE_ORDER=PCI_BUS_ID``. Set it, unless it is set, so the indices mean
+    the same devices in CUDA, in this process and its workers. With
+    ``CUDA_VISIBLE_DEVICES`` set, the dispatcher's choice stands untouched.
+    """
+    if "CUDA_VISIBLE_DEVICES" not in os.environ:
+        os.environ.setdefault("CUDA_DEVICE_ORDER", "PCI_BUS_ID")
+
+
 def visible_gpus() -> dict[str, float | None]:
     """The GPUs this process may use and their memory (GiB, if known).
 
-    ``CUDA_VISIBLE_DEVICES`` wins when set; otherwise ``nvidia-smi`` lists the NVIDIA
-    GPUs. Empty when there are none or they cannot be found.
+    ``CUDA_VISIBLE_DEVICES`` wins when set (its indices or UUIDs); otherwise
+    ``nvidia-smi`` lists the NVIDIA GPUs by index, and ``CUDA_DEVICE_ORDER`` is set to
+    ``PCI_BUS_ID`` (unless set) so CUDA numbers them alike. Empty when there are none
+    or they cannot be found.
     """
-    listed = os.environ.get("CUDA_VISIBLE_DEVICES")
-    memory: dict[str, float | None] = {}
-    try:
-        result = subprocess.run(
-            [
-                "nvidia-smi",
-                "--query-gpu=index,memory.total",
-                "--format=csv,noheader,nounits",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=10,
-            check=True,
-        )
-        for line in result.stdout.splitlines():
-            index, _, total = line.partition(",")
-            if index.strip():
-                memory[index.strip()] = float(total) / 1024 if total.strip() else None
-    except (OSError, subprocess.SubprocessError, ValueError):
-        pass
-    if listed is not None:
-        ids = [d.strip() for d in listed.split(",") if d.strip() and d.strip() != "-1"]
-        return {d: memory.get(d) for d in ids}
-    return memory
+    listed = _cuda_visible_devices()
+    if listed == []:
+        return {}
+    if listed is None:
+        _pci_bus_order()
+    rows = _nvidia_smi_gpus()
+    if listed is None:
+        return {index: memory for index, _, memory in rows}
+
+    def memory(gpu: str) -> float | None:
+        for index, uuid, size in rows:
+            if gpu == index or _same_gpu(gpu, uuid):
+                return size
+        return None
+
+    return {gpu: memory(gpu) for gpu in listed}
 
 
 @overload
@@ -575,7 +584,11 @@ class Runner:
             calculation gets; None: every core this process may use (its affinity and
             cgroup quota).
         gpus: GPUs it may use: ``"auto"`` for every visible GPU (``CUDA_VISIBLE_DEVICES``
-            or ``nvidia-smi``), or a list of device identifiers; ``()`` for none.
+            or ``nvidia-smi``, see `visible_gpus`), or a list of device identifiers as
+            for ``CUDA_VISIBLE_DEVICES``; ``()`` for none. With ``"auto"`` and
+            ``CUDA_VISIBLE_DEVICES`` unset, the runner sets
+            ``CUDA_DEVICE_ORDER=PCI_BUS_ID`` (unless set), so CUDA numbers the GPUs as
+            ``nvidia-smi`` does.
         backend: Where calculations run. Only ``"local"`` (this machine) for now.
         isolation: ``"auto"`` runs programs in this process unless they cannot share
             it (``in_process=False``), which run in worker processes; ``"process"``
@@ -615,6 +628,8 @@ class Runner:
         self._gpus: dict[str, float | None] | None = (
             None if gpus == "auto" else {str(g): None for g in gpus}
         )
+        if gpus == "auto":  # before any program starts CUDA (its plan may)
+            _pci_bus_order()
         self._memory: float | None | Literal[False] = False
         self._entries: dict[int, _Entry] = {}
         self._entries_lock = threading.Lock()

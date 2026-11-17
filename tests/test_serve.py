@@ -154,7 +154,7 @@ def test_failures_and_plans(client):
 def test_options_send_large_arrays_as_files(client, tmp_path):
     """A client that names an array directory gets arrays over 1 MiB as .npy files."""
     from qcdata import ProgramOutput
-    from qcdata._array_files import DIRECTORY
+    from qcdata.array_files import DIRECTORY
 
     assert client.hello["array_files"] is True and client.hello["calls"] is True
     n = 130  # a 390 x 390 Hessian: 1.2 MB of float64

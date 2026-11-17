@@ -21,11 +21,9 @@ from typing import Any, TypeVar
 
 import numpy as np
 from pydantic import BaseModel
-from qcdata._array_files import DIRECTORY, SINK, ArraySink
+from qcdata.array_files import DIRECTORY, POINTER_KEYS, SINK, ArraySink
 
 M = TypeVar("M", bound=BaseModel)
-
-_POINTER = frozenset({"path", "shape", "dtype", "sha256"})
 
 
 def plain(x: Any) -> Any:
@@ -88,7 +86,7 @@ def load(cls: type[M], data: Any, directory: Path | None) -> M:
 def _pointers(node: Any) -> Iterator[str]:
     """The file names of the array pointers in a document."""
     if isinstance(node, dict):
-        if set(node) == _POINTER:
+        if set(node) == POINTER_KEYS:
             name = node["path"]
             if isinstance(name, str) and Path(name).name == name:
                 yield name

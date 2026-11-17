@@ -295,6 +295,8 @@ What the runner grants, in `ctx`:
   subprogram, since a parent's grant holds its children. A batch's single `ctx` gets the
   shares, not its inputs' keywords. Like `threads`, these resource keywords are what a
   calculation asks for, and they are left out of its key.
+- Nothing is rounded: a keyword reaches the program as given, a share as computed, so a
+  small grant is never zero and a keyword at the grant is never "capped" by rounding.
 
 **Placement.** A program that may share the process runs in its threads; one that is not
 thread-safe takes turns on a lock per program. The first time one of its calculations

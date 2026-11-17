@@ -973,7 +973,8 @@ class Runner:
         GPU with k calculations per GPU, at most a parent's device grant. The input's
         ``memory_gib`` or ``device_memory_gib`` keyword replaces either, at most the
         runner's memory or the GPU's, or for a subprogram (``parent``) the parent's
-        grant: a parent's grant holds its children. Memory is never scheduled.
+        grant: a parent's grant holds its children. Memory is never scheduled, and
+        never rounded: a keyword reaches the program as given, a share as computed.
 
         Its subprograms may be the programs its input names (``inp``, or for a batch
         each of ``batch``), as `RunContext.compute` checks. Its progress events go to
@@ -995,8 +996,8 @@ class Runner:
         ctx = RunContext(
             threads=threads,
             gpus=devices,
-            memory_gib=None if memory is None else round(memory, 3),
-            device_memory_gib=None if device is None else round(device, 3),
+            memory_gib=memory,
+            device_memory_gib=device,
             timeout=timeout,
             plan=plan,
             runner=self,

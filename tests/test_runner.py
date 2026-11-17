@@ -2063,6 +2063,32 @@ def test_memory_keywords_replace_the_share():
     assert granted == [(16.0, 20.0)] * 4 + [(32.0, 20.0)] * 2
 
 
+def test_memory_reaches_the_program_unrounded():
+    """A keyword as given, a share as computed: never rounded, never to zero (#69)."""
+
+    class Asking(Recording):  # takes the memory_gib keyword
+        def _own(self, inp):
+            keywords = {k: v for k, v in inp.keywords.items() if k != "memory_gib"}
+            return inp.model_copy(update={"keywords": keywords})
+
+        def plan(self, inp):
+            return super().plan(self._own(inp).model_copy(update={"program": "toy"}))
+
+        def compute(self, inp, ctx=None):
+            return super().compute(self._own(inp), ctx)
+
+    recording = Asking("rec")
+    register_program(recording)
+    with Runner(threads=8, gpus=()) as runner:
+        runner._memory = 0.004
+        runner.compute(toy_input(program="rec", memory_gib=0.0034))
+        runner.compute(toy_input(program="rec", memory_gib=0.0004))
+        runner.compute([toy_input(program="rec", epsilon=0.1 * i) for i in range(1, 9)])
+    granted = [c.memory_gib for c in recording.contexts]
+    assert granted[:2] == [0.0034, 0.0004]
+    assert granted[2:] == [0.004 / 8] * 8  # 0.0005 each
+
+
 def test_gpus_come_from_the_plan():
     """A calculation gets the GPUs its plan asks for (#40); no capability says (a4)."""
 

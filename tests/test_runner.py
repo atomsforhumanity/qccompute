@@ -402,27 +402,52 @@ def test_the_store_is_looked_up_first_and_written_after():
     assert all(o.success for o in outs)
 
 
-def test_stored_failures_are_reused_only_when_deterministic():
+def test_stored_failures_are_reused_only_when_the_input_determines_them():
     store = FakeStore()
     recording = Recording("rec")
     register_program(recording)
+    parents = []
+
+    class Counted(FiniteDifference):
+        def compute(self, inp, ctx=None):
+            parents.append(inp)
+            return super().compute(inp, ctx)
+
+    register_program(Counted())
     refused = toy_input(program="rec", fail="input")
     unconverged = toy_input(program="rec", fail="convergence")
-    for inp in (refused, unconverged):
+    out_of_memory = toy_input(program="rec", fail="resource")
+    for inp in (refused, unconverged, out_of_memory):
         with pytest.raises(ProgramError):
             qccompute.compute(inp, store=store)
-    assert len(recording.contexts) == 2
-    with pytest.raises(ProgramError) as e:
-        qccompute.compute(refused, store=store)  # the same version refuses again
-    assert e.value.error.kind is ErrorKind.input
-    assert len(recording.contexts) == 2
-    with pytest.raises(ProgramError):
-        qccompute.compute(unconverged, store=store)  # may succeed another time
     assert len(recording.contexts) == 3
+    for inp, kind in ((refused, "input"), (unconverged, "convergence")):
+        with pytest.raises(ProgramError) as e:
+            qccompute.compute(inp, store=store)  # the same code fails it again
+        assert e.value.error.kind == kind
+    assert len(recording.contexts) == 3
+    with pytest.raises(ProgramError):
+        qccompute.compute(out_of_memory, store=store)  # a bigger grant may succeed
+    assert len(recording.contexts) == 4
+    with pytest.raises(ProgramError):
+        qccompute.compute(unconverged, store=store, rerun=True)  # the way past one
+    assert len(recording.contexts) == 5
+    # A parent failed by its subprogram: reused when the subprogram's failure is.
+    for child_kind, reused in (("convergence", True), ("resource", False)):
+        parent = fd_input("rec", fail=child_kind)
+        with pytest.raises(ProgramError):
+            qccompute.compute(parent, store=store)
+        ran = len(parents)
+        with pytest.raises(ProgramError) as e:
+            qccompute.compute(parent, store=store)
+        assert e.value.error.kind is ErrorKind.program
+        assert e.value.error.cause.kind == child_kind
+        assert (len(parents) == ran) is reused
     recording.numerics = lambda spec: "epoch 2"  # new numbers: no stored run reused
+    ran = len(recording.contexts)
     with pytest.raises(ProgramError):
         qccompute.compute(refused, store=store)
-    assert len(recording.contexts) == 4
+    assert len(recording.contexts) == ran + 1
 
 
 def test_identities_name_every_program_a_calculation_runs():

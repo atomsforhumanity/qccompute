@@ -83,8 +83,18 @@ Output = ProgramOutput[Any, Any]
 #: The program that runs a `qcdata.FileInput` (a command with its files): qccodec's.
 FILES = "files"
 
-# Kinds a stored failure is reused for: the same program version fails them the same way.
-_DETERMINISTIC = frozenset({ErrorKind.input, ErrorKind.unsupported})
+# Kinds a stored failure is reused for: determined by the input, so the same code fails
+# them the same way (kind program counts when its cause is one of these).
+_DETERMINISTIC = frozenset(
+    {ErrorKind.input, ErrorKind.unsupported, ErrorKind.convergence}
+)
+
+
+def _deterministic(error: ErrorInfo | None) -> bool:
+    """Whether a stored failure is determined by its input, and so reusable."""
+    while error is not None and error.kind is ErrorKind.program:
+        error = error.cause
+    return error is not None and error.kind in _DETERMINISTIC
 
 
 class Store(Protocol):
@@ -726,20 +736,18 @@ class Runner:
         """The key and identities of an input, and its stored output if reusable.
 
         A stored run is reused only when it was made with the identities of the
-        programs this runner would run now: a success always, a failure only of a
-        deterministic kind (``input``, ``unsupported``).
+        programs this runner would run now: a success always, a failure only when the
+        input determines it (kind ``input``, ``unsupported`` or ``convergence``, or
+        ``program`` with such a cause).
         """
         key = store.key(inp)
         identities = self.identities(inp)
         if rerun:
             return key, identities, None
         hit = store.get(key, identities)
-        if hit is None or hit.success:
+        if hit is None or hit.success or _deterministic(hit.error):
             return key, identities, hit
-        error = hit.error
-        if error is None or error.kind not in _DETERMINISTIC:
-            return key, identities, None
-        return key, identities, hit
+        return key, identities, None
 
     def _one(
         self,
@@ -815,7 +823,9 @@ class Runner:
                 every output that ran, with the identities of the programs that made
                 it (`identities`). A stored run is reused only when its identities
                 are those of the programs the runner would run now: a success always,
-                a failure only of kind ``input`` or ``unsupported``.
+                a failure only when the input determines it (kind ``input``,
+                ``unsupported`` or ``convergence``, or ``program`` with such a cause);
+                ``rerun=True`` runs past it.
             timeout: Seconds each calculation may run. Programs that start processes
                 enforce it, and so does the runner for programs in worker processes;
                 it fails with kind ``timeout``.

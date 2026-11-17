@@ -134,8 +134,10 @@ A store files runs by the calculation's key (the input as given,
 `qcdata.calculation_key`) and by the *identities* of the programs that made them:
 `{program: numerics}` for the input's program and every subprogram it names. A stored run
 is reused only when its identities are those of the programs that would run now; a
-stored failure only when it is deterministic (kind `input` or `unsupported`).
-`rerun=True` always runs; `tags` go onto every key, cache hits included. A store
+stored failure only when the input determines it (kind `input`, `unsupported` or
+`convergence`, or `program` with such a cause), never one of the machine or the moment
+(`resource`, `timeout`, `environment`, ...). `rerun=True` always runs, past a stored
+failure too; `tags` go onto every key, cache hits included. A store
 implements `key`, `get`, `put` and `tag` (`qccompute.runner.Store`); qcstore is one.
 
 ## Programs

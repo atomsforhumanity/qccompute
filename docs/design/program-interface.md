@@ -183,8 +183,10 @@ A store files runs by two identities, kept apart:
 
 With `compute(..., store=store)` the runner computes the input's identities from the
 programs it would run now, looks the key up with them, and returns a stored run only if
-it was made with exactly those identities: a success always, a failure only when it is
-deterministic (kind `input` or `unsupported`). Misses run, and every run is stored with
+it was made with exactly those identities: a success always, a failure only when the
+input determines it (kind `input`, `unsupported` or `convergence`, or `program` with such
+a cause; never `resource`, `backend`, `environment`, `timeout`, `numerical` or
+`internal`). Misses run, and every run is stored with
 its identities. `rerun=True` always runs; `tags` go onto every key, cache hits included;
 `meta` goes with each run. An output whose record says `warm_start` true depends on
 history, not only on its input, and is never stored.

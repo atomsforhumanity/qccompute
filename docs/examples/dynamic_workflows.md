@@ -58,9 +58,17 @@ with qccompute.Runner(threads=8, isolation="process") as runner:
   `submit` returns, so a rerun of this workflow from a store computes nothing: it asks
   for the same inputs again.
 - **`future.result()`** is the output, or raises `qcdata.ProgramError` with the failed
-  output as `e.output`, as `compute` does. `concurrent.futures.as_completed`,
-  `future.add_done_callback` and `future.cancel()` (before it starts) work as for any
-  future.
+  output as `e.output`, as `compute` does. `concurrent.futures.as_completed` and
+  `future.add_done_callback` work as for any future.
+- **Priorities and cancelling.** `runner.submit(inp, priority=2)` puts a calculation
+  ahead of every waiting one of lower priority (default 0); within a priority, the first
+  submitted starts first, and running calculations are never displaced. So a workflow
+  can keep submitting what it finds and still have its most promising work start
+  first. `future.cancel()` works while the calculation runs, too: a worker running it
+  is killed with every process it started (an external program's included), and one
+  running in this process stops at its next look at `ctx.timeout`, which reads 0, as
+  for a timeout. A cancelled calculation is never stored; `future.result()` raises
+  `CancelledError`.
 - **Programs that are not thread-safe**, qcopt among them, take turns in one process:
   submitted from threads or as futures, they would run one at a time. The runner warns
   the first time a calculation waits for its turn; `isolation="process"`, as above,

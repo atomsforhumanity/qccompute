@@ -185,8 +185,10 @@ timing keeps its own decision state (see
 `qccompute.submit(inp)` (and `Runner.submit`) starts a calculation and returns a
 `concurrent.futures.Future` of its output, for workflows whose next step depends on the
 last: per reaction, the IRC starts as soon as its transition-state search ends, with no
-stage barriers. Submitted calculations share the runner's threads as a list's do; a
-stored result resolves at once. See [Dynamic workflows](examples/dynamic_workflows.md).
+stage barriers. Submitted calculations share the runner's threads as a list's do,
+waiting highest `priority` first; a stored result resolves at once, and
+`future.cancel()` ends a calculation even while it runs. See
+[Dynamic workflows](examples/dynamic_workflows.md).
 
 A program that is not thread-safe (qcopt) runs one calculation at a time per process.
 The runner warns the first time one waits for its turn; `Runner(isolation="process")`

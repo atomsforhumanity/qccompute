@@ -236,10 +236,15 @@ every visible GPU), made on first use, never reconfigured.
 `submit` is for workflows whose next calculation depends on the last (per reaction, a
 transition-state search, the IRC from its saddle, then both ends), many at once with no
 stage barriers. A stored output, or an input its program refuses, resolves the future
-before `submit` returns; the others are planned at once and run in the runner's threads.
-A runner's submitted calculations are packed into its threads and GPUs as a list's are,
-admitted in the order submitted; `compute` calls take their own share, as before.
-Cancelling a future before it starts skips its calculation.
+before `submit` returns; the others are planned at once and wait in the runner's queue:
+highest `priority` first (default 0), then in the order submitted. The head of the queue
+starts as soon as it fits in the runner's threads and GPUs, packed as a list's
+calculations are; running calculations are never displaced, and `compute` calls take
+their own share, as before. `future.cancel()` cancels a calculation whether it waits or
+runs: one that waits never starts; one running in a worker process is killed with every
+process it started (below, **Workers**); one running in this process ends cooperatively,
+as for a timeout: `ctx.timeout` reads 0 for it and every subprogram, and it starts no
+more subprograms. A cancelled calculation's output is discarded, never stored.
 
 Every input goes one path: find the program, plan it (an input its program refuses
 fails without running), place it (this process, or a worker process for programs with
@@ -430,7 +435,10 @@ between calls. `qccompute.worker.Worker` is its client.
 - **Crashes:** a dead worker is kind `environment`, code `worker_died`, with the exit
   status and the end of its stderr. After a GPU fault that poisons the device context
   (code `device_lost`) the worker answers, then exits 3. A runner kills a worker whose
-  calculation exceeds its timeout.
+  calculation exceeds its timeout or is cancelled, with every process it started,
+  however deep and in whatever session (qccodec runs each external program in a
+  session of its own): the tree is found through `/proc`, frozen, then killed. Closing a
+  runner kills a worker still running a calculation rather than waiting for it.
 
 ## External programs
 

@@ -1,7 +1,10 @@
 """Programs for the worker's tests, loaded in a worker process as module:attribute."""
 
 import os
+import subprocess
+import sys
 import time
+from pathlib import Path
 
 import numpy as np
 from qcdata import (
@@ -168,6 +171,26 @@ class IsolatedGPU(Isolated):
         return plan.model_copy(update={"resources": Resources(gpus=1)})
 
 
+class Spawner(Isolated):
+    """The isolated toy, starting first a process in a session of its own (as qccodec
+    runs an external program) that sleeps for minutes; its pid goes to ``pidfile``."""
+
+    name = "spawner"
+
+    def _own(self, inp):
+        own = super()._own(inp)
+        keywords = {k: v for k, v in own.keywords.items() if k != "pidfile"}
+        return own.model_copy(update={"keywords": keywords})
+
+    def compute(self, inp, ctx=None):
+        child = subprocess.Popen(
+            [sys.executable, "-c", "import time; time.sleep(300)"],
+            start_new_session=True,
+        )
+        Path(inp.keywords["pidfile"]).write_text(str(child.pid))
+        return super().compute(inp, ctx)
+
+
 class Fallback(IsolatedGPU):
     """The isolated GPU toy; with ``fallback``, it ran on the CPU and says so."""
 
@@ -276,6 +299,7 @@ class Stray(Relay):
 
 
 device_lost = DeviceLost()
+spawner = Spawner()
 fallback = Fallback()
 pools = Pools()
 stray = Stray()

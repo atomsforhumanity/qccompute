@@ -405,6 +405,42 @@ class _Progress:
         return _Progress(self.callback, (*self.path, program))
 
 
+class _Control:
+    """What a caller asks of a running calculation: to be cancelled.
+
+    One per submitted calculation, shared by the contexts of its subprograms, so a
+    request reaches every level. Cancelling reads to the calculation as its time
+    running out (`RunContext.timeout` is 0), and calls each registered callback once:
+    the runner registers what ends the calculation's work (a worker's process tree,
+    its place in the queue).
+    """
+
+    __slots__ = ("cancelled", "_lock", "_on_cancel", "__weakref__")
+
+    def __init__(self) -> None:
+        self.cancelled = False
+        self._lock = threading.Lock()
+        self._on_cancel: list[Callable[[], object]] = []
+
+    def on_cancel(self, callback: Callable[[], object]) -> None:
+        """Call ``callback`` when the calculation is cancelled (now, if it is)."""
+        with self._lock:
+            if not self.cancelled:
+                self._on_cancel.append(callback)
+                return
+        callback()
+
+    def cancel(self) -> None:
+        """Cancel the calculation: its time runs out, and its callbacks run."""
+        with self._lock:
+            if self.cancelled:
+                return
+            self.cancelled = True
+            callbacks, self._on_cancel = self._on_cancel, []
+        for callback in callbacks:
+            callback()
+
+
 class _Subprograms(Protocol):
     """What runs a calculation's subprograms: a `Runner`, or a worker's client."""
 
@@ -480,6 +516,7 @@ class RunContext:
         "_runner",
         "_calling",
         "_named",
+        "_control",
     )
 
     def __init__(
@@ -524,6 +561,8 @@ class RunContext:
         # runner (a batch's inputs); None: no check. Their names, on first use.
         self._calling: Any = None
         self._named: frozenset[str] | None = None
+        # The caller's requests (cancel), shared with its subprograms; None: none.
+        self._control: _Control | None = None
 
     def __repr__(self) -> str:
         """Show the grant."""
@@ -542,8 +581,11 @@ class RunContext:
         one in its own process: there the limit is the program's to honour, and the
         runner only refuses to start its subprograms afterwards (``ctx.compute``,
         ``ctx.session`` and the session's requests fail with kind ``timeout``).
-        Subprograms get what is left.
+        Subprograms get what is left. A calculation that is cancelled while it runs
+        (``future.cancel()`` on a submitted one) has no time left: 0.
         """
+        if self._control is not None and self._control.cancelled:
+            return 0.0
         if self._deadline is None:
             return None
         return max(0.0, self._deadline - time.monotonic())

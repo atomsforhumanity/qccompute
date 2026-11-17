@@ -6,7 +6,7 @@ import sys
 import threading
 import time
 import warnings
-from concurrent.futures import FIRST_COMPLETED, Future, wait
+from concurrent.futures import FIRST_COMPLETED, CancelledError, Future, wait
 from pathlib import Path
 from typing import Any
 
@@ -1094,6 +1094,170 @@ def test_a_cancelled_submission_gives_up_its_turn():
         assert pending[2].result(timeout=10).success  # no turn left waiting
 
 
+def _alive(pid: int) -> bool:
+    """Whether a process runs (a zombie, killed and not yet reaped, does not)."""
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text()
+    except OSError:
+        return False
+    return stat.rsplit(")", 1)[1].split()[0] != "Z"
+
+
+def _gone(pid: int, within: float = 10.0) -> bool:
+    deadline = time.monotonic() + within
+    while _alive(pid):
+        if time.monotonic() > deadline:
+            return False
+        time.sleep(0.05)
+    return True
+
+
+def _pid(path: Path, within: float = 20.0) -> int:
+    deadline = time.monotonic() + within
+    while not path.exists() or not path.read_text():
+        assert time.monotonic() < deadline, "the program never started"
+        time.sleep(0.02)
+    return int(path.read_text())
+
+
+@pytest.mark.skipif(not Path("/proc/self/stat").exists(), reason="needs /proc")
+def test_cancelling_a_running_calculation_kills_its_worker_and_what_it_started(
+    tmp_path,
+):
+    """future.cancel() on a running calculation ends its whole process tree (#74)."""
+    register_program(serve_programs.spawner)
+    pidfile = tmp_path / "child.pid"
+    with Runner(threads=2) as runner:
+        future = runner.submit(
+            toy_input(program="spawner", sleep=60, pidfile=str(pidfile))
+        )
+        child = _pid(pidfile)
+        assert future.running()
+        assert future.cancel() and future.cancelled() and not future.running()
+        assert _gone(child)  # in a session of its own, and killed all the same
+        with pytest.raises(CancelledError):
+            future.result(timeout=10)
+        pidfile.unlink()
+        # The pool carries on: a new worker for the next calculation.
+        again = runner.submit(toy_input(program="spawner", pidfile=str(pidfile)))
+        assert again.result(timeout=30).success
+        os.kill(_pid(pidfile), 9)  # this one ran to its end: its child is ours
+
+
+@pytest.mark.skipif(not Path("/proc/self/stat").exists(), reason="needs /proc")
+def test_a_timeout_kills_the_workers_whole_tree(tmp_path):
+    register_program(serve_programs.spawner)
+    pidfile = tmp_path / "child.pid"
+    with Runner(threads=1) as runner:
+        with pytest.raises(ProgramError) as e:
+            runner.compute(
+                toy_input(program="spawner", sleep=60, pidfile=str(pidfile)),
+                timeout=3,
+            )
+    assert e.value.error.kind is ErrorKind.timeout
+    assert _gone(_pid(pidfile))
+
+
+class Patient(ToyProgram):
+    """In process, works in steps while it has time (as a program honouring
+    ctx.timeout does), starting a subprogram when its time is up."""
+
+    name = "patient"
+
+    def __init__(self):
+        self.started = threading.Event()
+        self.saw: list[str] = []
+
+    def compute(self, inp, ctx=None):
+        self.started.set()
+        for _ in range(1000):
+            if ctx.timeout == 0:
+                self.saw.append("no time left")
+                try:
+                    ctx.compute(toy_input())
+                except ProgramError as e:
+                    self.saw.append(e.error.kind)
+                raise ProgramError.of("timeout", "stopped: no time left")
+            time.sleep(0.01)
+        self.saw.append("ran to the end")
+        own = inp.model_copy(update={"program": "toy"})
+        return super().compute(own, ctx).model_copy(update={"input_data": inp})
+
+
+def test_cancelling_a_calculation_in_process_ends_it_as_its_time_running_out():
+    patient = Patient()
+    register_program(patient)
+    store = FakeStore()
+    with Runner(threads=2) as runner:
+        inp = toy_input(program="patient").model_copy(
+            update={"subprograms": [ProgramSpec(program="toy", calctype="gradient")]}
+        )
+        future = runner.submit(
+            ProgramInput.model_validate(inp.model_dump()), store=store
+        )
+        assert patient.started.wait(10)
+        assert future.cancel()
+        deadline = time.monotonic() + 10
+        while len(patient.saw) < 2 and time.monotonic() < deadline:
+            time.sleep(0.01)
+    assert patient.saw == ["no time left", ErrorKind.timeout]
+    assert future.cancelled() and store.puts == 0  # never stored
+
+
+class Gated(ToyProgram):
+    """In process, records the order calculations start; ``epsilon`` 0.9 waits for the gate."""
+
+    name = "gated"
+
+    def __init__(self):
+        self.order: list[float] = []
+        self.gate = threading.Event()
+
+    def compute(self, inp, ctx=None):
+        epsilon = inp.keywords.get("epsilon")
+        self.order.append(epsilon)
+        if epsilon == 0.9:
+            self.gate.wait(10)
+        own = inp.model_copy(update={"program": "toy"})
+        return super().compute(own, ctx).model_copy(update={"input_data": inp})
+
+
+def test_submitted_calculations_wait_by_priority_then_in_order():
+    """Higher priority first, first submitted first within one (#74)."""
+    gated = Gated()
+    register_program(gated)
+    with Runner(threads=1) as runner:
+        first = runner.submit(toy_input(program="gated", epsilon=0.9))
+        while not gated.order:
+            time.sleep(0.01)
+        submitted = [
+            runner.submit(toy_input(program="gated", epsilon=e), priority=p)
+            for e, p in [(0.1, 0), (0.2, 0), (0.3, 2), (0.4, 1), (0.5, 2), (0.6, -1)]
+        ]
+        assert submitted[1].cancel()  # waiting: it never runs
+        assert not first.cancelled() and not submitted[0].running()
+        gated.gate.set()
+        assert all(f.result(timeout=10).success for f in [first, *submitted[2:]])
+        assert submitted[0].result(timeout=10).success
+    assert gated.order == [0.9, 0.3, 0.5, 0.4, 0.1, 0.6]
+    with pytest.raises(ValueError):
+        Runner().submit(toy_input(), priority="high")
+
+
+def test_closing_a_runner_cancels_what_waits():
+    gated = Gated()
+    register_program(gated)
+    runner = Runner(threads=1)
+    first = runner.submit(toy_input(program="gated", epsilon=0.9))
+    while not gated.order:
+        time.sleep(0.01)
+    waiting = runner.submit(toy_input(program="gated", epsilon=0.1))
+    runner.close()
+    assert waiting.cancelled()
+    gated.gate.set()
+    assert first.result(timeout=10).success  # in process: it ran on
+
+
 def test_dynamic_workflows_need_no_stage_barriers():
     """Per reaction: search, then IRC, then both ends, as each step finishes (#55)."""
     register_program(serve_programs.serial)
@@ -1954,16 +2118,32 @@ def test_shares_pack_threads_and_gpus_and_memory_follows():
     assert budget.share(2, 0) == 0.25
     assert budget.share(1, 1) == 0.25  # half a GPU of two
     assert budget.share(8, 1) == 1.0
-    held = [budget.acquire(i, 1, 1) for i in range(4)]  # four quarter shares
-    assert sorted(d for _, devices, _ in held for d in devices) == ["0", "0", "1", "1"]
+    for i in range(5):
+        budget.put(i, 1, 1 if i < 4 else 0)
+    held = [budget.take() for _ in range(4)]  # four quarter shares, in order
+    assert [h[0] for h in held] == [0, 1, 2, 3]
+    assert sorted(d for *_, devices, _ in held for d in devices) == ["0", "0", "1", "1"]
     late = []
-    t = threading.Thread(target=lambda: late.append(budget.acquire(4, 1, 0)))
+    t = threading.Thread(target=lambda: late.append(budget.take()))
     t.start()
     t.join(0.1)
     assert not late  # the shares already sum to 1
-    budget.release(*held[0][1:])
+    budget.release(*held[0][2:])
     t.join(5)
-    assert late and late[0][2] == 0.125
+    assert late and late[0][0] == 4 and late[0][3] == 0.125
+    # Higher priority first, in order within a priority; a removed task never runs.
+    queue = _Grant(1, (), per_gpu=1)
+    entries = {
+        name: queue.put(name, 1, 0, p)
+        for name, p in [("a", 0), ("b", 1), ("c", 0), ("d", 1)]
+    }
+    assert queue.remove(entries["d"])
+    order = []
+    while (taken := queue.take()) is not None:
+        order.append(taken[0])
+        queue.release(taken[2], taken[3])
+    assert order == ["b", "a", "c"]
+    assert not queue.remove(entries["a"])  # admitted already
 
     recording = Recording("rec")
     register_program(recording)

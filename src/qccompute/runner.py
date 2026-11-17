@@ -21,7 +21,9 @@ the failed output as its ``output``; a list runs everything first and raises
 from __future__ import annotations
 
 import atexit
+import heapq
 import io
+import itertools
 import math
 import os
 import pickle
@@ -36,7 +38,12 @@ import types
 import warnings
 import weakref
 from collections.abc import Iterable, Iterator, Mapping, Sequence
-from concurrent.futures import Future, ThreadPoolExecutor, as_completed
+from concurrent.futures import (
+    Future,
+    InvalidStateError,
+    ThreadPoolExecutor,
+    as_completed,
+)
 from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Protocol, overload
@@ -69,6 +76,7 @@ from .program import (
     RunContext,
     Session,
     SessionProgram,
+    _Control,
     _cuda_visible_devices,
     _entry_points,
     _gpu_row,
@@ -690,13 +698,19 @@ def _with_execution(
 
 
 class _Grant:
-    """A budget of threads and GPUs, handed to the tasks of a list in input order.
+    """A budget of threads and GPUs, and the queue of tasks waiting for it.
 
     A task's share is the larger of its share of the threads and of the GPUs (with k
     calculations per GPU, each counts 1/k of a GPU); tasks are admitted while the
-    running shares sum to at most 1, and host memory follows the share. Granting in
-    order keeps a task that needs much from waiting forever behind a stream of small
-    ones. A task asking for more than the budget gets all of it.
+    running shares sum to at most 1, and host memory follows the share. Tasks wait in
+    one queue, highest priority first, then in the order they were put. Only the head
+    of the queue is admitted, as soon as it fits, which keeps a task that needs much
+    from waiting forever behind a stream of small ones. A task asking for more than
+    the budget gets all of it.
+
+    Whoever runs tasks takes the head (`take`), not a task of its own: so a task put
+    later with a higher priority goes first, and as many takers as tasks put run them
+    all.
     """
 
     def __init__(self, threads: int, gpus: Sequence[str], per_gpu: int) -> None:
@@ -704,8 +718,8 @@ class _Grant:
         self._slots = {g: per_gpu for g in gpus}
         self._per_gpu = per_gpu
         self._used = 0.0
-        self._turn = 0
-        self._skipped: set[int] = set()
+        self._queue: list[list[Any]] = []  # heap of [-priority, order, item, asks]
+        self._order = itertools.count()
         self._ready = threading.Condition()
 
     def add_gpus(self, gpus: Sequence[str]) -> None:
@@ -719,44 +733,65 @@ class _Grant:
         gpu_share = gpus / self._per_gpu / len(self._slots) if self._slots else 0.0
         return max(threads / self.threads, gpu_share)
 
-    def acquire(
-        self, turn: int, threads: int, gpus: int
-    ) -> tuple[int, tuple[str, ...], float]:
-        """Wait for a task's turn and room; its threads, GPUs and share."""
-        threads = max(1, min(threads, self.threads))
-        gpus = min(gpus, len(self._slots))
-        share = self.share(threads, gpus)
+    def put(self, item: Any, threads: int, gpus: int, priority: float = 0) -> list[Any]:
+        """Queue a task asking for these threads and GPUs; its entry, to `remove` it."""
+        entry = [-priority, next(self._order), item, (threads, gpus)]
         with self._ready:
-            self._ready.wait_for(
-                lambda: (
-                    self._turn == turn
-                    and self._used + share <= 1 + 1e-9
+            heapq.heappush(self._queue, entry)
+            self._ready.notify_all()
+        return entry
+
+    def remove(self, entry: list[Any]) -> bool:
+        """Take a task out of the queue (cancelled); False once it was admitted."""
+        with self._ready:
+            if entry[2] is _TAKEN:
+                return False
+            entry[2] = _TAKEN  # left in the heap, skipped when it comes up
+            self._ready.notify_all()
+            return True
+
+    def drain(self) -> list[Any]:
+        """Empty the queue: the items of the tasks waiting in it."""
+        with self._ready:
+            items = [e[2] for e in self._queue if e[2] is not _TAKEN]
+            for e in self._queue:
+                e[2] = _TAKEN
+            self._queue.clear()
+            self._ready.notify_all()
+        return items
+
+    def take(self) -> tuple[Any, int, tuple[str, ...], float] | None:
+        """Wait for the head of the queue to fit and admit it; None once it is empty.
+
+        Returns:
+            The task's item, its threads, GPUs and share; release them with
+            `release`.
+        """
+        with self._ready:
+            while True:
+                while self._queue and self._queue[0][2] is _TAKEN:
+                    heapq.heappop(self._queue)
+                if not self._queue:
+                    return None
+                head = self._queue[0]
+                threads, gpus = head[3]
+                threads = max(1, min(threads, self.threads))
+                gpus = min(gpus, len(self._slots))
+                share = self.share(threads, gpus)
+                if (
+                    self._used + share <= 1 + 1e-9
                     and sum(1 for n in self._slots.values() if n > 0) >= gpus
-                )
-            )
-            self._next()
+                ):
+                    break
+                self._ready.wait()
+            heapq.heappop(self._queue)
+            item, head[2] = head[2], _TAKEN
             self._used += share
             devices = tuple(g for g, n in self._slots.items() if n > 0)[:gpus]
             for g in devices:
                 self._slots[g] -= 1
             self._ready.notify_all()
-        return threads, devices, share
-
-    def _next(self) -> None:
-        """Pass the turn on, past turns given up (call with the condition held)."""
-        self._turn += 1
-        while self._turn in self._skipped:
-            self._skipped.discard(self._turn)
-            self._turn += 1
-
-    def skip(self, turn: int) -> None:
-        """Give up a turn that will never be taken (a future cancelled before it ran)."""
-        with self._ready:
-            if turn == self._turn:
-                self._next()
-            elif turn > self._turn:
-                self._skipped.add(turn)
-            self._ready.notify_all()
+        return item, threads, devices, share
 
     def release(self, devices: tuple[str, ...], share: float) -> None:
         """Return a finished task's room."""
@@ -765,6 +800,10 @@ class _Grant:
             for g in devices:
                 self._slots[g] += 1
             self._ready.notify_all()
+
+
+#: A queue entry's item once its task was admitted or removed.
+_TAKEN = object()
 
 
 class _Task:
@@ -805,6 +844,47 @@ class _Task:
         """
         total = sum(self.asked)
         return [max(1, asked * granted // total) for asked in self.asked]
+
+
+class _Future(Future[Output]):
+    """A submitted calculation's future, whose `cancel` ends it even while it runs.
+
+    It stays pending until the calculation's output is in, so ``cancel()`` succeeds
+    while it runs (the standard library's refuses then), and `running` says whether
+    it has started.
+    """
+
+    def __init__(self, control: _Control) -> None:
+        super().__init__()
+        self._control = control
+        self._started = False
+
+    def running(self) -> bool:
+        """Whether the calculation is running."""
+        return self._started and not self.done()
+
+    def cancel(self) -> bool:
+        """Cancel the calculation, waiting or running; False once it is done.
+
+        One that waits never runs. One that runs ends: a worker running it is killed
+        with every process it started; in this process it ends at its next look at
+        its time (``ctx.timeout`` is 0) and starts no more subprograms. Its output
+        is discarded and never stored.
+        """
+        if not super().cancel():
+            return False
+        self._control.cancel()
+        return True
+
+    def _finish(self, out: Output | None, failure: BaseException | None) -> None:
+        """Resolve with the output or the failure, unless cancelled meanwhile."""
+        try:
+            if failure is not None:
+                self.set_exception(failure)
+            else:
+                self.set_result(out)  # type: ignore[arg-type]
+        except InvalidStateError:  # cancelled as it finished
+            pass
 
 
 # ---------------------------------------------------------------------------- runner
@@ -874,11 +954,10 @@ class Runner:
         self._pools_changed = threading.Condition()
         self._all_workers: weakref.WeakSet[Worker] = weakref.WeakSet()
         self._closed = False
-        # Submitted calculations: their threads, the runner's budget, the next turn.
+        # Submitted calculations: their threads, and the runner's budget and queue.
         self._submitting = threading.Lock()
         self._futures: ThreadPoolExecutor | None = None
         self._budget: _Grant | None = None
-        self._turns = 0
 
     def __repr__(self) -> str:
         """Show the runner's share of the machine."""
@@ -965,6 +1044,7 @@ class Runner:
         parent: RunContext | None = None,
         batch: Sequence[Input] | None = None,
         progress: ProgressCallback | None = None,
+        control: _Control | None = None,
     ) -> RunContext:
         """A calculation's context: its grant, its memory, the programs it may run.
 
@@ -979,7 +1059,8 @@ class Runner:
         Its subprograms may be the programs its input names (``inp``, or for a batch
         each of ``batch``), as `RunContext.compute` checks. Its progress events go to
         the caller's ``progress`` with the program's name as their path, or for a
-        subprogram to its parent's, the path one name longer.
+        subprogram to its parent's, the path one name longer. A submitted
+        calculation's ``control`` (its cancel) is shared with its subprograms.
         """
         host_limit, device_limit = self._limits(parent)
         device: float | None = None
@@ -1003,6 +1084,7 @@ class Runner:
             runner=self,
         )
         ctx._calling = inp if inp is not None else batch
+        ctx._control = parent._control if parent is not None else control
         if parent is not None:
             up = parent.progress
             if up is not None:
@@ -1099,10 +1181,16 @@ class Runner:
     def close(self) -> None:
         """Stop this runner's worker processes; it cannot run in workers afterwards.
 
-        Submitted calculations that have not started are cancelled.
+        Submitted calculations that have not started are cancelled. A worker still
+        running a calculation (from another thread) is killed with every process it
+        started; that calculation fails with kind ``environment``.
         """
         with self._submitting:
             futures, self._futures = self._futures, None
+            budget = self._budget
+        if budget is not None:
+            for item in budget.drain():
+                item[1].cancel()
         if futures is not None:
             futures.shutdown(wait=False, cancel_futures=True)
         with self._pools_changed:
@@ -1133,11 +1221,13 @@ class Runner:
         entry: _Entry | None = None,
         parent: RunContext | None = None,
         progress: ProgressCallback | None = None,
+        control: _Control | None = None,
     ) -> tuple[Output, ProgramError | None]:
         """Run one input with its grant (``devices``: its GPUs) to its output.
 
         ``parent`` is the grant of the calculation whose subprogram it is; else
-        ``progress`` is the caller's progress callable, if any.
+        ``progress`` is the caller's progress callable, if any, and ``control`` a
+        submitted calculation's.
         Returns the output, failed or not, and the error of a failure.
         """
         identities = self.identities(inp)
@@ -1150,7 +1240,16 @@ class Runner:
                 exc.output = out
                 return out, exc
         ctx = self._context(
-            threads, devices, memory, timeout, plan, inp, parent, None, progress
+            threads,
+            devices,
+            memory,
+            timeout,
+            plan,
+            inp,
+            parent,
+            None,
+            progress,
+            control,
         )
         worker = None
         try:
@@ -1406,6 +1505,7 @@ class Runner:
         tags: Sequence[str] = (),
         meta: Mapping[str, Any] | None = None,
         progress: ProgressCallback | None = None,
+        priority: float = 0,
     ) -> Future[Output]:
         """Start one calculation and return at once: a future of its output.
 
@@ -1416,12 +1516,13 @@ class Runner:
         (``concurrent.futures.wait``, ``as_completed`` or ``add_done_callback``).
 
         A stored output, or an input its program refuses, resolves the future before
-        this returns. The others are planned now and run in the runner's threads:
-        every submitted calculation of the runner is packed into its threads and GPUs
-        as a list's are, admitted in the order submitted. They share the machine
-        with each other, not with `compute` calls, which take their own share. A
-        calculation never waits on a future itself (it would hold its share while
-        it waits): a program runs its subprograms through ``ctx.compute``.
+        this returns. The others are planned now and wait in the runner's queue,
+        highest ``priority`` first, then in the order submitted; the head of the queue
+        starts as soon as it fits in the runner's threads and GPUs, packed as a
+        list's calculations are. They share the machine with each other, not with
+        `compute` calls, which take their own share. A calculation never waits on a
+        future itself (it would hold its share while it waits): a program runs its
+        subprograms through ``ctx.compute``.
 
         Args:
             inp: The input.
@@ -1432,17 +1533,25 @@ class Runner:
             meta: See `compute`.
             progress: See `compute`; the calculation's events, from the threads
                 that run it.
+            priority: Where it waits: before every waiting calculation of a lower
+                priority, after those of its own submitted earlier. Running
+                calculations are never displaced.
 
         Returns:
             The future: its ``result()`` is the output, or raises
             `qcdata.ProgramError` with the failed output, as `compute` does.
-            Cancelling it before it starts (``future.cancel()``) skips the
-            calculation.
+            ``future.cancel()`` cancels the calculation even while it runs: a
+            waiting one never starts; a running one in a worker process is killed
+            with every process it started, and one in this process ends at its next
+            look at ``ctx.timeout`` (which reads 0) and starts no more subprograms,
+            as for a timeout. A cancelled calculation's output is never stored.
         """
         if (tags or meta) and store is None:
             raise ValueError("tags and meta are stored with runs: pass a store.")
         if timeout is not None and not timeout > 0:
             raise ValueError("timeout must be a positive number of seconds.")
+        if isinstance(priority, bool) or not isinstance(priority, int | float):
+            raise ValueError(f"priority must be a number, not {priority!r}.")
         key = ""
         if store is not None:
             key, hit = self._lookup(store, inp, rerun)
@@ -1458,6 +1567,9 @@ class Runner:
                 _put(store, key, out, tags, meta)
             return _resolved(out, failure)
         task = _Task(0, inp, entry, plan, _threads(inp, plan, self.threads))
+        control = _Control()
+        future = _Future(control)
+        stored = (store, key, tags, meta)
         with self._submitting:
             if self._futures is None:
                 self._futures = ThreadPoolExecutor(
@@ -1465,44 +1577,31 @@ class Runner:
                 )
             if self._budget is None:
                 self._budget = _Grant(self.threads, (), self.per_gpu)
-            budget, turn = self._budget, self._turns
+            budget = self._budget
             if task.gpus:
                 budget.add_gpus(self.gpus)
-            self._turns += 1
-            future = self._futures.submit(
-                self._submitted,
-                budget,
-                turn,
-                task,
-                timeout,
-                progress,
-                (store, key, tags, meta),
-            )
-
-        def cancelled(done: Future[Output]) -> None:  # its turn is never taken
-            if done.cancelled():
-                budget.skip(turn)
-
-        future.add_done_callback(cancelled)
+            item = (task, future, timeout, progress, stored, control)
+            queued = budget.put(item, task.threads, task.gpus, priority)
+            self._futures.submit(self._run_next, budget)
+        control.on_cancel(partial(budget.remove, queued))
         return future
 
-    def _submitted(
-        self,
-        budget: _Grant,
-        turn: int,
-        task: _Task,
-        timeout: float | None,
-        progress: ProgressCallback | None,
-        stored: tuple[Store | None, str, Sequence[str], Mapping[str, Any] | None],
-    ) -> Output:
-        """Run a submitted calculation in its turn, within the runner's budget.
+    def _run_next(self, budget: _Grant) -> None:
+        """Run the submitted calculation at the head of the runner's queue.
 
-        ``stored`` is the store, the input's key, the tags and meta to store the run
-        with (no store: None).
+        One call per calculation submitted, each taking whichever is at the head
+        when there is room, so priorities hold whatever order the calls run in.
         """
-        held, granted, share = budget.acquire(turn, task.threads, task.gpus)
-        memory = self._host_memory()
+        taken = budget.take()
+        if taken is None:  # its calculation was cancelled while it waited
+            return
+        item, held, granted, share = taken
+        task, future, timeout, progress, stored, control = item
         try:
+            if future.cancelled():
+                return
+            future._started = True
+            memory = self._host_memory()
             out, failure = self._execute(
                 task.inputs[0],
                 held,
@@ -1513,15 +1612,19 @@ class Runner:
                 task.entry,
                 None,
                 progress,
+                control,
             )
+            if future.cancelled():  # its output is nobody's
+                return
+            store, key, tags, meta = stored
+            if store is not None:
+                _put(store, key, out, tags, meta)
+        except BaseException as e:  # noqa: BLE001 - a bug of the runner's: raise it
+            future._finish(None, e)
+            return
         finally:
             budget.release(granted, share)
-        store, key, tags, meta = stored
-        if store is not None:
-            _put(store, key, out, tags, meta)
-        if failure is not None:
-            raise failure
-        return out
+        future._finish(out, failure)
 
     def as_completed(
         self,
@@ -1691,11 +1794,14 @@ class Runner:
         if devices is None:
             devices = self.gpus if any(t.gpus for t in tasks) else ()
         budget = _Grant(threads, devices, self.per_gpu)
+        for task in tasks:  # in input order
+            budget.put(task, task.threads, task.gpus)
 
-        def run(
-            turn: int, task: _Task
-        ) -> list[tuple[int, Output, ProgramError | None]]:
-            held, granted, share = budget.acquire(turn, task.threads, task.gpus)
+        def run() -> list[tuple[int, Output, ProgramError | None]]:
+            taken = budget.take()
+            if taken is None:
+                return []
+            task, held, granted, share = taken
             mine = None if memory is None else memory * share
             try:
                 return list(
@@ -1705,14 +1811,14 @@ class Runner:
                 budget.release(granted, share)
 
         if len(tasks) == 1:  # nothing to run beside: no thread
-            for item in run(0, tasks[0]):
+            for item in run():
                 if store is not None:
                     _put(store, keys[item[0]], item[1], tags, meta)
                 yield item
             return
         pool = ThreadPoolExecutor(max_workers=min(len(tasks), budget.threads))
         try:
-            futures = [pool.submit(run, turn, task) for turn, task in enumerate(tasks)]
+            futures = [pool.submit(run) for _ in tasks]
             for future in as_completed(futures):
                 for item in future.result():
                     if store is not None:
@@ -2173,6 +2279,7 @@ def submit(
     tags: Sequence[str] = (),
     meta: Mapping[str, Any] | None = None,
     progress: ProgressCallback | None = None,
+    priority: float = 0,
 ) -> Future[Output]:
     """Start one calculation on this machine: `Runner.submit` of the default runner.
 
@@ -2184,10 +2291,12 @@ def submit(
         tags: See `Runner.compute`.
         meta: See `Runner.compute`.
         progress: See `Runner.compute`.
+        priority: See `Runner.submit`: higher first among waiting calculations.
 
     Returns:
         A future of the output; ``result()`` raises `qcdata.ProgramError` for a
-        failed calculation.
+        failed calculation, and ``cancel()`` ends it even while it runs (see
+        `Runner.submit`).
     """
     return default_runner().submit(
         inp,
@@ -2197,6 +2306,7 @@ def submit(
         tags=tags,
         meta=meta,
         progress=progress,
+        priority=priority,
     )
 
 

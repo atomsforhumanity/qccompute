@@ -17,6 +17,10 @@ A worker isolates its program: a crash ends the worker, not the caller, and is a
 status and the end of the worker's stderr. A worker that reports a lost GPU context
 (code ``device_lost``) exits after answering; the client then starts no more work on it.
 The runner keeps workers alive between calls and closes them with itself.
+
+A worker whose calculation runs out of time, or is cancelled, is killed with every
+process it started, however deep and in whatever session (an external program and the
+processes it starts in turn): the tree is frozen, then killed.
 """
 
 from __future__ import annotations
@@ -25,12 +29,15 @@ import collections
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
 import threading
 import time
+import weakref
 from collections.abc import Callable, Iterable, Mapping, Sequence
+from functools import partial
 from pathlib import Path
 from types import TracebackType
 from typing import IO, Any, Protocol, TypeVar
@@ -60,6 +67,7 @@ from .program import (
     Plan,
     RunContext,
     Session,
+    _Control,
     failed_frame,
     find_program,
     plan_of,
@@ -84,6 +92,58 @@ THREAD_VARIABLES = (
     "VECLIB_MAXIMUM_THREADS",
     "NUMEXPR_NUM_THREADS",
 )
+
+
+def _children() -> dict[int, list[int]]:
+    """Every process's children, by ``/proc`` (Linux); empty where it cannot be read."""
+    children: dict[int, list[int]] = {}
+    try:
+        names = os.listdir("/proc")
+    except OSError:
+        return children
+    for name in names:
+        if not name.isdigit():
+            continue
+        try:
+            with open(f"/proc/{name}/stat", "rb") as f:
+                stat = f.read()
+            ppid = int(stat[stat.rindex(b")") + 2 :].split()[1])
+        except (OSError, ValueError, IndexError):
+            continue  # gone meanwhile
+        children.setdefault(ppid, []).append(int(name))
+    return children
+
+
+def _kill_tree(pid: int) -> None:
+    """Kill a process and every process it started, however deep.
+
+    The tree is frozen first (``SIGSTOP``), found again until nothing new appears, then
+    killed, so a process cannot start another meanwhile. Descendants in sessions of
+    their own (qccodec runs each external program in one) are found by their parent,
+    through ``/proc``; where there is none, only the process itself is killed.
+
+    Args:
+        pid: The process.
+    """
+    stop = getattr(signal, "SIGSTOP", None)
+    tree = [pid]
+    seen = {pid}
+    while tree:
+        for p in tree:
+            try:
+                os.kill(p, stop if stop is not None else signal.SIGTERM)
+            except OSError:  # gone, or not ours
+                pass
+        if stop is None:
+            return
+        children = _children()
+        tree = [c for p in list(seen) for c in children.get(p, ()) if c not in seen]
+        seen.update(tree)
+    for p in seen:
+        try:
+            os.kill(p, signal.SIGKILL)
+        except OSError:
+            pass
 
 
 class Worker:
@@ -136,6 +196,11 @@ class Worker:
         self._write_lock = threading.Lock()
         self._ids = 0
         self._dead: ProgramError | None = None
+        # The caller's control of the message in flight, and whether it cancelled it.
+        self._flight_lock = threading.Lock()
+        self._flight: _Control | None = None
+        self._cancelled = False
+        self._watched: weakref.WeakSet[_Control] = weakref.WeakSet()
         self._dir: Path | None = None
         assert self._proc.stdout is not None and self._proc.stdin is not None
         self._lines = _wire.Lines(self._proc.stdout.fileno())
@@ -180,12 +245,26 @@ class Worker:
         """The program's version, from the worker's hello."""
         return str(self.hello["version"])
 
+    def _kill(self) -> None:
+        """Kill the worker and every process it started."""
+        if self._proc.poll() is None:
+            _kill_tree(self._proc.pid)
+
+    def _cancel(self, control: _Control) -> None:
+        """Kill the worker if the message in flight is that of a cancelled calculation."""
+        with self._flight_lock:
+            if self._flight is control:
+                self._cancelled = True
+                self._kill()
+
     def _died(self, what: str) -> ProgramError:
         """The failure of a worker that exited, with its status and stderr's end."""
+        if self._cancelled:
+            what = "was killed: its calculation was cancelled"
         try:
             status = self._proc.wait(timeout=10)
         except subprocess.TimeoutExpired:
-            self._proc.kill()
+            self._kill()
             status = self._proc.wait()
         tail = "".join(self._stderr).strip()
         self._dead = ProgramError(
@@ -220,47 +299,74 @@ class Worker:
 
         Raises:
             ProgramError: The worker refused the message (``ok: false``), died, or
-                did not answer within ``timeout`` (then it is killed: kind
-                ``timeout``).
+                did not answer within ``timeout`` (then it is killed with every
+                process it started: kind ``timeout``). A cancelled calculation's
+                worker is killed the same way.
         """
+        control = None if grant is None else grant._control
         with self._lock:
             if self._dead is not None:
                 raise ProgramError(self._dead.error)
             self._ids += 1
             self._parent.ctx = grant
-            try:
-                self._send({"id": self._ids, "op": op, **fields})
-            except (BrokenPipeError, OSError):
-                raise self._died("died") from None
-            deadline = None if timeout is None else time.monotonic() + timeout
-            while True:
-                left = None if deadline is None else deadline - time.monotonic()
-                line = self._lines.readline(None if left is None else max(0.0, left))
-                if line is None:
-                    self._proc.kill()
-                    self._died("was killed")
+            if control is not None:
+                with self._flight_lock:
+                    cancelled = control.cancelled
+                    self._flight = None if cancelled else control
+                if cancelled:  # never sent: the worker serves on
                     raise ProgramError.of(
-                        "timeout",
-                        f"{self.name} did not finish within {timeout:g} s; its worker "
-                        "was killed.",
+                        "timeout", "The calculation was cancelled before it ran."
                     )
-                if not line:
-                    raise self._died("died")
-                reply = json.loads(line)
-                if "call" in reply and "id" not in reply:
-                    self._answer(reply)
-                    continue
-                if "progress" in reply:  # an event of the message in flight
-                    if reply.get("id") == self._ids and grant is not None:
-                        if grant.progress is not None:
-                            grant.progress(reply["progress"])
-                    continue
-                break
+                if control not in self._watched:
+                    self._watched.add(control)
+                    control.on_cancel(partial(self._cancel, control))
+            try:
+                reply = self._exchange(op, timeout, grant, fields)
+            finally:
+                with self._flight_lock:
+                    self._flight = None
         if not reply.get("ok"):
             raise ProgramError(ErrorInfo.model_validate(reply["error"]))
         if self._proc.poll() is not None or _lost(reply.get("result")):
             self._died("exited after losing its GPU context")
         return reply.get("result")
+
+    def _exchange(
+        self,
+        op: str,
+        timeout: float | None,
+        grant: RunContext | None,
+        fields: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Send the message and read lines to its reply (`_ask`, under its lock)."""
+        try:
+            self._send({"id": self._ids, "op": op, **fields})
+        except (BrokenPipeError, OSError):
+            raise self._died("died") from None
+        deadline = None if timeout is None else time.monotonic() + timeout
+        while True:
+            left = None if deadline is None else deadline - time.monotonic()
+            line = self._lines.readline(None if left is None else max(0.0, left))
+            if line is None:
+                self._kill()
+                self._died("was killed")
+                raise ProgramError.of(
+                    "timeout",
+                    f"{self.name} did not finish within {timeout:g} s; its worker "
+                    "was killed.",
+                )
+            if not line:
+                raise self._died("died")
+            reply: dict[str, Any] = json.loads(line)
+            if "call" in reply and "id" not in reply:
+                self._answer(reply)
+                continue
+            if "progress" in reply:  # an event of the message in flight
+                if reply.get("id") == self._ids and grant is not None:
+                    if grant.progress is not None:
+                        grant.progress(reply["progress"])
+                continue
+            return reply
 
     def _answer(self, call: dict[str, Any]) -> None:
         """Answer a subprogram call of the worker's program, in a thread of its own."""
@@ -410,7 +516,13 @@ class Worker:
         return outputs
 
     def close(self) -> None:
-        """Stop the worker: end of input closes its sessions and it exits."""
+        """Stop the worker: end of input closes its sessions and it exits.
+
+        A worker with a message in flight (a calculation running in another thread)
+        is killed with every process it started, rather than waited for.
+        """
+        if self._lock.locked():
+            self._kill()
         if self._proc.poll() is None:
             try:
                 self._in.close()
@@ -419,7 +531,7 @@ class Worker:
             try:
                 self._proc.wait(timeout=30)
             except subprocess.TimeoutExpired:
-                self._proc.kill()
+                self._kill()
                 self._proc.wait()
         self._dead = self._dead or ProgramError.of(
             "environment", f"The worker for {self.spec} is closed.", code="worker_died"
@@ -440,7 +552,10 @@ class Worker:
         """Do not leave a worker process or its array directory behind."""
         proc = getattr(self, "_proc", None)
         if proc is not None and proc.poll() is None:
-            proc.kill()
+            try:
+                _kill_tree(proc.pid)
+            except Exception:  # noqa: BLE001 - at interpreter exit: at least the worker
+                proc.kill()
         directory = getattr(self, "_dir", None)
         if directory is not None:
             shutil.rmtree(directory, ignore_errors=True)

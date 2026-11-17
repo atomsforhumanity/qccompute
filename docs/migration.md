@@ -81,7 +81,8 @@ runner's threads and GPUs, instead of within `max_workers`. A program that evalu
 many inputs at once gets them together; there is no `batch_size` or `batch_index` in
 `execution.extras` beyond what a program records, and the batch's wall time is
 `execution.timings["batch"]`. `Runner.as_completed` yields outputs as they finish, and
-`qccompute.submit(inp)` returns a `concurrent.futures.Future` of one output.
+`qccompute.submit(inp, priority=0)` returns a `concurrent.futures.Future` of one output,
+whose `cancel()` ends the calculation even while it runs.
 
 ## Sessions
 

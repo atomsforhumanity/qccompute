@@ -93,7 +93,9 @@ subprograms:
   itself. A dispatcher's `CUDA_VISIBLE_DEVICES` is never changed. A granted GPU the
   process cannot see fails with kind `environment`.
 - `memory_gib`, `device_memory_gib`: host and GPU memory, following the calculation's
-  share (below).
+  share (below), unless the input's `memory_gib` or `device_memory_gib` keyword asks for
+  an amount: then that, at most the runner's memory or the GPU's. Like `threads`, these
+  resource keywords are what a calculation asks for, and they are left out of its key.
 - `timeout`: the seconds left. A program that starts processes kills them when it runs
   out and fails with kind `timeout`; one that loops checks it. The runner kills a
   program in a worker process that runs out, but cannot stop one in its own process
@@ -200,7 +202,8 @@ still wins. Asking for nothing never means "the whole machine": a 3-atom tblite 
 ran in 1.2 ms on one thread and 221 ms (10 CPU-seconds) with 46. A list's calculations
 are admitted in input order while their shares sum to at most one; a calculation's share is
 the larger of its share of the threads and its share of the GPUs, where each of k
-calculations on one GPU counts as 1/k of it. Host memory and GPU memory follow the share.
+calculations on one GPU counts as 1/k of it. Host memory and GPU memory follow the share,
+unless the input's `memory_gib` or `device_memory_gib` keyword asks for an amount.
 There are no memory estimates and no memory scheduling: a plan's `memory_gib` and
 `device_memory_gib` are informational, recorded and never scheduled. The inputs of a list
 that go to a program with batches are one calculation of the list: it asks for the sum of

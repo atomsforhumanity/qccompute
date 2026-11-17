@@ -1165,6 +1165,49 @@ def test_shares_pack_threads_and_gpus_and_memory_follows():
         assert by_threads[3] == pytest.approx(3 * memory / 4, rel=1e-3)
 
 
+def test_memory_keywords_replace_the_share():
+    """memory_gib and device_memory_gib are asked for and granted, like threads (#46)."""
+
+    class Memory(NoSessions):  # takes the memory keywords, plans one GPU
+        def _own(self, inp):
+            keywords = {
+                k: v
+                for k, v in inp.keywords.items()
+                if k not in ("memory_gib", "device_memory_gib")
+            }
+            return inp.model_copy(update={"keywords": keywords})
+
+        def plan(self, inp):
+            plan = super().plan(self._own(inp).model_copy(update={"program": "toy"}))
+            return plan.model_copy(update={"resources": Resources(gpus=1)})
+
+        def compute(self, inp, ctx=None):
+            return super().compute(self._own(inp), ctx)
+
+    memory = Memory("memory")
+    register_program(memory)
+    with Runner(threads=4, gpus=["0", "1"], per_gpu=2) as runner:
+        runner._gpus = {"0": 40.0, "1": 40.0}  # as nvidia-smi would list them
+        runner._memory = 64.0
+        given = {"memory_gib": 30, "device_memory_gib": 32.5}
+        runner.compute(
+            [toy_input(program="memory", epsilon=e, **given) for e in (0.1, 0.2)]
+            + [toy_input(program="memory", epsilon=e) for e in (0.3, 0.4)]
+        )
+        granted = sorted((c.memory_gib, c.device_memory_gib) for c in memory.contexts)
+        assert granted == [(16.0, 20.0), (16.0, 20.0), (30.0, 32.5), (30.0, 32.5)]
+        del memory.contexts[:]
+        # At most what the runner has: the machine's memory, the GPU's.
+        too_much = {"memory_gib": 100, "device_memory_gib": 100}
+        runner.compute(toy_input(program="memory", **too_much))
+        with runner.session(toy_input(program="memory", memory_gib=8)) as s:
+            s.compute()
+        assert [(c.memory_gib, c.device_memory_gib) for c in memory.contexts] == [
+            (64.0, 40.0),
+            (8.0, 20.0),
+        ]
+
+
 def test_gpus_come_from_the_plan():
     """A calculation gets the GPUs its plan asks for (#40); no capability says (a4)."""
 

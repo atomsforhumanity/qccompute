@@ -159,7 +159,8 @@ class Resources(QCDataBaseModel):
     The runner grants the threads and GPUs asked for and packs lists by them. Memory
     is informational: the runner records it in the plan and never schedules,
     packs or caps by it (qc* makes no memory estimates). A calculation's host and
-    device memory are its share of the runner's, in `RunContext`.
+    device memory are its share of the runner's, in `RunContext`, unless its
+    ``memory_gib`` or ``device_memory_gib`` keyword asks for an amount.
 
     Attributes:
         threads: CPU threads the calculation asks for when its input has no
@@ -364,11 +365,14 @@ class RunContext:
     Runners make it and always pass one to `Program.compute`; a program reads its
     fields. A calculation's share of its runner is the larger of its share of the
     threads and its share of the GPUs (with k calculations per GPU, each counts 1/k of
-    a GPU); host and device memory follow the share.
+    a GPU); host and device memory follow the share unless the input asks for an
+    amount. The resource keywords ``threads``, ``memory_gib`` and
+    ``device_memory_gib`` are what a calculation asks for, and the runner grants
+    them, at most what it has.
 
-    A program uses the smaller of its own request (its ``threads`` or ``memory_gib``
-    keyword) and the grant, or the grant when it requested nothing; a request capped by
-    the grant is a ``resource_capped`` warning, not an error.
+    A program uses the smaller of its own request (a resource keyword) and the grant,
+    or the grant when it requested nothing; a request capped by the grant is a
+    ``resource_capped`` warning, not an error.
 
     Attributes:
         threads: CPU threads granted: what the input asks for (its ``threads``
@@ -377,10 +381,12 @@ class RunContext:
             granted (a direct call).
         gpus: Identifiers of the GPUs granted (as for ``CUDA_VISIBLE_DEVICES``:
             indices or UUIDs); `device_ordinals` gives this process's CUDA ordinals.
-        memory_gib: Host memory granted (GiB): the calculation's share of the
-            runner's memory. None: not known.
-        device_memory_gib: Memory granted on each GPU (GiB): 1/k of it when k
-            calculations share a GPU. None: not known or not granted.
+        memory_gib: Host memory granted (GiB): the input's ``memory_gib`` keyword, at
+            most the runner's memory, else the calculation's share of it. None: not
+            known.
+        device_memory_gib: Memory granted on each GPU (GiB): the input's
+            ``device_memory_gib`` keyword, at most the GPU's memory, else 1/k of the
+            GPU when k calculations share it. None: not known or no GPU granted.
         plan: The runner's plan of this input, when it made one, so the program need
             not plan again; exactly what ``program.plan(input)``
             returned.

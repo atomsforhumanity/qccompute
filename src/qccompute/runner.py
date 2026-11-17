@@ -394,6 +394,23 @@ def _threads(inp: Input, plan: Plan, cap: int) -> int:
     return max(1, min(requested, cap))
 
 
+def _asked(
+    inp: ProgramInput, key: str, share: float | None, limit: float | None
+) -> float | None:
+    """A memory keyword (GiB) in place of the share, at most ``limit``; else the share.
+
+    Like ``threads``, a resource keyword is what the calculation asks for and the
+    runner grants it, at most what it has. A value that is not a positive number is
+    the program's to refuse; the share stands.
+    """
+    asked = inp.keywords.get(key)
+    if isinstance(asked, bool) or not isinstance(asked, int | float):
+        return share
+    if not (0 < asked < math.inf):
+        return share
+    return float(asked) if limit is None else min(float(asked), limit)
+
+
 def _refused(
     inp: Input, exc: BaseException, identities: Mapping[str, str]
 ) -> tuple[Output, ProgramError]:
@@ -657,15 +674,14 @@ class Runner:
             self._gpus = visible_gpus()
         return tuple(self._gpus)
 
-    def _device_memory(self, devices: Sequence[str]) -> float | None:
-        """Each calculation's share of its GPUs' memory (GiB), if known."""
+    def _gpu_memory(self, devices: Sequence[str]) -> float | None:
+        """The memory of the smallest of these GPUs (GiB), if known."""
         if not devices or self._gpus is None:
             return None
         sizes = [self._gpus.get(d) for d in devices]
-        # 1/k of each GPU per calculation, with k calculations per GPU.
         if any(s is None for s in sizes):
             return None
-        return min(s for s in sizes if s is not None) / self.per_gpu
+        return min(s for s in sizes if s is not None)
 
     def _host_memory(self) -> float | None:
         """The host memory of this process (GiB), read on first use."""
@@ -724,12 +740,26 @@ class Runner:
         memory: float | None,
         timeout: float | None,
         plan: Plan | None,
+        inp: Input | None = None,
     ) -> RunContext:
+        """A calculation's context: its grant, and its memory.
+
+        Host and device memory are the calculation's share (``memory``; 1/k of each
+        GPU with k calculations per GPU), unless the input's ``memory_gib`` or
+        ``device_memory_gib`` keyword asks for an amount: then that, at most the
+        runner's memory or the GPU's. Memory is never scheduled.
+        """
+        gpu = self._gpu_memory(devices)
+        device = None if gpu is None else gpu / self.per_gpu
+        if isinstance(inp, ProgramInput):
+            memory = _asked(inp, "memory_gib", memory, self._host_memory())
+            if devices:
+                device = _asked(inp, "device_memory_gib", device, gpu)
         return RunContext(
             threads=threads,
             gpus=devices,
             memory_gib=None if memory is None else round(memory, 3),
-            device_memory_gib=self._device_memory(devices),
+            device_memory_gib=None if device is None else round(device, 3),
             timeout=timeout,
             plan=plan,
             runner=self,
@@ -850,7 +880,7 @@ class Runner:
                 out = _failure(inp, exc.error)
                 exc.output = out
                 return out, exc
-        ctx = self._context(threads, devices, memory, timeout, plan)
+        ctx = self._context(threads, devices, memory, timeout, plan, inp)
         worker = None
         try:
             if self._in_worker(entry):
@@ -1354,7 +1384,7 @@ class Runner:
             threads = _threads(inp, plan, cap)
         allowed = session_calctypes(calctypes) if calctypes else None
         granted = self._devices(plan, devices)
-        ctx = self._context(threads, granted, memory, timeout, None)
+        ctx = self._context(threads, granted, memory, timeout, None, inp)
         program = entry.program
         opened: Session
         lock = entry.lock

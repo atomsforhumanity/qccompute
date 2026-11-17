@@ -443,16 +443,28 @@ between calls. `qccompute.worker.Worker` is its client.
   `{path, shape, dtype, sha256}` in its place, as in a saved model; the reader checks it
   and deletes the file. A 1200 x 1200 Hessian's output crosses in 20 ms instead of
   0.85 s and a 28 MB line.
-- **Subprograms run in the client:** with `calls: true`, the worker's program's
-  `ctx.compute` and `ctx.session` come back to the client as call lines,
-  `{"call", "op", ...}` with the ops above, which the client answers in any order
-  (`{"call", "ok", "result"}`) while the message is in flight. So a subprogram of a
-  program in a worker (geomeTRIC's gradients) is any program the client finds,
-  registered ones included, run within the client's grant, and a nested worker is
-  started by the client, never by a worker. Without it, subprograms run in the
-  worker's own default runner.
+- **Subprograms run in the worker when they can, else in the client:** with
+  `calls: true`, a subprogram call of the worker's program (`ctx.compute`,
+  `ctx.session`) runs in the worker itself, within the calculation's grant, when it can
+  run there exactly as the client would run it: every program its input names is found
+  in the worker with the identities the client gave for the calculation (the wire
+  context's `identities`), may run in process, and its plan uses no GPU. So qcopt's
+  axtb gradients cost no round trip: one caffeine optimization took 10.9 ms per
+  gradient instead of 12.8-15.0 through the client, and 16 submitted at once on 8
+  threads 1.0-1.2 s instead of 1.5-2.0 s, with identical numbers. Every other call
+  comes back to the client as a call line, `{"call", "op", ...}` with the ops above,
+  which the client answers in any order (`{"call", "ok", "result"}`) while the message
+  is in flight: a program registered only in the client, one that needs a worker of its
+  own, a GPU calculation. A nested worker is started by the client, never by a worker.
+  Either way the grant, the time left, a stop, progress (paths compose: the worker's
+  `["axtb"]` under the client's `["qcopt"]`) and the check that the input names the
+  program apply alike. Without `calls`, subprograms run in the worker's own default
+  runner. A list of subprograms runs in the worker only if all of it can.
 - **Context on the wire:** `{threads, memory_gib, device_memory_gib, timeout,
-  scratch_dir, progress, stop_file}`; the GPUs are fixed when the worker starts.
+  scratch_dir, progress, stop_file, identities}`; the GPUs are fixed when the worker
+  starts. `identities` are those of the programs the client would run for the
+  calculation (`{program: numerics}`), against which the worker checks its own before
+  running a subprogram itself.
   `stop_file` names a file whose existence asks the calculation to stop
   (`ctx.stop_requested()` checks it): the client creates it for `runner.stop`, while the
   message is in flight, so a request never reaches another message. With

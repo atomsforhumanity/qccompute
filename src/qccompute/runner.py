@@ -121,6 +121,15 @@ def _root(error: ErrorInfo | None) -> ErrorInfo | None:
     return error
 
 
+def _merged(identities: Iterable[Mapping[str, str]]) -> dict[str, str]:
+    """Several inputs' identities as one: each program's distinct strings, joined."""
+    found: dict[str, set[str]] = {}
+    for one in identities:
+        for name, numerics in one.items():
+            found.setdefault(name, set()).update(numerics.split(";"))
+    return {name: ";".join(sorted(found[name])) for name in sorted(found)}
+
+
 def _deterministic(error: ErrorInfo | None) -> bool:
     """Whether a stored failure is determined by its input, and so reusable."""
     error = _root(error)
@@ -1284,6 +1293,7 @@ class Runner:
         worker = None
         try:
             if self._in_worker(entry):
+                ctx._identities = identities
                 worker = self._worker(entry, devices, threads)
                 out = worker.compute(inp, ctx)
             elif entry.lock is not None:
@@ -1915,6 +1925,7 @@ class Runner:
         worker = None
         try:
             if self._in_worker(entry):
+                ctx._identities = _merged(self.identities(i) for i in task.inputs)
                 worker = self._worker(entry, devices, threads)
                 outs = worker.compute_batch(task.inputs, ctx)
             elif entry.lock is not None:
@@ -2062,6 +2073,7 @@ class Runner:
         )
         held: int | None = None  # the threads its requests hold the pools at here
         if self._in_worker(entry):
+            ctx._identities = self.identities(inp)
             worker = self._worker(entry, granted, threads)
             release = partial(self._release, worker, granted)
             opened = worker.session(inp, allowed, ctx, on_close=release)

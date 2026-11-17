@@ -68,6 +68,7 @@ from .program import (
     RunContext,
     Session,
     _Control,
+    _Progress,
     failed_frame,
     find_program,
     plan_of,
@@ -396,8 +397,11 @@ class Worker:
                 continue
             if "progress" in reply:  # an event of the message in flight
                 if reply.get("id") == self._ids and grant is not None:
-                    if grant.progress is not None:
-                        grant.progress(reply["progress"])
+                    progress = grant.progress
+                    if isinstance(progress, _Progress):  # its path is under ours
+                        progress.relay(reply["progress"])
+                    elif progress is not None:
+                        progress(reply["progress"])
                 continue
             return reply
 
@@ -435,6 +439,8 @@ class Worker:
             wire["gpus"] = list(ctx.gpus)
         if ctx.progress is not None:
             wire["progress"] = True
+        if ctx._identities is not None:
+            wire["identities"] = ctx._identities
         return {k: v for k, v in wire.items() if v is not None}
 
     def compute(

@@ -404,6 +404,23 @@ class _Progress:
         """The progress of a subprogram of this calculation."""
         return _Progress(self.callback, (*self.path, program))
 
+    def relay(self, event: Mapping[str, Any]) -> None:
+        """Hand on an event from this calculation's worker: its path is under ours.
+
+        A worker's events carry the path from its own program down (``[]`` for the
+        program's own, ``["axtb"]`` for a subprogram it ran itself).
+        """
+        below = event.get("path")
+        try:
+            self.callback({**event, "path": [*self.path, *(below or ())]})
+        except Exception as e:  # noqa: BLE001 - a display's bug must not fail a run
+            warnings.warn(
+                f"The progress callable raised {type(e).__name__}: {e}; the "
+                "calculation goes on.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+
 
 class _Control:
     """What a caller asks of a running calculation: to stop at a step, or be cancelled.
@@ -555,6 +572,7 @@ class RunContext:
         "_named",
         "_control",
         "_refusal",
+        "_identities",
     )
 
     def __init__(
@@ -604,6 +622,10 @@ class RunContext:
         # The first call refused as naming a program the input does not name, which
         # fails the calculation whatever the program makes of it.
         self._refusal: ProgramError | None = None
+        # For a calculation in a worker: the identities of the programs its runner
+        # would run for it, so the worker may run a subprogram itself only when its
+        # own programs are exactly those (`qccompute.serve`).
+        self._identities: dict[str, str] | None = None
 
     def __repr__(self) -> str:
         """Show the grant."""

@@ -1661,6 +1661,66 @@ def test_a_refused_unnamed_subprogram_fails_the_calculation_whatever_follows(pro
     assert again.error.code == "unnamed_subprogram" and store.puts == 1  # reused
 
 
+def nest_input(child: str = "pools", **extras: Any) -> ProgramInput:
+    spec = {"program": child, "calctype": "gradient", "model": {"method": "lj"}}
+    if child == "stepping":
+        spec["keywords"] = {"steps": 2000, "sleep": 0.005}
+    return ProgramInput.model_validate(
+        toy_input(program="nest").model_dump()
+        | {"subprograms": [spec], "extras": extras}
+    )
+
+
+def test_a_worker_runs_subprograms_it_can_run_itself():
+    """In process, no GPU, found there with the client's identities (#93)."""
+    for program in (serve_programs.nest, serve_programs.pools):
+        register_program(program)
+    with Runner(threads=4) as runner:
+        out = runner.compute(nest_input())
+        extras = out.results.extras
+        assert extras["pid"] != os.getpid()
+        assert extras["child"] == extras["pid"] == extras["session"]  # no hop back
+        assert extras["identities"] == {"pools": serve_programs.pools.version()}
+        assert extras["threads"] == 1  # within the grant, as the client gives it
+        assert out.execution.identities == runner.identities(nest_input())
+
+        class Other(serve_programs.Pools):  # another program under the same name
+            def version(self):
+                return "other"
+
+        register_program(Other())
+        out = runner.compute(nest_input())
+        extras = out.results.extras
+        assert extras["child"] == extras["session"] == os.getpid()  # the client's
+        assert extras["identities"] == {"pools": "other"}
+
+
+def test_subprograms_a_worker_runs_itself_report_and_stop_as_through_its_client():
+    """Progress paths, the named-program check and stops behave alike (#93)."""
+    for program in (serve_programs.nest, serve_programs.stepper, serve_programs.pools):
+        register_program(program)
+    register_program(serve_programs.stepping)
+    events = []
+    with Runner(threads=4) as runner:
+        runner.compute(nest_input("stepper"), progress=events.append)
+        assert [e["path"] for e in events] == [["nest", "stepper"]] * 3
+        assert {e["pid"] for e in events} != {os.getpid()}  # it ran in the worker
+        # A program available there but not named: refused there, and it fails.
+        with pytest.raises(ProgramError) as e:
+            runner.compute(nest_input("stepper", call="pools"))
+        assert e.value.error.code == "unnamed_subprogram"
+        future = runner.submit(nest_input("stepping"))
+        while not future.running():
+            time.sleep(0.01)
+        time.sleep(1.0)
+        assert runner.stop(future)
+        with pytest.raises(ProgramError) as e:
+            future.result(timeout=30)
+    error = e.value.error
+    assert error.kind is ErrorKind.stopped and error.cause.kind is ErrorKind.stopped
+    assert error.cause.details["pid"] != os.getpid()  # stopped in the worker
+
+
 def test_subprogram_lists_and_their_failures():
     seen = []
 

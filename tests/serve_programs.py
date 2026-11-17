@@ -271,11 +271,11 @@ class Pools(ToyProgram):
 
 
 class PoolsSession(ToySession):
-    """The toy's session, with the BLAS threads of each request in its record."""
+    """The toy's session, with the BLAS threads and process of each request."""
 
     def compute(self, *args, **kwargs):
         frame = super().compute(*args, **kwargs)
-        record = {**frame.record, "blas": blas_threads()}
+        record = {**frame.record, "blas": blas_threads(), "pid": os.getpid()}
         return frame.model_copy(update={"record": record})
 
 
@@ -331,6 +331,42 @@ class Stray(Relay):
         return ctx.compute(child).model_copy(update={"input_data": inp})
 
 
+class Nest(ToyProgram):
+    """In a worker of its own, runs its first subprogram (or ``extras["call"]``) once,
+    then in a session; where each ran, in its extras. A failure escapes."""
+
+    name = "nest"
+
+    def capabilities(self):
+        caps = super().capabilities()
+        return caps.model_copy(update={"in_process": False, "sessions": False})
+
+    def plan(self, inp):
+        own = inp.model_copy(update={"program": "toy", "subprograms": []})
+        plan = super().plan(own)
+        return plan.model_copy(update={"resources": Resources(threads=2)})
+
+    def compute(self, inp, ctx=None):
+        spec = inp.subprograms[0]
+        if "call" in inp.extras:
+            spec = spec.model_copy(update={"program": inp.extras["call"]})
+        child = ProgramInput.from_spec(spec, inp.structure)
+        one = ctx.compute(child)
+        extras = {
+            "pid": os.getpid(),
+            "child": one.results.extras.get("pid"),
+            "identities": one.execution.identities,
+            "threads": one.execution.threads,
+        }
+        if spec.program == "pools":
+            with ctx.session(spec, inp.structure) as s:
+                extras["session"] = s.compute().record["pid"]
+        own = inp.model_copy(update={"program": "toy", "subprograms": []})
+        out = super().compute(own, ctx)
+        results = out.results.model_copy(update={"extras": extras})
+        return out.model_copy(update={"input_data": inp, "results": results})
+
+
 class Swallow(Stray):
     """In a worker of its own, swallows the refusal of an unnamed toy calculation."""
 
@@ -359,3 +395,9 @@ stateless = Stateless()
 stepper = Stepper()
 serial = Serial()
 isolated_gpu = IsolatedGPU()
+nest = Nest()
+
+# Found by name in a worker too (importing this module registers them there), so a
+# worker's program may run them itself.
+for _program in (pools, stepper, stepping):
+    qccompute.register_program(_program)

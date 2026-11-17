@@ -29,13 +29,14 @@ Wire, one JSON message per line:
   ProgramOutput; ``compute_batch {inputs, ctx}`` -> [ProgramOutput]; ``lineages
   {session}`` where the session offers them; ``options {array_dir, calls}``.
 - ``ctx`` is ``{threads, memory_gib, device_memory_gib, timeout, scratch_dir, gpus,
-  progress, stop_file}``. The GPU is fixed when the worker is spawned, so ``gpus`` must
+  progress, stop_file, identities}``. The GPU is fixed when the worker is spawned, so ``gpus`` must
   be empty or match ``CUDA_VISIBLE_DEVICES``. ``stop_file`` names a file whose
   existence asks the calculation to stop at its next step (``ctx.stop_requested()``):
   the client creates it while the message is in flight, and removes it after. While
   the message runs, the worker holds its BLAS and OpenMP pools at ``threads``. With
-  ``progress: true`` the program's progress events
-  (``ctx.progress``) stream to the client while a message is in flight, as lines
+  ``progress: true`` the program's progress events (``ctx.progress``), each with its
+  ``path`` from the worker's program down (``[]`` for its own; a subprogram's name for
+  one the worker ran itself), stream to the client while a message is in flight, as lines
   ``{"id", "progress": event}`` naming the message (for a session, each request's
   message); an event that is not JSON is dropped, with a note on stderr. A plain
   client never asks for them and never gets one.
@@ -50,9 +51,12 @@ Wire, one JSON message per line:
     with qcdata's pointer ``{path, shape, dtype, sha256}`` in its place (the format of a
     saved model's arrays); the reader checks it and deletes the file.
   - ``calls: true``: the client runs the subprograms of this worker's program (its
-    ``ctx.compute`` and ``ctx.session``), so they see the programs the client sees,
-    registered ones included, and share its grant. While a message is in flight the
-    worker may write call lines, ``{"call", "op", ...}`` with the ops above (``compute
+    ``ctx.compute`` and ``ctx.session``) that the worker cannot run exactly as the
+    client would, so they see the programs the client sees, registered ones included,
+    and share its grant. The worker runs a call itself when every program its input
+    names is found here with the ``identities`` the client gave in the message's
+    ``ctx``, may run in process, and its plan uses no GPU. While a message is in
+    flight the worker may write call lines, ``{"call", "op", ...}`` with the ops above (``compute
     {input}``, ``compute_batch {inputs}``, ``open {input, calctypes, ctx: {threads}}``
     and the session ops); the client answers each on stdin, ``{"call", "ok", "result"}``
     or ``{"call", "ok": false, "error"}``, in any order. Without it, subprograms run in
@@ -93,6 +97,7 @@ from qcdata import (
     ProgramErrors,
     ProgramInput,
     ProgramOutput,
+    ProgramSpec,
     Request,
 )
 
@@ -106,9 +111,11 @@ from .program import (
     SessionProgram,
     _Control,
     _cuda_visible_devices,
+    _Progress,
     capabilities_of,
     failed_frame,
     find_program,
+    numerics_of,
     plan_of,
 )
 
@@ -317,6 +324,7 @@ class Host:
             raise MessageError("a session opens from a ProgramInput")
         calctypes = msg.get("calctypes")
         ctx = self._ctx(msg.get("ctx"))
+        ctx._calling = inp
         try:
             with hold_threads(ctx.threads):
                 session = self.program.open_session(
@@ -362,6 +370,7 @@ class Host:
         """Outputs of many one-off inputs, computed together; failures in place."""
         inputs = [self._input({"input": i}) for i in msg.get("inputs") or []]
         ctx = self._ctx(msg.get("ctx"))
+        ctx._calling = inputs
         if isinstance(self.program, BatchProgram):
             try:
                 with hold_threads(ctx.threads):
@@ -370,6 +379,11 @@ class Host:
                 raise
             except Exception as e:  # noqa: BLE001 - a bug: every input fails with it
                 outs = [_failed(i, e, self.program.name) for i in inputs]
+            if ctx._refusal is not None:  # it ran a program no input names
+                outs = [
+                    _refused(i, ctx._refusal, o)
+                    for i, o in zip(inputs, outs, strict=True)
+                ]
             outs = [_with_devices(out, ctx.gpus) for out in outs]
         else:
             outs = [self._compute(i, ctx) for i in inputs]
@@ -380,7 +394,12 @@ class Host:
     def _compute(
         self, inp: ProgramInput | FileInput, ctx: RunContext
     ) -> ProgramOutput[Any, Any]:
-        """One output, failed or not: a ProgramError or a bug becomes a failed output."""
+        """One output, failed or not: a ProgramError or a bug becomes a failed output.
+
+        As in a runner, a call of a program the input does not name fails it.
+        """
+        if ctx._calling is None:
+            ctx._calling = inp
         try:
             with hold_threads(ctx.threads):
                 out = self.program.compute(inp, ctx)  # type: ignore[arg-type]
@@ -390,6 +409,8 @@ class Host:
             out = _failed(inp, e, self.program.name)
         finally:
             ctx.cleanup()
+        if ctx._refusal is not None:
+            out = _refused(inp, ctx._refusal, out)
         return _with_devices(out, ctx.gpus)
 
     def op_compute_many(self, msg: dict[str, Any]) -> Any:
@@ -497,6 +518,7 @@ class Host:
             "scratch_dir",
             "progress",
             "stop_file",
+            "identities",
         }
         unknown = sorted(set(fields) - known)
         if unknown:
@@ -512,11 +534,14 @@ class Host:
             gpus=visible,
             scratch=Path(scratch) if scratch else None,
             runner=self._subprograms,
-            progress=self._progress if fields.get("progress") else None,
+            progress=_Progress(self._progress, ()) if fields.get("progress") else None,
         )
         stop_file = fields.get("stop_file")
         if isinstance(stop_file, str):
             made._control = _Control(stop_file=stop_file)
+        identities = fields.get("identities")
+        if isinstance(identities, dict):
+            made._identities = {str(k): str(v) for k, v in identities.items()}
         return made
 
     def _progress(self, event: Any) -> None:
@@ -558,6 +583,15 @@ def _with_devices(
         execution = out.execution.model_copy(update={"devices": _device_names(gpus)})
         out.__dict__["execution"] = execution
     return out
+
+
+def _refused(
+    inp: ProgramInput | FileInput, refusal: ProgramError, out: ProgramOutput[Any, Any]
+) -> ProgramOutput[Any, Any]:
+    """The output of a calculation that called a program its input does not name."""
+    from .runner import _unnamed
+
+    return _unnamed(inp, refusal, out)[0]
 
 
 def _failed(
@@ -666,10 +700,14 @@ class _Connection:
 
 
 class _ClientRunner:
-    """A worker program's subprograms, run by the worker's client when it asked to.
+    """A worker program's subprograms: run here when they can, else by the client.
 
-    The client's runner finds them (programs registered there included) and runs them
-    within its grant; without ``calls``, they run in this process's default runner.
+    With ``calls``, a subprogram runs in this process's default runner, within the
+    calculation's grant, when it can run here exactly as the client would run it
+    (`_here`); every other runs in the client, whose runner finds it (programs
+    registered there included) and runs it within its grant. Without ``calls``, they
+    all run here. Either way the context's grant, time left, stop, progress and the
+    check that the input names the program apply alike.
     """
 
     def __init__(self, host: Host) -> None:
@@ -679,17 +717,52 @@ class _ClientRunner:
         connection = self._host.connection
         return connection if connection is not None and connection.calls else None
 
+    @staticmethod
+    def _here(inputs: Iterable[Any], ctx: RunContext) -> bool:
+        """Whether subprogram calls run in this worker rather than in its client.
+
+        Each input's programs, its own and its subprograms', must be found here with
+        the very identities the client gave for the calculation (so they are the
+        programs the client would run), may run in process, and its plan uses no GPU
+        of its own. A program found here alone, one that must run in a worker of its
+        own, a GPU calculation, or one its program refuses go to the client.
+        """
+        identities = ctx._identities
+        if not identities:
+            return False
+        for inp in inputs:
+            if not isinstance(inp, ProgramInput):
+                return False
+            pending: list[ProgramSpec] = [inp]
+            while pending:
+                spec = pending.pop()
+                program = find_program(spec.program)
+                if program is None or not capabilities_of(program).in_process:
+                    return False
+                known = identities.get(spec.program, "").split(";")
+                if numerics_of(program, spec) not in known:
+                    return False
+                pending.extend(spec.subprograms)
+            try:
+                if plan_of(find_program(inp.program), inp).resources.gpus:  # type: ignore[arg-type]
+                    return False
+            except ProgramError:  # refused: as the client refuses it
+                return False
+        return True
+
     def _subcompute(self, inputs: Any, ctx: RunContext, raise_exc: bool) -> Any:
         from .runner import _error, _subprogram_results, default_runner
 
+        one = isinstance(inputs, ProgramInput | FileInput)
+        if not one:
+            inputs = list(inputs)
         connection = self._connection()
-        if connection is None:
+        if connection is None or self._here([inputs] if one else inputs, ctx):
             return default_runner()._subcompute(inputs, ctx, raise_exc)
         directory = self._host.array_dir
-        if isinstance(inputs, ProgramInput | FileInput):
+        if one:
             wire = [connection.ask("compute", input=self._dump(inputs))]
         else:
-            inputs = list(inputs)
             wire = connection.ask(
                 "compute_batch", inputs=[self._dump(i) for i in inputs]
             )
@@ -708,7 +781,7 @@ class _ClientRunner:
         from .worker import WorkerSession
 
         connection = self._connection()
-        if connection is None:
+        if connection is None or self._here([inp], ctx):
             return default_runner()._subsession(inp, calctypes, threads, ctx)
         reply = connection.ask(
             "open",

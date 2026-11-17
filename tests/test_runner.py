@@ -1234,6 +1234,39 @@ def test_memory_keywords_replace_the_share():
             (8.0, 20.0),
         ]
 
+    # A subprogram's keywords are capped at its parent's grant, which holds them.
+    class Parent(ToyProgram):
+        name = "memory-parent"
+
+        def capabilities(self):
+            caps = super().capabilities()
+            return caps.model_copy(update={"batches": False, "sessions": False})
+
+        def plan(self, inp):
+            plan = super().plan(inp.model_copy(update={"program": "toy"}))
+            return plan.model_copy(update={"resources": Resources(threads=2, gpus=1)})
+
+        def compute(self, inp, ctx=None):
+            child = inp.model_copy(update={"program": "memory"})
+            asks = {"memory_gib": 50, "device_memory_gib": 30}
+            ctx.compute(child.model_copy(update={"keywords": asks}))
+            ctx.compute([child, child])
+            return (
+                super()
+                .compute(inp.model_copy(update={"program": "toy"}), ctx)
+                .model_copy(update={"input_data": inp})
+            )
+
+    register_program(Parent())
+    del memory.contexts[:]
+    with Runner(threads=4, gpus=["0", "1"], per_gpu=2) as runner:
+        runner._gpus = {"0": 40.0, "1": 40.0}
+        runner._memory = 64.0
+        # Each parent: half the threads, so 32 GiB, and 20 GiB of its GPU.
+        runner.compute([toy_input(program="memory-parent", epsilon=e) for e in (1, 2)])
+    granted = sorted((c.memory_gib, c.device_memory_gib) for c in memory.contexts)
+    assert granted == [(16.0, 20.0)] * 4 + [(32.0, 20.0)] * 2
+
 
 def test_gpus_come_from_the_plan():
     """A calculation gets the GPUs its plan asks for (#40); no capability says (a4)."""

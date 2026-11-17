@@ -741,18 +741,27 @@ class Runner:
         timeout: float | None,
         plan: Plan | None,
         inp: Input | None = None,
+        parent: RunContext | None = None,
     ) -> RunContext:
         """A calculation's context: its grant, and its memory.
 
-        Host and device memory are the calculation's share (``memory``; 1/k of each
-        GPU with k calculations per GPU), unless the input's ``memory_gib`` or
-        ``device_memory_gib`` keyword asks for an amount: then that, at most the
-        runner's memory or the GPU's. Memory is never scheduled.
+        Host memory is ``memory``: the runner's (or a parent's grant) for a
+        calculation alone, its share of it in a list. Device memory is 1/k of each
+        GPU with k calculations per GPU, at most a parent's device grant. The input's
+        ``memory_gib`` or ``device_memory_gib`` keyword replaces either, at most the
+        runner's memory or the GPU's, or for a subprogram (``parent``) the parent's
+        grant: a parent's grant holds its children. Memory is never scheduled.
         """
-        gpu = self._gpu_memory(devices)
-        device = None if gpu is None else gpu / self.per_gpu
+        host_limit, device_limit = self._limits(parent)
+        device: float | None = None
+        if devices:
+            gpu = self._gpu_memory(devices)
+            device = None if gpu is None else gpu / self.per_gpu
+            if device_limit is not None:
+                device = device_limit if device is None else min(device, device_limit)
+                gpu = device_limit if gpu is None else min(gpu, device_limit)
         if isinstance(inp, ProgramInput):
-            memory = _asked(inp, "memory_gib", memory, self._host_memory())
+            memory = _asked(inp, "memory_gib", memory, host_limit)
             if devices:
                 device = _asked(inp, "device_memory_gib", device, gpu)
         return RunContext(
@@ -764,6 +773,16 @@ class Runner:
             plan=plan,
             runner=self,
         )
+
+    def _limits(self, parent: RunContext | None) -> tuple[float | None, float | None]:
+        """What a calculation's memory may reach: host (GiB) and per GPU (None: all).
+
+        A subprogram's are its parent's grant (made by a runner: it has threads); a
+        calculation of the caller's own, the runner's memory and whole GPUs.
+        """
+        if parent is not None and parent.threads is not None:
+            return parent.memory_gib, parent.device_memory_gib
+        return self._host_memory(), None
 
     # ------------------------------------------------------------------ workers
 
@@ -866,9 +885,11 @@ class Runner:
         timeout: float | None,
         plan: Plan | None = None,
         entry: _Entry | None = None,
+        parent: RunContext | None = None,
     ) -> tuple[Output, ProgramError | None]:
         """Run one input with its grant (``devices``: its GPUs) to its output.
 
+        ``parent`` is the grant of the calculation whose subprogram it is.
         Returns the output, failed or not, and the error of a failure.
         """
         identities = self.identities(inp)
@@ -880,7 +901,7 @@ class Runner:
                 out = _failure(inp, exc.error)
                 exc.output = out
                 return out, exc
-        ctx = self._context(threads, devices, memory, timeout, plan, inp)
+        ctx = self._context(threads, devices, memory, timeout, plan, inp, parent)
         worker = None
         try:
             if self._in_worker(entry):
@@ -912,10 +933,13 @@ class Runner:
         devices: Sequence[str] | None,
         memory: float | None,
         timeout: float | None,
+        parent: RunContext | None = None,
     ) -> tuple[Output, ProgramError | None]:
         """Plan and run one input with the threads it asks for, at most ``cap``.
 
-        It gets the GPUs its plan asks for, of ``devices`` (None: the runner's).
+        It gets the GPUs its plan asks for, of ``devices`` (None: the runner's), and
+        all of ``memory``; ``parent`` is the grant of the calculation whose subprogram
+        it is.
         """
         try:
             entry, plan = self._plan(inp)
@@ -923,7 +947,9 @@ class Runner:
             return _refused(inp, e, self.identities(inp))
         threads = _threads(inp, plan, cap)
         granted = self._devices(plan, devices)
-        return self._execute(inp, threads, granted, memory, timeout, plan, entry)
+        return self._execute(
+            inp, threads, granted, memory, timeout, plan, entry, parent
+        )
 
     def identities(self, inp: Input) -> dict[str, str]:
         """The numerics identity of the input's program and of every subprogram.
@@ -1194,11 +1220,14 @@ class Runner:
         tags: Sequence[str],
         meta: Mapping[str, Any] | None,
         grant: tuple[int, Sequence[str] | None, float | None, float | None],
+        parent: RunContext | None = None,
     ) -> Iterator[tuple[int, Output, ProgramError | None]]:
         """Yield (index, output, failure) for every input, as each finishes.
 
         ``grant`` is what the list may use: threads, GPUs (None: the runner's), host
-        memory (GiB) and the timeout of each calculation.
+        memory (GiB), which each calculation gets its share of, and the timeout of
+        each calculation. ``parent`` is the grant of the calculation whose
+        subprograms they are.
         """
         threads, devices, memory, timeout = grant
         tasks: list[_Task] = []
@@ -1241,7 +1270,7 @@ class Runner:
             held, granted, share = budget.acquire(turn, task.threads, task.gpus)
             mine = None if memory is None else memory * share
             try:
-                return list(self._run_task(task, held, granted, mine, timeout))
+                return list(self._run_task(task, held, granted, mine, timeout, parent))
             finally:
                 budget.release(granted, share)
 
@@ -1269,16 +1298,24 @@ class Runner:
         devices: tuple[str, ...],
         memory: float | None,
         timeout: float | None,
+        parent: RunContext | None = None,
     ) -> Iterator[tuple[int, Output, ProgramError | None]]:
         """Run one task of a list with its grant."""
         if len(task.inputs) == 1:
             out, failure = self._execute(
-                task.inputs[0], threads, devices, memory, timeout, task.plan, task.entry
+                task.inputs[0],
+                threads,
+                devices,
+                memory,
+                timeout,
+                task.plan,
+                task.entry,
+                parent,
             )
             yield task.indices[0], out, failure
             return
         entry = task.entry
-        ctx = self._context(threads, devices, memory, timeout, None)
+        ctx = self._context(threads, devices, memory, timeout, None, None, parent)
         start = time.perf_counter()
         worker = None
         try:
@@ -1327,12 +1364,14 @@ class Runner:
             ]
             return _subprogram_results(inputs if one else listed, failed, raise_exc)
         if one:
-            ran = [self._run(inputs, threads, devices, memory, timeout)]
+            ran = [self._run(inputs, threads, devices, memory, timeout, ctx)]
             return _subprogram_results(inputs, ran, raise_exc)
         inputs = list(inputs)
         results: list[Any] = [None] * len(inputs)
         grant = (threads, devices, memory, timeout)
-        for i, out, failure in self._run_list(inputs, None, False, (), None, grant):
+        for i, out, failure in self._run_list(
+            inputs, None, False, (), None, grant, ctx
+        ):
             results[i] = (out, failure)
         return _subprogram_results(inputs, results, raise_exc)
 
@@ -1384,7 +1423,7 @@ class Runner:
             threads = _threads(inp, plan, cap)
         allowed = session_calctypes(calctypes) if calctypes else None
         granted = self._devices(plan, devices)
-        ctx = self._context(threads, granted, memory, timeout, None, inp)
+        ctx = self._context(threads, granted, memory, timeout, None, inp, parent)
         program = entry.program
         opened: Session
         lock = entry.lock
@@ -1402,7 +1441,9 @@ class Runner:
                     method or "", entry.caps.calctypes
                 )
                 allowed = session_calctypes(None, supported & session_calctypes())
-            compute = partial(self._session_compute, threads, granted, memory, timeout)
+            compute = partial(
+                self._session_compute, threads, granted, memory, timeout, parent
+            )
             opened = ComputeSession(
                 compute, inp, allowed, program_version=program.version()
             )
@@ -1421,18 +1462,22 @@ class Runner:
         devices: tuple[str, ...],
         memory: float | None,
         timeout: float | None,
+        parent: RunContext | None,
         inputs: Any,
         raise_exc: bool = True,
     ) -> Any:
         """Compute for a session over compute, within the session's grant."""
         if isinstance(inputs, ProgramInput):
-            out, failure = self._execute(inputs, threads, devices, memory, timeout)
+            out, failure = self._execute(
+                inputs, threads, devices, memory, timeout, parent=parent
+            )
             if failure is not None and raise_exc:
                 raise failure
             return out
         grant = (threads, devices, memory, timeout)
         outputs: list[Output | None] = [None] * len(inputs)
-        for i, out, _ in self._run_list(list(inputs), None, False, (), None, grant):
+        listed = self._run_list(list(inputs), None, False, (), None, grant, parent)
+        for i, out, _ in listed:
             outputs[i] = out
         return outputs
 

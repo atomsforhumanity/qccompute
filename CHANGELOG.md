@@ -6,19 +6,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [unreleased]
 
+## [0.23.0a1] - 2026-11-17
+
+The first alpha of qccompute as the runner for AFH programs. qccompute now depends on
+qcdata only. External programs come from qccodec, the optional add-on
+(`pip install qccompute[qccodec]`), as programs like any other. Breaking changes come
+without compatibility shims; [the migration guide](https://qccompute.docs.afh.org/migration/)
+covers moving from 0.22.
+
 ### Added
 
-- Failed outputs from codecs carry a typed `error` (`qcdata.ErrorInfo`), as native programs' do: kind `input` for refused inputs, `environment` for a missing program or codec, `timeout`, and `internal` for everything a codec does not classify (a reported failure, an unexplained exit, unreadable output, results that break the data contract), with the exception's type in the message.
-- `qccompute.program`: the protocol an AFH program implements to run without a codec (moved from qcdata, which holds only data). Programs never import qccompute: `Program`, `SessionProgram`, `BatchProgram` and `Session` are structural, and `capabilities()` and `plan()` may return plain mappings, validated by `capabilities_of` and `plan_of`. A package registers an instance under the `qccompute.programs` entry points (a class is refused); `register_program` adds one in a test or notebook, and `find_program` finds either, for qccompute and drivers alike. `Capabilities.methods` maps each method to its calctypes; `Plan.record` holds the program's own plan detail. `compute` finds native programs before codecs and calls `program.compute(input, context)` in this process. The `RunContext` carries the threads and GPUs granted, a scratch directory, a child `compute` callback limited to the calculation's threads, and child sessions; `execution.threads` records the threads a calculation ran with. In lists, programs that declare `thread_safe` run side by side in threads within the thread budget, by the resources of their `plan`; others run one at a time. Failures carry the program's typed `error`; `compute` raises `InputError` for kinds `input` and `unsupported`, `ProgramTimeoutError`, `ProgramNotFoundError` for `environment`, and `ExternalProgramError` otherwise. Options only codecs implement (`timeout`, `environment`, `collect_files`, `collect_wfn`, `propagate_wfn`, `options`) are rejected for native programs. `qccompute.testing.check_program` is the conformance suite (`qccompute[testing]` validates against JSON Schemas) and `qccompute.testing.toy` a complete example program.
-- A native driver's children never go to worker processes (`qccompute.main.compute_children`): lists run side by side in threads and batches in this process. A worker round trip costs about 100 ms, against 0.3 ms for an in-process g-xTB gradient; qcopt measured 30x on an HCN TS search plus IRC through lists before this.
-- A native program's scratch directory is made only when it asks for one (`RunContext.scratch`), and host information is read once per process: the in-process path costs about 10 us per call over calling the program directly (48 us before).
-- Less per-call overhead for native programs (measured with a program that does nothing): a single call costs about 6 us, a list about 8 us per input run serially; a list of one runs without a thread pool; the plan made for scheduling is handed to the program (`RunContext.plan`) instead of planning twice; capabilities are read once per program; the child callback is built only when used; outputs are completed with one unvalidated copy.
-- `python -m qccompute.serve <program | module:attr> [--socket PATH]`: a worker that hosts any program's sessions in its own process over JSON lines, so a crash ends only the worker. A hello line names the program, version, capabilities and extras (a numerics epoch); every message has an `id` and an `ok`/`error` envelope; ops mirror the session methods (`open`, `compute`, `compute_many`, `reset`, `plan`, `close`, a one-off `compute`). Floats cross bit for bit and NaN never does; stdout carries protocol lines only (libraries printing to fd 1 go to stderr); a `device_lost` reply is followed by exit status 3. First written by the linus session. `Session.input_data` is now part of the protocol, so the worker can build a failed frame for any program.
-- `qccompute.session(inp)` (or `session(spec, structure)`): one program and molecule at many geometries, as agreed with linus and axtb. Programs with sessions of their own return their own session object (warm starts, pinned settings), the one a direct user gets; any other program, codecs included, gets a `ComputeSession` over `compute`. A session may run every calctype the method supports unless `calctypes` narrows it; `compute(positions=None, calctype=None, ...)` defaults to the input's geometry and calctype; lineages are any JSON value (`qcdata.lineage_key`), with `seed` and `commit` (`qcdata.Request`) for branches and finite-difference fan-outs; `reset()` forgets every lineage and `reset(None)` the default one; a failed request raises `qcdata.ProgramError` with its failed frame. A driver may call its sessions from several threads at once: sessions of programs that do not declare `thread_safe` take turns on one lock per program, while codec children and thread-safe programs run side by side.
+- `Runner(threads=None, gpus="auto", backend="local", isolation="auto", *, per_gpu=1)` with `compute(inputs, *, store=None, timeout=None, rerun=False, tags=(), meta=None, raise_exc=True)`, `as_completed(...)` and `session(inp, calctypes=None)`. `qccompute.compute` and `qccompute.session` are the default runner's: this machine, made on first use, workers closed at exit.
+- One path for every program: find it (the `qccompute.programs` entry points, or `register_program`), plan, place it in this process or a worker, call `compute` or `compute_batch` with a `RunContext`, record execution.
+- Resource shares: a calculation's share is the larger of its share of the runner's threads and of its GPUs (`per_gpu` calculations per GPU). Host and device memory follow the share, and calculations are admitted while shares sum to at most 1. `RunContext` carries `threads`, `gpus`, `memory_gib`, `device_memory_gib`, `timeout`, `plan`, a scratch directory made on first use, `compute()` and `session()`.
+- A store hook: with `store=`, each input is looked up by `store.key(inp)` and the numerics identities of the programs it names (`numerics(spec)`, defaulting to the version). Only runs with the same identities are reused, and failures only of kinds `input`, `unsupported` and `convergence`. `tags` go on every returned key, cache hits included. Warm-started outputs are never stored.
+- `qccompute.worker.Worker` and `WorkerSession`: programs with `in_process=False`, or under `isolation="process"`, run in a worker process over `qccompute.serve`'s JSON lines. A timeout kills the worker; a dead worker is `worker_died`.
+- `qccompute.program.FunctionProgram(name, energy_gradient, hessian=None, *, version="0")`: Python functions as a program.
+- The optional `numerics(spec) -> str` in the Program protocol.
 
 ### Changed
 
-- Moved documentation from `qccompute.docs.atomsforhumanity.org` to `qccompute.docs.afh.org`.
+- **Breaking:** failures raise `qcdata.ProgramError`, with the failed output as `.output`. A list, or a session's `compute_many`, runs everything, then raises one `qcdata.ProgramErrors` holding every result in order (`.results`). `raise_exc=False` returns failures in place.
+- **Breaking:** a program's `compute(inp, ctx=None)` raises for a failed calculation. `compute_batch` returns failures in place. A runner always passes a `ctx`, and a program with subprograms called directly hands itself to `qccompute.compute`.
+- **Breaking:** `session(inp, calctypes=None)`; `RunContext` is made only by runners.
+
+### Removed
+
+- **Breaking:** the qccodec dependency and every codec path: `compute` options `codec`, `environment`, `executables`, `scratch_dir`, `rm_scratch_dir`, `collect_logs`, `collect_files`, `collect_wfn`, `propagate_wfn`, `options`, `print_logs`, `update_func`, `update_interval` and `max_workers`; `compute_args`; `qccompute.exceptions`; `get_program`; `qccompute.utils`; the extras `geometric`, `tcpb` and `all`.
+- **Breaking:** `local_context`, `Capabilities.driver`, and `check_program(children=)`.
 
 ## [0.22.0] - 2026-10-23
 

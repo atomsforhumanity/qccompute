@@ -254,8 +254,11 @@ def test_missing_programs_are_environment_failures():
         qccompute.compute(toy_input(program="no-such-program"))
     assert e.value.error.kind is ErrorKind.environment
     assert e.value.error.code == "not_installed"
-    with pytest.raises(ProgramError, match="files"):
-        qccompute.compute(FileInput(program="echo", cmdline_args=["hi"]))
+    from qccompute.program import available_programs
+
+    if "files" not in available_programs():  # qccodec provides it when installed
+        with pytest.raises(ProgramError, match="files"):
+            qccompute.compute(FileInput(program="echo", cmdline_args=["hi"]))
 
 
 def test_options_are_checked():

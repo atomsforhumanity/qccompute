@@ -117,6 +117,7 @@ class FiniteDifference(ToyProgram):
     """Its subprogram's gradient by central differences, through ctx."""
 
     name = "fd"
+    numerics = "0+fd"
 
     def capabilities(self):
         return super().capabilities().model_copy(update={"sessions": False})
@@ -174,10 +175,10 @@ def fd_input(child: str = "toy", **child_keywords: Any) -> ProgramInput:
 
 
 class FakeStore:
-    """The minimal store a runner needs: key, get, put, tag."""
+    """The minimal store a runner needs: key, get, put, tag; runs per identities."""
 
     def __init__(self):
-        self.runs: dict[str, ProgramOutput] = {}
+        self.runs: dict[tuple[str, tuple], ProgramOutput] = {}
         self.tags: dict[str, set[str]] = {}
         self.meta: dict[str, Any] = {}
         self.puts = 0
@@ -185,12 +186,12 @@ class FakeStore:
     def key(self, inp):
         return inp.model_dump_json(exclude={"extras"})
 
-    def get(self, key):
-        return self.runs.get(key)
+    def get(self, key, identities):
+        return self.runs.get((key, tuple(sorted(identities.items()))))
 
-    def put(self, output, *, tags=(), meta=None):
+    def put(self, output, identities, *, tags=(), meta=None):
         key = self.key(output.input_data)
-        self.runs[key] = output
+        self.runs[key, tuple(sorted(identities.items()))] = output
         self.meta[key] = meta
         self.puts += 1
         self.tag(key, *tags)
@@ -413,15 +414,24 @@ def test_stored_failures_are_reused_only_when_deterministic():
     with pytest.raises(ProgramError):
         qccompute.compute(unconverged, store=store)  # may succeed another time
     assert len(recording.contexts) == 3
-    key = store.key(refused)
-    old = store.runs[key]
-    provenance = old.results.provenance.model_copy(update={"program_version": "0.0.1"})
-    store.runs[key] = old.model_copy(
-        update={"results": old.results.model_copy(update={"provenance": provenance})}
-    )
+    recording.numerics = "epoch 2"  # new numbers: no stored run is reused
+    default_runner()._entries.clear()  # the runner reads numerics once per program
     with pytest.raises(ProgramError):
-        qccompute.compute(refused, store=store)  # another version: run again
+        qccompute.compute(refused, store=store)
     assert len(recording.contexts) == 4
+
+
+def test_identities_name_every_program_a_calculation_runs():
+    register_program(FiniteDifference())
+    runner = Runner(threads=1)
+    toy = default_runner()._entry(toy_input()).program
+    assert runner.identities(fd_input("toy")) == {"fd": "0+fd", "toy": toy.version()}
+    assert runner.identities(toy_input(program="no-such")) == {}
+    store = FakeStore()
+    out = runner.compute(fd_input("toy"), store=store)
+    assert (
+        store.get(store.key(fd_input("toy")), runner.identities(fd_input("toy"))) is out
+    )
 
 
 # ---------------------------------------------------------------------- sessions

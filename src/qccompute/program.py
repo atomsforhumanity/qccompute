@@ -114,6 +114,7 @@ __all__ = [
     "unregister_program",
     "available_programs",
     "capabilities_of",
+    "numerics_of",
     "plan_of",
 ]
 
@@ -663,6 +664,9 @@ class Program(Protocol):
 
     Structural: a program implements these methods without importing qccompute.
 
+    Optional: ``numerics``, a string that changes whenever results for an unchanged
+    input may change (see `numerics_of`); without it the version stands for it.
+
     Attributes:
         name: The program's name, as in ``ProgramInput.program``.
     """
@@ -1054,6 +1058,25 @@ def find_program(name: str) -> Program | None:
         )
     with _registry_lock:
         return _installed.setdefault(name, program)
+
+
+def numerics_of(program: Program) -> str:
+    """A program's numerics identity: its ``numerics``, else its version.
+
+    ``numerics`` is optional in the protocol: a string that changes whenever the
+    program's results for an unchanged input may change (linus: its numerics epoch;
+    an external program: its executable's version; an ML potential: its model's
+    checksum). A store files every run under the identities of the programs that made
+    it, and a runner reuses a run only when they are those it would run now.
+
+    Args:
+        program: The program.
+
+    Returns:
+        The identity.
+    """
+    numerics = getattr(program, "numerics", None)
+    return str(numerics) if numerics else program.version()
 
 
 def capabilities_of(program: Program) -> Capabilities:

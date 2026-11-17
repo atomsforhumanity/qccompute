@@ -883,9 +883,9 @@ class ComputeSession:
     outputs in place). It keeps no history: every request starts fresh
     (``warm_start`` false), so ``lineage``, ``seed`` and ``commit`` change nothing. A
     request's ``accuracy`` becomes the ``accuracy`` keyword of the input it computes,
-    replacing the session input's own; a program with no convergence settings refuses
-    it (``no_effect``). A ``hessian`` result without a gradient is completed by a
-    gradient calculation.
+    replacing the session input's own; the program records it as it records the
+    keyword (a program with no convergence settings, as met). A ``hessian`` result
+    without a gradient is completed by a gradient calculation.
 
     Args:
         compute: Computes one input, or a list with ``raise_exc=False``.
@@ -1245,6 +1245,59 @@ def plan_of(program: Program, inp: ProgramInput) -> Plan:
 
 _EMPTY_PLAN = Plan(resolved=Resolved())
 
+#: The JSON Schema of the shared keyword ``accuracy`` in a program with no convergence
+#: settings (`FunctionProgram`, the toy), which accepts it and records it as met.
+_ACCURACY_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "minProperties": 1,
+    "properties": {
+        "energy": {"type": "number", "exclusiveMinimum": 0, "x-unit": "Eh"},
+        "gradient": {"type": "number", "exclusiveMinimum": 0, "x-unit": "Eh/bohr"},
+        "hessian": {"type": "number", "exclusiveMinimum": 0, "x-unit": "Eh/bohr^2"},
+    },
+    "description": "Accuracy targets, recorded as met: nothing here converges.",
+    "x-tier": "common",
+    "x-concern": "convergence",
+}
+
+#: The JSON Schema of the shared record key ``accuracy`` of a target met with no
+#: thresholds.
+_ACCURACY_RECORD_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "description": "The accuracy target, met with no thresholds: an estimate of 0.0 "
+    "per target.",
+    "properties": {
+        "target": {"type": "object"},
+        "thresholds": {"type": "object", "maxProperties": 0},
+        "estimate": {"type": "object"},
+    },
+    "required": ["target", "thresholds", "estimate"],
+}
+
+
+def _accuracy_met(target: Accuracy) -> dict[str, Any]:
+    """The record of an accuracy target met by a program with no convergence settings.
+
+    qcdata's conventions shape it: the targets given, no thresholds, and an error
+    estimate of exactly zero per target, so a reader checks every program alike (each
+    estimate at or below its target)::
+
+        {"target": {"gradient": 1e-06}, "thresholds": {}, "estimate": {"gradient": 0.0}}
+
+    Args:
+        target: The calculation's target (the keyword's or a session request's).
+
+    Returns:
+        The value of the record key ``accuracy``.
+    """
+    given = BaseModel.model_dump(target, mode="json", exclude_none=True)
+    return {
+        "target": given,
+        "thresholds": {},
+        "estimate": dict.fromkeys(given, 0.0),
+    }
+
 
 class _FunctionDigest:
     """A sha256 of what Python functions compute with, for their numerics identity.
@@ -1375,7 +1428,10 @@ class FunctionProgram:
 
     For a model surface, an ML potential in a script, or teaching: the smallest
     complete program. It has no settings (any keyword is an ``unknown_key`` input
-    error) and ignores the model; it runs in process and is thread-safe::
+    error) but the shared ``accuracy``, which it records as met, since the functions
+    converge nothing (``{"target", "thresholds": {}, "estimate"}`` with an estimate of
+    0.0 per target, as qcdata's conventions give). It ignores the model, runs in
+    process and is thread-safe::
 
         def morse(x):  # positions (bohr, n x 3) -> energy (Eh), gradient (Eh/bohr)
             ...
@@ -1406,8 +1462,12 @@ class FunctionProgram:
 
     _SCHEMA: dict[str, Any] = {
         "type": "object",
-        "properties": {},
+        "properties": {"accuracy": _ACCURACY_SCHEMA},
         "additionalProperties": False,
+    }
+    _RECORD_SCHEMA: dict[str, Any] = {
+        "type": "object",
+        "properties": {"accuracy": _ACCURACY_RECORD_SCHEMA},
     }
 
     def __init__(
@@ -1456,20 +1516,23 @@ class FunctionProgram:
         return self._caps
 
     def settings_schema(self, calctype: CalcType) -> dict[str, Any]:
-        """No settings."""
+        """No settings but the shared ``accuracy``."""
         return self._SCHEMA
 
     def record_schema(self, calctype: CalcType) -> dict[str, Any]:
-        """No record."""
-        return {"type": "object", "properties": {}}
+        """The shared ``accuracy``, when a target is given."""
+        return self._RECORD_SCHEMA
 
     def plan(self, inp: ProgramInput) -> Plan:
-        """Check the input: a structure, a supported calctype, no keywords.
+        """Check the input: a structure, a supported calctype, no keywords but accuracy.
+
+        An ``accuracy`` target is met: the plan's record holds the record key
+        ``accuracy``, which the run records.
 
         Raises:
-            ProgramError: Kind ``input`` (``unknown_key``; ``no_effect`` for the shared
-                keyword ``accuracy``, since the functions have nothing to converge; no
-                structure) or ``unsupported``.
+            ProgramError: Kind ``input`` (``unknown_key``; a malformed ``accuracy``,
+                ``no_effect`` for one with no target; no structure) or
+                ``unsupported``.
         """
         if inp.calctype not in self._caps.calctypes:
             raise ProgramError.of(
@@ -1486,14 +1549,14 @@ class FunctionProgram:
                 f"{self.name} has no settings; unknown {unknown}.",
                 code="unknown_key",
             )
-        if inp.keywords:
-            raise ProgramError.of(
-                "input",
-                f"{self.name} has no convergence settings, so the keyword accuracy "
-                "has no effect; leave it out.",
-                code="no_effect",
-            )
-        return _EMPTY_PLAN
+        target = Accuracy.from_keywords(inp.keywords)
+        if target is None:
+            return _EMPTY_PLAN
+        met = _accuracy_met(target)
+        return Plan(
+            resolved=Resolved(settings={"accuracy": met["target"]}),
+            record={"accuracy": met},
+        )
 
     def compute(
         self, inp: ProgramInput, ctx: RunContext | None = None
@@ -1505,8 +1568,8 @@ class FunctionProgram:
                 ``internal``; the failed output holds its traceback).
         """
         start = time.perf_counter()
-        if ctx is None or ctx.plan is None:  # a runner hands on the plan it made
-            self.plan(inp)
+        # A runner hands on the plan it made.
+        plan = ctx.plan if ctx is not None and ctx.plan is not None else self.plan(inp)
         assert inp.structure is not None
         x = np.asarray(inp.structure.geometry, dtype=float).reshape(-1, 3)
         provenance = Provenance(program=self.name, program_version=self.version())
@@ -1534,7 +1597,8 @@ class FunctionProgram:
             input_data=inp,
             success=True,
             results=results,
-            resolved=Resolved(),
+            resolved=plan.resolved,
+            record=plan.record,
             execution=ExecutionInfo(
                 threads=1, timings={"total": time.perf_counter() - start}
             ),

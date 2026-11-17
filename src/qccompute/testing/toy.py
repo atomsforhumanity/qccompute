@@ -46,10 +46,13 @@ from qcdata import (
 
 from .. import __version__
 from ..program import (
+    _ACCURACY_RECORD_SCHEMA,
+    _ACCURACY_SCHEMA,
     Capabilities,
     Plan,
     Resources,
     RunContext,
+    _accuracy_met,
     check_session_calctype,
     failed_frame,
     session_calctypes,
@@ -103,6 +106,7 @@ _SETTINGS_SCHEMA: dict[str, Any] = {
                 }
             },
         },
+        "accuracy": _ACCURACY_SCHEMA,
         "fail": {
             "enum": [k.value for k in ErrorKind] + [None],
             "default": None,
@@ -123,11 +127,7 @@ _RECORD_SCHEMA: dict[str, Any] = {
             "type": "integer",
             "description": "Index of the evaluation within its session (0: first).",
         },
-        "accuracy": {
-            "type": "object",
-            "description": "A session request's accuracy target, met exactly: the "
-            "potential has no convergence thresholds.",
-        },
+        "accuracy": _ACCURACY_RECORD_SCHEMA,
     },
 }
 
@@ -163,14 +163,9 @@ def _resolve(spec: ProgramInput | ProgramSpec) -> Plan:
     if spec.model is None or spec.model.method.lower() != "lj":
         raise ProgramError.of("input", f"{NAME} has one method, 'lj'.")
     kw = dict(spec.keywords)
-    if "accuracy" in kw:  # the shared keyword; an exact potential converges nothing
-        raise ProgramError.of(
-            "input",
-            f"{NAME} has no convergence settings, so the keyword accuracy has no "
-            "effect; leave it out.",
-            code="no_effect",
-        )
     _check_keys(kw, _SETTINGS_SCHEMA)
+    # The shared keyword: an exact potential converges nothing, so a target is met.
+    target = Accuracy.from_keywords(kw)
     epsilon = kw.get("epsilon", 0.01)
     if not isinstance(epsilon, int | float) or epsilon <= 0:
         raise ProgramError.of("input", "epsilon must be a positive number (Eh).")
@@ -199,9 +194,14 @@ def _resolve(spec: ProgramInput | ProgramSpec) -> Plan:
     }
     if kw.get("fail") is not None:
         settings["fail"] = ErrorKind(kw["fail"]).value
+    record: dict[str, Any] = {}
+    if target is not None:
+        record["accuracy"] = _accuracy_met(target)
+        settings["accuracy"] = record["accuracy"]["target"]
     return Plan(
         resolved=Resolved(settings=settings, reasons=reasons, deferred=deferred),
         resources=Resources(threads=1 if threads == "auto" else threads),
+        record=record,
     )
 
 
@@ -355,8 +355,9 @@ class ToySession:
         Args:
             positions: Atomic positions (bohr); None: the input's own.
             calctype: ``energy``, ``gradient`` or ``hessian``; None: the input's.
-            accuracy: Recorded as met (record key ``accuracy``, no thresholds):
-                the potential is exact.
+            accuracy: This request's target, replacing the input's ``accuracy``
+                keyword; either is recorded as met (record key ``accuracy``: no
+                thresholds, an estimate of 0.0 per target): the potential is exact.
             lineage: The history this evaluation continues.
             outputs: ``pair_energies`` puts every pair's energy in the record.
             seed: Lineages to start from when ``lineage`` has no history.
@@ -432,12 +433,9 @@ class ToySession:
             record["pair_energies"] = values["pairs"]
         target = Accuracy.of(r.accuracy, calctype)
         if target is not None:
-            record["accuracy"] = {
-                "target": target.model_dump(
-                    exclude_none=True, exclude={"qcdata_version"}
-                ),
-                "thresholds": {},
-            }
+            record["accuracy"] = _accuracy_met(target)
+        elif "accuracy" in self._plan.record:  # the input's own target
+            record["accuracy"] = self._plan.record["accuracy"]
         frame = Frame(
             structure=self._structure.model_copy(update={"geometry": x}),
             results=_single_point(values),
@@ -582,7 +580,11 @@ class ToyProgram:
             values["gradient"] = _lj(
                 inp.structure.geometry, s["epsilon"], s["sigma"], CalcType.gradient
             )["gradient"]
-        record: dict[str, Any] = {"pairs": len(values["pairs"]), "evaluation": 0}
+        record: dict[str, Any] = {
+            "pairs": len(values["pairs"]),
+            "evaluation": 0,
+            **plan.record,
+        }
         if s["output"]["pair_energies"]:
             record["pair_energies"] = values["pairs"]
         return ProgramOutput(

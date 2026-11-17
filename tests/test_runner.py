@@ -715,26 +715,52 @@ def test_sessions_are_the_programs_own_in_process():
 
 
 def test_accuracy_targets_reach_programs():
-    """The shared keyword accuracy, and a request's target in a session (#35)."""
+    """The shared keyword accuracy, and a request's target in a session (#35, #41)."""
     from qcdata import Accuracy
 
-    from qccompute.program import FunctionProgram
+    from qccompute.program import ComputeSession, FunctionProgram
 
-    # Programs with nothing to converge refuse the keyword, but the toy's own session
-    # records a request's target as met.
+    def met(**target):
+        return {
+            "target": target,
+            "thresholds": {},
+            "estimate": dict.fromkeys(target, 0.0),
+        }
+
+    # Programs with nothing to converge accept a target, keyword or request, and
+    # record it as met: no thresholds, an estimate of 0.0 per target (#41).
+    register_program(FunctionProgram("bowl", lambda x: (0.0, 0 * x)))
     target = {"accuracy": {"gradient": 1e-6}}
     for program in ("toy", "bowl"):
-        register_program(FunctionProgram("bowl", lambda x: (0.0, 0 * x)))
-        with pytest.raises(ProgramError) as e:
-            qccompute.compute(toy_input(program=program, **target))
-        assert e.value.error.code == "no_effect"
-    with qccompute.session(toy_input()) as s:
+        out = qccompute.compute(toy_input(program=program, **target))
+        assert out.record["accuracy"] == met(gradient=1e-6)
+        assert out.resolved.settings["accuracy"] == {"gradient": 1e-6}
+        assert "accuracy" not in qccompute.compute(toy_input(program=program)).record
+        for bad, code in (({}, "no_effect"), ({"gradinet": 1e-6}, "unknown_key")):
+            with pytest.raises(ProgramError) as e:
+                qccompute.compute(toy_input(program=program, accuracy=bad))
+            assert e.value.error.kind is ErrorKind.input
+            assert e.value.error.code == code
+    with qccompute.session(toy_input()) as s:  # the toy's own session
+        assert "accuracy" not in s.compute().record
+        assert s.compute(accuracy=1e-6).record["accuracy"] == met(gradient=1e-6)
+    with qccompute.session(toy_input(**target)) as s:
+        assert s.compute().record["accuracy"] == met(gradient=1e-6)  # the input's
+        assert s.compute(accuracy=Accuracy(energy=1e-9)).record["accuracy"] == met(
+            energy=1e-9
+        )
+    # A session over compute passes a request's target on as the keyword, which a
+    # program with nothing to converge accepts: right end to end (#41).
+    bowl = toy_input(program="bowl")
+    with qccompute.session(bowl) as s:
+        assert isinstance(s, ComputeSession)
         assert "accuracy" not in s.compute().record
         frame = s.compute(accuracy=1e-6)
-        assert frame.record["accuracy"] == {
-            "target": {"gradient": 1e-6},
-            "thresholds": {},
-        }
+        assert frame.record == {"warm_start": False, "accuracy": met(gradient=1e-6)}
+        frames = s.compute_many(
+            [Request(accuracy=Accuracy(energy=1e-8), calctype="energy"), Request()]
+        )
+        assert [f.record.get("accuracy") for f in frames] == [met(energy=1e-8), None]
 
     # A session over compute passes a request's target on as the input's keyword.
     seen = []
@@ -1066,7 +1092,8 @@ def test_function_programs():
 
     program = FunctionProgram("harmonic", harmonic, hessian, version="1")
     inp = toy_input("hessian", program="harmonic").model_copy(update={"model": None})
-    assert "honours ctx.threads" in check_program(program, [inp])
+    target = inp.model_copy(update={"keywords": {"accuracy": {"hessian": 1e-4}}})
+    assert "honours ctx.threads" in check_program(program, [inp, target])
     register_program(program)
     out = qccompute.compute(inp)
     assert out.results.energy == pytest.approx(np.sum(ARGON3.geometry**2))

@@ -65,6 +65,7 @@ def test_toy_conforms():
             toy_input("gradient"),
             toy_input("energy", sigma=6.5, output={"pair_energies": True}),
             toy_input("hessian", epsilon=0.02),
+            toy_input("gradient", accuracy={"gradient": 1e-6}),
         ],
     )
     assert "session survives a failed request" in ran

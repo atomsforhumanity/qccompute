@@ -127,16 +127,19 @@ with qccompute.Runner(threads=16, gpus=["0"], per_gpu=2, isolation="process") as
 ```
 
 - `threads`, `gpus`: the share, and the most one calculation gets. Each calculation gets
-  its grant in a `qccompute.RunContext`; in a list, host memory and GPU memory follow. A calculation's share is the
-  larger of its share of the threads and its share of the GPUs; with `per_gpu=k`, k
-  calculations share each GPU and each counts as 1/k of it. A calculation gets the GPUs
-  its program's plan asks for.
+  its grant in a `qccompute.RunContext`; in a list, host memory and GPU memory follow,
+  unless its `memory_gib` or `device_memory_gib` keyword asks for an amount. A
+  calculation's share is the larger of its share of the threads and its share of the
+  GPUs; with `per_gpu=k`, k calculations share each GPU and each counts as 1/k of it. A
+  calculation gets the GPUs its program's plan asks for, and `ctx.device_ordinals()`
+  turns them into CUDA device numbers in the program's process.
 - `isolation`: `"auto"` runs programs in this process unless they cannot share it (they
   say `in_process=False`), which run in worker processes; `"process"` runs every program
   in a worker, so a crash ends only the worker.
 - Workers stay alive between calls, so a program keeps its state; close the runner (or use
-  it as a context manager) to stop them. A program on a GPU keeps one worker per GPU
-  (`per_gpu` of them), which its calculations and sessions share, so a model loads once.
+  it as a context manager) to stop them. A program's workers serve its calls whatever
+  their threads, so a model loads once: on a GPU one worker per GPU (`per_gpu` of them),
+  which its calculations and sessions share; on the CPU as many as run side by side.
 
 The runner never changes a number by itself. A grant may change a program's own choices
 (a storage scheme picked from the memory granted), and the program records each one in

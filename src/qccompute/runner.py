@@ -576,6 +576,20 @@ def _asked(
     return float(asked) if limit is None else min(float(asked), limit)
 
 
+def _unnamed(
+    inp: Input, refusal: ProgramError, out: Output
+) -> tuple[Output, ProgramError]:
+    """The failure of a calculation whose program called a program its input does not name.
+
+    The refusal (kind ``input``, code ``unnamed_subprogram``) is the calculation's
+    error, whatever the program made of it (an output, its own failure); the
+    program's partial results stay where they fit.
+    """
+    trace = "".join(traceback.format_exception(refusal))
+    failed = _failure(inp, refusal.error, trace, out.results)
+    return failed, ProgramError(refusal.error, output=failed)
+
+
 def _refused(
     inp: Input, exc: BaseException, identities: Mapping[str, str]
 ) -> tuple[Output, ProgramError]:
@@ -1287,6 +1301,8 @@ class Runner:
             ctx.cleanup()
             if worker is not None:
                 self._release(worker, devices)
+        if ctx._refusal is not None:  # it called a program its input does not name
+            out, failure = _unnamed(inp, ctx._refusal, out)
         out = _with_execution(
             out, time.perf_counter() - start, threads, identities, devices
         )
@@ -1918,6 +1934,12 @@ class Runner:
             ctx.cleanup()
             if worker is not None:
                 self._release(worker, devices)
+        if ctx._refusal is not None:  # it called a program no input names
+            refusal = ctx._refusal
+            outs = [
+                _unnamed(i, refusal, o)[0]
+                for i, o in zip(task.inputs, outs, strict=True)
+            ]
         wall = time.perf_counter() - start  # the batch's: its inputs ran together
         parts = task.threads_of(threads)
         for i, inp, out, part in zip(

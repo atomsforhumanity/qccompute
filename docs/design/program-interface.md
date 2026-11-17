@@ -119,7 +119,9 @@ subprograms:
   subprograms, within the grant. They run only programs the calculation's input names,
   its own and its subprograms' recursively, and every program a subprogram's input
   names must be among them; another is refused (kind `input`, code
-  `unnamed_subprogram`), so a run's identities cover every program it used. A program
+  `unnamed_subprogram`), so a run's identities cover every program it used. The
+  refusal fails the calculation, whatever the program returns or raises afterwards: a
+  store then reuses it, as any input error, rather than rerunning the work. A program
   that decides at run time which programs to run (a path method that minimizes its
   ends) names each in its input's subprograms.
 

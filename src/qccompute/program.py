@@ -554,6 +554,7 @@ class RunContext:
         "_calling",
         "_named",
         "_control",
+        "_refusal",
     )
 
     def __init__(
@@ -600,6 +601,9 @@ class RunContext:
         self._named: frozenset[str] | None = None
         # The caller's requests (cancel), shared with its subprograms; None: none.
         self._control: _Control | None = None
+        # The first call refused as naming a program the input does not name, which
+        # fails the calculation whatever the program makes of it.
+        self._refusal: ProgramError | None = None
 
     def __repr__(self) -> str:
         """Show the grant."""
@@ -713,6 +717,9 @@ class RunContext:
         run after that program changed. Every program a subprogram's input names
         (its own and its subprograms') must be named.
 
+        The first refusal is kept: the runner fails the calculation with it, whatever
+        its program returns or raises afterwards.
+
         Raises:
             ProgramError: Kind ``input``, code ``unnamed_subprogram``.
         """
@@ -727,7 +734,7 @@ class RunContext:
             missing = _program_names(inp) - self._named
             if missing:
                 name = ", ".join(sorted(missing))
-                raise ProgramError.of(
+                refusal = ProgramError.of(
                     "input",
                     f"This calculation runs {name}, which its input does not name. "
                     f"Name {name} among the input's subprograms (it names "
@@ -736,6 +743,9 @@ class RunContext:
                     f"{name} changed.",
                     code="unnamed_subprogram",
                 )
+                if self._refusal is None:
+                    self._refusal = refusal
+                raise refusal
 
     def _get_runner(self) -> _Subprograms:
         """The runner of this calculation's subprograms: its own, else the default."""
@@ -771,7 +781,9 @@ class RunContext:
 
         Every program a subprogram's input names must be named by this calculation's
         input, among its subprograms (recursively), so that the run's identities cover
-        every program it used; another is refused, whatever ``raise_exc``.
+        every program it used; another is refused, whatever ``raise_exc``, and the
+        calculation fails with that refusal (kind ``input``, code
+        ``unnamed_subprogram``) whatever the program returns or raises afterwards.
 
         Args:
             inputs: One input, or a list of independent inputs.

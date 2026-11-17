@@ -1621,6 +1621,46 @@ def test_subprograms_must_be_named_by_the_input():
         assert out.success
 
 
+class Swallowing(ToyProgram):
+    """Calls a toy calculation its input does not name; makes of the refusal what it
+    likes: a success, or a failure of its own."""
+
+    def __init__(self, name, wrap):
+        self.name = name
+        self.wrap = wrap
+
+    def plan(self, inp):
+        return super().plan(
+            inp.model_copy(update={"program": "toy", "subprograms": []})
+        )
+
+    def compute(self, inp, ctx=None):
+        try:
+            ctx.compute(toy_input())
+        except ProgramError as e:
+            if self.wrap:
+                raise RuntimeError("the endpoint optimization failed") from e
+        own = inp.model_copy(update={"program": "toy", "subprograms": []})
+        return super().compute(own, ctx).model_copy(update={"input_data": inp})
+
+
+@pytest.mark.parametrize("program", ["swallowing", "wrapping", "swallow"])
+def test_a_refused_unnamed_subprogram_fails_the_calculation_whatever_follows(program):
+    """Kind input, code unnamed_subprogram, so a store reuses the refusal (#95)."""
+    register_program(Swallowing("swallowing", wrap=False))
+    register_program(Swallowing("wrapping", wrap=True))
+    register_program(serve_programs.swallow)  # in a worker: checked here all the same
+    store = FakeStore()
+    with Runner(threads=2) as runner:
+        with pytest.raises(ProgramError) as e:
+            runner.compute(toy_input(program=program), store=store)
+        assert e.value.error.kind is ErrorKind.input
+        assert e.value.error.code == "unnamed_subprogram"
+        assert e.value.output.error.code == "unnamed_subprogram"
+        again = runner.compute(toy_input(program=program), store=store, raise_exc=False)
+    assert again.error.code == "unnamed_subprogram" and store.puts == 1  # reused
+
+
 def test_subprogram_lists_and_their_failures():
     seen = []
 

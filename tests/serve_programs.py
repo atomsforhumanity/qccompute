@@ -331,7 +331,22 @@ class Stray(Relay):
         return ctx.compute(child).model_copy(update={"input_data": inp})
 
 
+class Swallow(Stray):
+    """In a worker of its own, swallows the refusal of an unnamed toy calculation."""
+
+    name = "swallow"
+
+    def compute(self, inp, ctx=None):
+        try:
+            super().compute(inp, ctx)
+        except ProgramError:
+            pass
+        own = inp.model_copy(update={"program": "toy", "subprograms": []})
+        return ToyProgram.compute(self, own, ctx).model_copy(update={"input_data": inp})
+
+
 device_lost = DeviceLost()
+swallow = Swallow()
 stepping = Stepping()
 spawner = Spawner()
 fallback = Fallback()

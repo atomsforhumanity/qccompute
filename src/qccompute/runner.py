@@ -393,27 +393,25 @@ def _as_failure(
 
 
 def _with_execution(out: Output, wall_time: float, threads: int | None) -> Output:
-    """The output with what the runner measured; the program's own timings stay."""
+    """The output with what the runner measured; the program's own timings stay.
+
+    The output is the caller's from here on, so it is updated in place; its
+    `ExecutionInfo` is copied (a program may share one between outputs) without
+    validating it again.
+    """
     hostname, host_cpu, host_mem = _host(True)
     execution = out.execution
-    values = {
-        **execution.__dict__,
-        "wall_time": round(wall_time, 6),
-        "hostname": hostname,
-        "host_cpu": host_cpu,
-        "host_mem_gib": host_mem,
-        "threads": execution.threads if execution.threads is not None else threads,
-    }
-    # The program's output is trusted: copy it once, without validating it again.
-    new = type(execution).model_construct(
-        _fields_set=execution.model_fields_set
-        | {"wall_time", "hostname", "host_cpu", "host_mem_gib", "threads"},
-        **values,
+    new = execution.model_copy(
+        update={
+            "wall_time": round(wall_time, 6),
+            "hostname": hostname,
+            "host_cpu": host_cpu,
+            "host_mem_gib": host_mem,
+            "threads": execution.threads if execution.threads is not None else threads,
+        }
     )
-    return type(out).model_construct(
-        _fields_set=out.model_fields_set | {"execution"},
-        **{**out.__dict__, "execution": new},
-    )
+    out.__dict__["execution"] = new
+    return out
 
 
 # ------------------------------------------------------------------------ resources

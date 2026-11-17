@@ -140,7 +140,7 @@ one event per step); the runner only delivers them, and nothing is stored.
   gradient component; positions where a live view needs them). A shared key: `event`,
   a snake_case name of what happened (`step`).
 - The caller receives the event with `path` added: the program names from the
-  caller's input down to the program that emitted it (`["mepd-neb", "qcopt"]`). A
+  caller's input down to the program that emitted it (`["neb", "qcopt"]`). A
   subprogram's events reach the same callable through its parent's context, so a
   workflow sees every level of a nested run.
 - The callable may be called from several threads at once (a list's calculations, a

@@ -200,7 +200,7 @@ qccompute.compute(inp, progress=show)
 
 Each event is a small JSON object of the program's own, with `path` added: the program
 names from your input down to the one that emitted it, so a subprogram's events
-(`["mepd-neb", "qcopt"]`) arrive too. The callable may be called from several threads
+(`["neb", "qcopt"]`) arrive too. The callable may be called from several threads
 at once. Stored outputs emit nothing, and nothing is stored. A program in a worker
 process streams its events back. `submit`, `as_completed` and `session` take
 `progress=` too; to tell a list's inputs apart, submit each with its own callable.

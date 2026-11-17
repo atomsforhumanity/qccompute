@@ -1289,7 +1289,7 @@ def test_subprograms_must_be_named_by_the_input():
 
     class PathSearch(
         ToyProgram
-    ):  # like mepd's NEB: minimizes its ends with fd, through ctx
+    ):  # like a path search that minimizes its ends through ctx
         name = "path"
 
         def capabilities(self):

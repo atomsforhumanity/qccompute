@@ -379,14 +379,13 @@ class Host:
                 raise
             except Exception as e:  # noqa: BLE001 - a bug: every input fails with it
                 outs = [_failed(i, e, self.program.name) for i in inputs]
-            if ctx._refusal is not None:  # it ran a program no input names
-                outs = [
-                    _refused(i, ctx._refusal, o)
-                    for i, o in zip(inputs, outs, strict=True)
-                ]
-            outs = [_with_devices(out, ctx.gpus) for out in outs]
         else:
             outs = [self._compute(i, ctx) for i in inputs]
+        if ctx._refusal is not None:  # it ran a program no input names: all fail
+            outs = [
+                _refused(i, ctx._refusal, o) for i, o in zip(inputs, outs, strict=True)
+            ]
+        outs = [_with_devices(out, ctx.gpus) for out in outs]
         for out in outs:
             self._watch(out)
         return outs

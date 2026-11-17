@@ -750,6 +750,8 @@ class ComputeSession:
             the defaults of a request.
         calctypes: The calctypes the session may run (see `session_calctypes`; by
             default energy, gradient and Hessian, which the program may still refuse).
+        program_version: The program's version (``program.version()``), the
+            session's from its opening.
     """
 
     def __init__(
@@ -757,6 +759,8 @@ class ComputeSession:
         compute: Callable[..., Any],
         inp: ProgramInput,
         calctypes: Iterable[CalcType | str] | None = None,
+        *,
+        program_version: str,
     ):
         """Create the session."""
         if inp.structure is None:
@@ -766,7 +770,7 @@ class ComputeSession:
         self._structure: Structure = inp.structure
         self.calctypes = session_calctypes(calctypes)
         self.program = inp.program
-        self.program_version = ""
+        self.program_version = program_version
         self._closed = False
 
     @property
@@ -804,9 +808,6 @@ class ComputeSession:
 
     def _as_frame(self, out: ProgramOutput[Any, Any]) -> Frame:
         """An output as a frame, with ``warm_start`` false in its record."""
-        version = out.results.provenance.program_version
-        if version and not self.program_version:
-            self.program_version = version
         frame = Frame.model_validate(out)
         return frame.model_copy(
             update={"record": {"warm_start": False, **frame.record}}

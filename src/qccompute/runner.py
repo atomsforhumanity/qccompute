@@ -1266,7 +1266,9 @@ class Runner:
                 )
                 allowed = session_calctypes(None, supported & session_calctypes())
             compute = partial(self._session_compute, threads, granted, memory, timeout)
-            opened = ComputeSession(compute, inp, calctypes=allowed)
+            opened = ComputeSession(
+                compute, inp, allowed, program_version=program.version()
+            )
             lock = None  # each compute takes the program's lock itself
         try:
             weakref.finalize(opened, ctx.cleanup)

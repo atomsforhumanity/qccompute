@@ -171,11 +171,12 @@ def test_compute_session_over_a_program():
 
     spec = ProgramSpec(program="toy", calctype="gradient", model={"method": "lj"})
     x = np.asarray(ARGON3.geometry)
-    with ComputeSession(compute, ProgramInput.from_spec(spec, ARGON3)) as s:
+    inp = ProgramInput.from_spec(spec, ARGON3)
+    with ComputeSession(compute, inp, program_version=program.version()) as s:
         assert isinstance(s, Session)
+        assert s.program_version == program.version()  # from its opening
         frame = s.compute(x)
         r = frame.results
-        assert s.program_version  # learned from the first result
         assert r.gradient.shape == (3, 3)
         assert np.allclose(frame.structure.geometry, x)
         with pytest.raises(ProgramError) as e:
@@ -211,7 +212,9 @@ def test_compute_session_completes_hessians_without_gradients():
         return out
 
     spec = ProgramSpec(program="toy", calctype="hessian", model={"method": "lj"})
-    s = ComputeSession(no_gradient, ProgramInput.from_spec(spec, ARGON3))
+    s = ComputeSession(
+        no_gradient, ProgramInput.from_spec(spec, ARGON3), program_version="1"
+    )
     h = s.compute(np.asarray(ARGON3.geometry), "hessian").results
     assert h.gradient is not None and h.hessian is not None
 
@@ -491,7 +494,9 @@ def test_sessions_run_only_the_calctypes_they_were_opened_for(toy_registered):
     ) as s:
         assert s.compute(x, "hessian").results.hessian is not None
 
-    plain = ComputeSession(plain_compute, inp, calctypes=["gradient"])
+    plain = ComputeSession(
+        plain_compute, inp, calctypes=["gradient"], program_version="1"
+    )
     with pytest.raises(ProgramError) as e:
         plain.compute(x, "hessian")
     assert e.value.error.code == "not_applicable"
@@ -602,7 +607,7 @@ def test_program_errors_keep_the_failed_frame_through_compute_sessions():
             raise e
         return [one(i) for i in inputs]
 
-    s = ComputeSession(unconverged, toy_input())
+    s = ComputeSession(unconverged, toy_input(), program_version="1")
     with pytest.raises(ProgramError) as e:
         s.compute()
     assert e.value.frame is not None and not e.value.frame.success

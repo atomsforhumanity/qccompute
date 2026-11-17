@@ -367,6 +367,7 @@ class Worker:
                 lambda i, raise_exc=True: self._compute_any(i, ctx, raise_exc),
                 inp,
                 calctypes,
+                program_version=self.version(),
             )
             opened.on_close = on_close
             return opened

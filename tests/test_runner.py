@@ -701,6 +701,7 @@ def test_sessions_are_the_programs_own_in_process():
     register_program(NoSessions("plain"))
     with qccompute.session(toy_input(program="plain")) as s:
         assert isinstance(s, ComputeSession)
+        assert s.program_version == ToyProgram().version()  # filled at opening
         r2 = s.compute(np.asarray(ARGON3.geometry)).results
         assert r2.energy == pytest.approx(r.energy)
         with pytest.raises(ProgramError) as e:
@@ -889,6 +890,7 @@ def test_programs_that_cannot_share_a_process_run_in_workers(isolated):
             runner.compute(toy_input(program="isolated", fail="convergence"))
         assert e.value.output.error.kind is ErrorKind.convergence
         with runner.session(toy_input(program="isolated")) as s:
+            assert s.program_version == isolated.version()
             frame = s.compute()
             assert frame.success and frame.record["warm_start"] is False
             assert s.compute(np.asarray(ARGON3.geometry) + 0.01).record["warm_start"]

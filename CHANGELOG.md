@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [unreleased]
 
+## [0.23.0a4] - 2026-11-17
+
+### Changed
+
+- **Breaking:** `Capabilities.gpu` and `Resources.exclusive` are removed: nothing read them, and a calculation's GPUs are its plan's. `Capabilities` forbids extra fields, so programs that set them must drop them.
+- **Breaking:** the `memory_gib` and `device_memory_gib` keywords replace the memory share in `ctx`, as `threads` does, capped at the runner's memory or the GPU's, and for a subprogram at its parent's grant. A subprogram's GPU-memory share is also capped at its parent's grant.
+- **Breaking:** the worker hello no longer has `extras`.
+- **Breaking:** `FunctionProgram` and the toy program accept an `accuracy` target, as keyword or session request, and record it as met (`{"target": ..., "thresholds": {}, "estimate": {...: 0.0}}`). They no longer refuse it as `no_effect`, so a session over them can pass a request's target on. Requires qcdata 0.24.0a5.
+- Workers without GPUs are pooled by program, whatever the threads of their calls: a list's batches of different sizes share one worker, and each call gets its own threads in `ctx`.
+- A batch output whose program leaves `execution.threads` unset reports its own input's part of the batch's threads, not the whole batch's, so `wall_time × threads` adds up across a store (#52).
+- The docs say what the runner does with memory: a calculation run alone gets the runner's (or its parent's) memory; in lists and batches each gets its share; `memory_gib` and `device_memory_gib` in a plan are informational.
+
+### Added
+
+- `RunContext.device_ordinals()`: the granted GPUs as this process's CUDA ordinals, in a worker or in process, for indices and UUIDs. `Runner(gpus="auto")` sets `CUDA_DEVICE_ORDER=PCI_BUS_ID` when `CUDA_VISIBLE_DEVICES` is unset; `visible_gpus` handles UUIDs and stops at a `-1` entry.
+
+
 ## [0.23.0a3] - 2026-11-17
 
 ### Changed

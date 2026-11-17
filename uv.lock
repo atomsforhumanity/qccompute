@@ -1369,7 +1369,7 @@ wheels = [
 
 [[package]]
 name = "qccompute"
-version = "0.23.0a3"
+version = "0.23.0a4"
 source = { editable = "." }
 default-groups = ["dev", "docs"]
 dependencies = [

@@ -1370,7 +1370,7 @@ wheels = [
 
 [[package]]
 name = "qccompute"
-version = "0.23.0a4"
+version = "0.23.0a5"
 source = { editable = "." }
 default-groups = ["dev", "docs"]
 dependencies = [
@@ -1412,7 +1412,7 @@ docs = [
 requires-dist = [
     { name = "jsonschema", marker = "extra == 'testing'", specifier = ">=4.18" },
     { name = "qccodec", marker = "extra == 'qccodec'", specifier = ">=0.22.0a4" },
-    { name = "qcdata", specifier = ">=0.24.0a5" },
+    { name = "qcdata", specifier = ">=0.24.0a6" },
 ]
 provides-extras = ["qccodec", "testing"]
 
@@ -1441,7 +1441,7 @@ docs = [
 
 [[package]]
 name = "qcdata"
-version = "0.24.0a5"
+version = "0.24.0a6"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "eval-type-backport" },
@@ -1453,9 +1453,9 @@ dependencies = [
     { name = "toml" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/5e/60/60dd021c27110e96f88347cd7ff3166f7e6b07be2e920019e999b5618924/qcdata-0.24.0a5.tar.gz", hash = "sha256:322eedd1883176b2392b746f56e10532e019205ec3b9c1e71f8da50555e2e655", size = 1463344, upload-time = "2026-11-17T06:07:38.129Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/23/c1/c48235354a45d404db22c43bdc04dafccf7238519a16372ab341846f18c9/qcdata-0.24.0a6.tar.gz", hash = "sha256:8a8b878a08fe8dcd175ff8ca6eb82030354dd0806429d37fc54fcbedff14bd1c", size = 1463875, upload-time = "2026-11-17T07:19:12.157Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/7b/87/bd6589e5f95f8421aa3e38e1c21b1b8a1b49773672df6fcd96d3beedaeed/qcdata-0.24.0a5-py3-none-any.whl", hash = "sha256:9bc6ddc2c190b5cd0c8c002a7c9da8da7ebdf01909da9b71a873f378e39d8deb", size = 79284, upload-time = "2026-11-17T06:07:36.885Z" },
+    { url = "https://files.pythonhosted.org/packages/8d/68/c29d17d58c8e217b6016818d60423f4bbd87c6e7fe24bd0364f127114a6b/qcdata-0.24.0a6-py3-none-any.whl", hash = "sha256:9bbc713e738ba1297e2411167a949b0e99c030ddaafc5437bfee3a857bf4f81a", size = 79306, upload-time = "2026-11-17T07:19:10.818Z" },
 ]
 
 [[package]]

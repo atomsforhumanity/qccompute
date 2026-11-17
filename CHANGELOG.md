@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [unreleased]
 
+## [0.23.0a5] - 2026-11-17
+
+### Added
+
+- `Runner.submit` and `qccompute.submit` run one calculation and return a `concurrent.futures.Future` of its output; a store hit or a refused input resolves at once. A guide page shows a dynamic workflow (per reaction, TS, then IRC, then both ends, many reactions at once, with no stage barriers).
+- `progress=` on `compute`, `as_completed`, `session` and `submit`: programs emit small JSON events through `ctx.progress` (None when nobody listens); the runner adds `path`, a subprogram's events come through its parent, workers stream them back, and store hits emit nothing.
+- `session(..., threads=)` sets a session's grant when it opens.
+- `FunctionProgram(..., takes_input=True, settings=)`: the functions receive the input too, `settings` declares its keywords, and `threads` is always accepted.
+- The runner records `cpu_model`, `libc` and `devices` (the granted GPUs' names) on every output, beside `hostname`, unless the program set them.
+- An output the runner has just stored names its run in `execution.store_run`, as a hit does, so results can be cited exactly (with qcstore's `get(key, run=)`).
+- `timings["batch"]`, a batch's wall time, on batch outputs.
+- A program instance registered from the user's own module runs in a worker: the worker finds it by its entry point, a module attribute, or a pickle; one that can't be rebuilt fails with kind `environment` and says how to fix it.
+- A warning, once per runner and program, when calls queue on the lock of an in-process program that isn't thread-safe; it names `isolation="process"`.
+
+### Changed
+
+- **Breaking:** `ctx.compute` and `ctx.session` refuse a program the calling input doesn't name among its subprograms (kind `input`, code `unnamed_subprogram`), so a run's identities cover every program it used.
+- **Breaking:** a session's `compute_many` runs its requests side by side, packed into the session's grant (`threads=`, else the runner's): 13 xtb gradients went from 0.2 s to 0.06 s, the same as `compute(list)`.
+- **Breaking:** a batch output keeps a `wall_time` its program set; environment fields are filled only where unset.
+- **Breaking:** `FunctionProgram` accepts `threads`; `execution.threads` is the grant; `resolved.settings` holds the keywords given; a function's `ProgramError` passes through (was kind `internal`).
+- Requires qcdata 0.24.0a6.
+
+
 ## [0.23.0a4] - 2026-11-17
 
 ### Changed

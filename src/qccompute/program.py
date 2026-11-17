@@ -66,7 +66,7 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from importlib.metadata import EntryPoint, entry_points
 from pathlib import Path
 from types import TracebackType
-from typing import TYPE_CHECKING, Any, Protocol, overload, runtime_checkable
+from typing import Any, Protocol, overload, runtime_checkable
 
 import numpy as np
 from qcdata import (
@@ -92,9 +92,6 @@ from qcdata import (
     Structure,
 )
 from qcdata.models.base_models import QCDataBaseModel
-
-if TYPE_CHECKING:
-    from .runner import Runner
 
 __all__ = [
     "ENTRY_POINT_GROUP",
@@ -254,6 +251,20 @@ def check_session_calctype(
         )
 
 
+class _Subprograms(Protocol):
+    """What runs a calculation's subprograms: a `Runner`, or a worker's client."""
+
+    def _subcompute(self, inputs: Any, ctx: RunContext, raise_exc: bool) -> Any: ...
+
+    def _subsession(
+        self,
+        inp: ProgramInput,
+        calctypes: Iterable[CalcType | str] | None,
+        threads: int | None,
+        ctx: RunContext,
+    ) -> Session: ...
+
+
 class RunContext:
     """What a runner gives one calculation: its share of the machine and its subprograms.
 
@@ -302,7 +313,7 @@ class RunContext:
         timeout: float | None = None,
         plan: Plan | None = None,
         scratch: Path | None = None,
-        runner: Runner | None = None,
+        runner: _Subprograms | None = None,
     ) -> None:
         """Create a context; runners do this, programs read it.
 
@@ -315,7 +326,8 @@ class RunContext:
             plan: The runner's plan of the input.
             scratch: A directory the calculation may write to, kept afterwards; None:
                 a temporary one made on first use of `scratch`.
-            runner: The runner of subprograms; None: the default runner.
+            runner: What runs subprograms (a runner, or in a worker its client); None:
+                the default runner.
         """
         self.threads = threads
         self.gpus: tuple[str, ...] = tuple(gpus)
@@ -366,7 +378,7 @@ class RunContext:
             self._scratch = None
             self._made = False
 
-    def _get_runner(self) -> Runner:
+    def _get_runner(self) -> _Subprograms:
         """The runner of this calculation's subprograms: its own, else the default."""
         if self._runner is None:
             from .runner import default_runner
@@ -941,8 +953,11 @@ def register_program(program: Program) -> None:
     """Make a program findable by name in this process, ahead of installed ones.
 
     For programs that are not installed packages: in tests, notebooks and scripts.
-    Runners in this process find it through `find_program`; worker processes find
-    it only when it is defined at the top level of an importable module.
+    Runners in this process find it through `find_program`, and so do the
+    subprograms of a program in a worker process (geomeTRIC's gradients), which run
+    back in this process. A registered program that itself needs a worker process
+    (``in_process=False``, or a runner with ``isolation="process"``) must be a
+    top-level attribute of an importable module, which the worker imports.
 
     Args:
         program: An object implementing `Program`.

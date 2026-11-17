@@ -724,6 +724,86 @@ def test_isolation_process_runs_every_program_in_a_worker():
             assert s.compute().success
 
 
+def test_subprograms_of_worker_programs_run_in_the_client():
+    """A program in a worker (like geomeTRIC) runs subprograms registered here."""
+    from qccompute.program import FunctionProgram
+
+    register_program(serve_programs.relay)
+    k = 1.5
+
+    def bowl(x):  # a closure in a test: no worker could import it
+        return k * float(np.sum(x**2)), 2 * k * x
+
+    def bowl_hessian(x):
+        return 2 * k * np.eye(x.size)
+
+    register_program(FunctionProgram("bowl", bowl, bowl_hessian))
+
+    def relay_input(child: dict[str, Any], structure: Structure = ARGON3):
+        return ProgramInput.model_validate(
+            {
+                "program": "relay",
+                "calctype": child["calctype"],
+                "structure": structure,
+                "subprograms": [child],
+            }
+        )
+
+    with Runner(threads=4) as runner:
+        out = runner.compute(relay_input({"program": "bowl", "calctype": "gradient"}))
+        assert out.results.extras["pid"] != os.getpid()
+        assert out.results.energy == pytest.approx(k * np.sum(ARGON3.geometry**2))
+        assert np.array_equal(out.results.gradient, 2 * k * ARGON3.geometry)
+        assert out.results.extras["list"] == [True, True]
+        assert out.results.extras["threads"] == 1  # what the child asks for
+        # A program with sessions of its own opens one here: warm-started
+        toy = {"program": "toy", "calctype": "gradient", "model": {"method": "lj"}}
+        assert runner.compute(relay_input(toy)).results.extras["warm"] == [False, True]
+        # A failed subprogram fails the program in the worker with kind program
+        with pytest.raises(ProgramError) as e:
+            runner.compute(relay_input({**toy, "keywords": {"fail": "convergence"}}))
+        assert e.value.error.kind is ErrorKind.program
+        assert e.value.error.program == "toy"
+        assert e.value.error.cause.kind is ErrorKind.convergence
+        # Large arrays cross both ways as files: a 390 x 390 Hessian, bit for bit
+        big = Structure(symbols=["Ar"] * 130, geometry=_lattice(130))
+        out = runner.compute(
+            relay_input({"program": "bowl", "calctype": "hessian"}, big)
+        )
+        assert np.array_equal(out.results.hessian, 2 * k * np.eye(390))
+
+
+def _lattice(n: int) -> np.ndarray:
+    """n argon positions (bohr) on a cubic lattice 7.2 bohr apart."""
+    side = int(np.ceil(n ** (1 / 3)))
+    points = [(i, j, k) for i in range(side) for j in range(side) for k in range(side)]
+    return 7.2 * np.array(points[:n], dtype=float)
+
+
+def test_large_arrays_cross_workers_as_files(isolated, monkeypatch):
+    """Arrays over 1 MiB cross as .npy files, bit for bit, deleted once read."""
+    from qccompute import _wire
+
+    read = []
+    load = _wire.load
+
+    def spy(cls, data, directory):
+        read.append((directory, list(_wire._pointers(data))))
+        return load(cls, data, directory)
+
+    monkeypatch.setattr(_wire, "load", spy)
+    big = Structure(symbols=["Ar"] * 130, geometry=_lattice(130))
+    inp = toy_input("hessian", program="isolated").model_copy(update={"structure": big})
+    with Runner(threads=1) as runner:
+        out = runner.compute(inp)
+        directory = next(d for d, names in read if names)
+        assert directory.is_dir() and not any(directory.iterdir())  # all read
+    assert not directory.exists()  # removed with the worker
+    here = qccompute.compute(inp.model_copy(update={"program": "toy"}))
+    assert out.results.hessian.shape == (390, 390)
+    assert np.array_equal(out.results.hessian, here.results.hessian)
+
+
 def test_timeouts_kill_workers(isolated):
     with Runner(threads=1) as runner:
         with pytest.raises(ProgramError) as e:

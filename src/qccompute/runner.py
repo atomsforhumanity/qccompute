@@ -386,6 +386,43 @@ def _refused(inp: Input, exc: BaseException) -> tuple[Output, ProgramError]:
     return out, failure
 
 
+def _subprogram_results(
+    inputs: Input | Sequence[Input],
+    results: Sequence[tuple[Output, ProgramError | None]],
+    raise_exc: bool,
+) -> Any:
+    """Subprograms' outputs as ``RunContext.compute`` returns them.
+
+    Each failure is marked with its subprogram, so a program that lets it escape fails
+    with kind ``program`` (`_as_failure`). With ``raise_exc``, one input's failure
+    raises, and a list's failures raise together as `qcdata.ProgramErrors`.
+
+    Args:
+        inputs: One input, or the list.
+        results: Each input's output and failure, in order.
+        raise_exc: Raise for failures.
+
+    Returns:
+        The output, or the outputs in input order.
+    """
+    one = isinstance(inputs, ProgramInput | FileInput)
+    listed = [inputs] if one else list(inputs)  # type: ignore[list-item]
+    for inp, (_, failure) in zip(listed, results, strict=True):
+        if failure is not None:
+            failure._subprogram = inp.program  # type: ignore[attr-defined]
+    outputs = [out for out, _ in results]
+    failures = [failure for _, failure in results if failure is not None]
+    if failures and raise_exc:
+        if one:
+            raise failures[0]
+        raise ProgramErrors(
+            f"{len(failures)} of {len(outputs)} subprogram calculations failed",
+            failures,
+            outputs,
+        )
+    return outputs[0] if one else outputs
+
+
 def _put(
     store: Store,
     out: Output,
@@ -1146,28 +1183,14 @@ class Runner:
         memory = ctx.memory_gib if ctx.threads is not None else self._host_memory()
         timeout = ctx.timeout
         if isinstance(inputs, ProgramInput | FileInput):
-            out, failure = self._run(inputs, threads, devices, memory, timeout)
-            if failure is not None and raise_exc:
-                failure._subprogram = inputs.program  # type: ignore[attr-defined]
-                raise failure
-            return out
+            ran = [self._run(inputs, threads, devices, memory, timeout)]
+            return _subprogram_results(inputs, ran, raise_exc)
         inputs = list(inputs)
-        outputs: list[Output | None] = [None] * len(inputs)
-        failures: dict[int, ProgramError] = {}
+        results: list[Any] = [None] * len(inputs)
         grant = (threads, devices, memory, timeout)
         for i, out, failure in self._run_list(inputs, None, False, (), None, grant):
-            outputs[i] = out
-            if failure is not None:
-                failure._subprogram = inputs[i].program  # type: ignore[attr-defined]
-                failures[i] = failure
-        done = [o for o in outputs if o is not None]
-        if failures and raise_exc:
-            raise ProgramErrors(
-                f"{len(failures)} of {len(inputs)} subprogram calculations failed",
-                [failures[i] for i in sorted(failures)],
-                done,
-            )
-        return done
+            results[i] = (out, failure)
+        return _subprogram_results(inputs, results, raise_exc)
 
     def _subsession(
         self,

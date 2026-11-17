@@ -6,6 +6,12 @@ program offers in process (``compute``, ``compute_batch``, ``plan`` and sessions
 runner can place a program in this process or in a worker without callers noticing:
 ``Worker.session`` returns an object with the `qccompute.program.Session` methods.
 
+The worker's program runs its subprograms here: each ``ctx.compute`` or ``ctx.session``
+in the worker comes back as a call that this process's runner answers within the
+calculation's grant, so a subprogram may be any program this process finds, registered
+ones included. Large arrays cross as ``.npy`` files in a directory of the worker's own,
+removed when it closes.
+
 A worker isolates its program: a crash ends the worker, not the caller, and is a
 `qcdata.ProgramError` of kind ``environment``, code ``worker_died``, with the exit
 status and the end of the worker's stderr. A worker that reports a lost GPU context
@@ -18,15 +24,19 @@ from __future__ import annotations
 import collections
 import json
 import os
-import select
+import shutil
 import subprocess
 import sys
+import tempfile
 import threading
+import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
+from pathlib import Path
 from types import TracebackType
-from typing import IO, Any
+from typing import IO, Any, Protocol, TypeVar
 
 import numpy as np
+from pydantic import BaseModel
 from qcdata import (
     Accuracy,
     CalcType,
@@ -43,15 +53,22 @@ from qcdata import (
     Request,
 )
 
+from . import _wire
 from .program import (
     Capabilities,
     ComputeSession,
     Plan,
     RunContext,
+    Session,
     failed_frame,
+    find_program,
+    plan_of,
 )
+from .serve import Host
 
 __all__ = ["Worker", "WorkerSession", "THREAD_VARIABLES", "PATH_VARIABLE"]
+
+M = TypeVar("M", bound=BaseModel)
 
 #: The client's ``sys.path`` for the worker, which takes it out of its environment.
 PATH_VARIABLE = "QCCOMPUTE_WORKER_SYS_PATH"
@@ -65,15 +82,6 @@ THREAD_VARIABLES = (
     "VECLIB_MAXIMUM_THREADS",
     "NUMEXPR_NUM_THREADS",
 )
-
-
-def _plain(x: Any) -> Any:
-    """``json``'s fallback for numpy values and sets."""
-    if hasattr(x, "tolist"):
-        return x.tolist()
-    if isinstance(x, set | frozenset):
-        return sorted(x, key=str)
-    raise TypeError(f"{type(x).__name__} is not JSON serializable")
 
 
 class Worker:
@@ -99,7 +107,7 @@ class Worker:
         gpus: Sequence[str] | None = None,
         environment: Mapping[str, str] | None = None,
     ) -> None:
-        """Start the worker and read its hello."""
+        """Start the worker, read its hello and set the connection's options."""
         env = dict(os.environ)
         # The worker imports what this process can import; not through PYTHONPATH,
         # which programs the worker starts (Psi4, other Pythons) would inherit.
@@ -116,19 +124,21 @@ class Worker:
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            text=True,
-            encoding="utf-8",
             env=env,
         )
         self._stderr: collections.deque[str] = collections.deque(maxlen=40)
         threading.Thread(target=self._drain, daemon=True).start()
         self._lock = threading.Lock()
+        self._write_lock = threading.Lock()
         self._ids = 0
         self._dead: ProgramError | None = None
+        self._dir: Path | None = None
         assert self._proc.stdout is not None and self._proc.stdin is not None
-        self._out: IO[str] = self._proc.stdout
-        self._in: IO[str] = self._proc.stdin
-        line = self._out.readline()
+        self._lines = _wire.Lines(self._proc.stdout.fileno())
+        self._in: IO[bytes] = self._proc.stdin
+        self._parent = _Parent()
+        self._calls = Host(self._parent)
+        line = self._lines.readline()
         if not line:
             raise self._died("did not start")
         hello = json.loads(line)
@@ -137,6 +147,15 @@ class Worker:
         self.capabilities: Capabilities = Capabilities.model_validate(
             hello["capabilities"]
         )
+        if hello.get("array_files") or hello.get("calls"):
+            if hello.get("array_files"):
+                self._dir = Path(tempfile.mkdtemp(prefix="qccompute-worker-"))
+                self._calls.array_dir = self._dir
+            self._ask(
+                "options",
+                array_dir=None if self._dir is None else str(self._dir),
+                calls=bool(hello.get("calls")),
+            )
 
     def __repr__(self) -> str:
         """Show the program and process."""
@@ -146,7 +165,7 @@ class Worker:
         """Keep the end of the worker's stderr (its logs), so its pipe never fills."""
         assert self._proc.stderr is not None
         for line in self._proc.stderr:
-            self._stderr.append(line)
+            self._stderr.append(line.decode("utf-8", "replace"))
 
     @property
     def alive(self) -> bool:
@@ -175,8 +194,24 @@ class Worker:
         )
         return self._dead
 
-    def _ask(self, op: str, timeout: float | None = None, **fields: Any) -> Any:
+    def _send(self, message: dict[str, Any]) -> None:
+        """Write one line to the worker."""
+        data = (_wire.encode(message) + "\n").encode("utf-8")
+        with self._write_lock:
+            self._in.write(data)
+            self._in.flush()
+
+    def _ask(
+        self,
+        op: str,
+        timeout: float | None = None,
+        grant: RunContext | None = None,
+        **fields: Any,
+    ) -> Any:
         """Send one message and return its result.
+
+        While it is in flight, the worker's program may call back for subprograms;
+        each call is answered in a thread of its own, within ``grant``.
 
         Raises:
             ProgramError: The worker refused the message (``ok: false``), died, or
@@ -187,20 +222,16 @@ class Worker:
             if self._dead is not None:
                 raise ProgramError(self._dead.error)
             self._ids += 1
-            message = json.dumps(
-                {"id": self._ids, "op": op, **fields},
-                allow_nan=False,
-                separators=(",", ":"),
-                default=_plain,
-            )
+            self._parent.ctx = grant
             try:
-                self._in.write(message + "\n")
-                self._in.flush()
+                self._send({"id": self._ids, "op": op, **fields})
             except (BrokenPipeError, OSError):
                 raise self._died("died") from None
-            if timeout is not None:
-                ready, _, _ = select.select([self._out], [], [], timeout)
-                if not ready:
+            deadline = None if timeout is None else time.monotonic() + timeout
+            while True:
+                left = None if deadline is None else deadline - time.monotonic()
+                line = self._lines.readline(None if left is None else max(0.0, left))
+                if line is None:
                     self._proc.kill()
                     self._died("was killed")
                     raise ProgramError.of(
@@ -208,15 +239,38 @@ class Worker:
                         f"{self.name} did not finish within {timeout:g} s; its worker "
                         "was killed.",
                     )
-            line = self._out.readline()
-            if not line:
-                raise self._died("died")
-        reply = json.loads(line)
+                if not line:
+                    raise self._died("died")
+                reply = json.loads(line)
+                if "call" in reply and "id" not in reply:
+                    self._answer(reply)
+                    continue
+                break
         if not reply.get("ok"):
             raise ProgramError(ErrorInfo.model_validate(reply["error"]))
         if self._proc.poll() is not None or _lost(reply.get("result")):
             self._died("exited after losing its GPU context")
         return reply.get("result")
+
+    def _answer(self, call: dict[str, Any]) -> None:
+        """Answer a subprogram call of the worker's program, in a thread of its own."""
+
+        def answer() -> None:
+            line = self._calls.answer(call, key="call")
+            try:
+                with self._write_lock:
+                    self._in.write((line + "\n").encode("utf-8"))
+                    self._in.flush()
+            except (OSError, ValueError):  # the worker is gone
+                pass
+
+        threading.Thread(target=answer, daemon=True, name="qccompute-call").start()
+
+    def _dump(self, value: Any) -> Any:
+        return _wire.dump(value, self._dir)
+
+    def _load(self, cls: type[M], data: Any) -> M:
+        return _wire.load(cls, data, self._dir)
 
     @staticmethod
     def _ctx(ctx: RunContext | None) -> dict[str, Any]:
@@ -239,7 +293,8 @@ class Worker:
 
         Args:
             inp: The input.
-            ctx: The grant; its ``timeout`` is enforced by killing the worker.
+            ctx: The grant; its ``timeout`` is enforced by killing the worker, and the
+                program's subprograms run within it.
 
         Returns:
             The successful output.
@@ -250,12 +305,9 @@ class Worker:
         """
         timeout = ctx.timeout if ctx is not None else None
         result = self._ask(
-            "compute",
-            timeout,
-            input=inp.model_dump(mode="json"),
-            ctx=self._ctx(ctx),
+            "compute", timeout, ctx, input=self._dump(inp), ctx=self._ctx(ctx)
         )
-        out: ProgramOutput[Any, Data] = ProgramOutput.model_validate(result)
+        out: ProgramOutput[Any, Data] = self._load(ProgramOutput, result)
         if not out.success:
             error = out.error or ErrorInfo(kind=ErrorKind.internal, message="failed")
             raise ProgramError(error, output=out)
@@ -273,10 +325,11 @@ class Worker:
         result = self._ask(
             "compute_batch",
             timeout,
-            inputs=[i.model_dump(mode="json") for i in inputs],
+            ctx,
+            inputs=[self._dump(i) for i in inputs],
             ctx=self._ctx(ctx),
         )
-        return [ProgramOutput.model_validate(r) for r in result]
+        return [self._load(ProgramOutput, r) for r in result]
 
     def plan(self, inp: ProgramInput) -> Plan:
         """The program's plan of an input.
@@ -284,7 +337,7 @@ class Worker:
         Raises:
             ProgramError: The program refuses the input.
         """
-        return Plan.model_validate(self._ask("plan", input=inp.model_dump(mode="json")))
+        return Plan.model_validate(self._ask("plan", input=self._dump(inp)))
 
     def session(
         self,
@@ -319,13 +372,16 @@ class Worker:
             return opened
         reply = self._ask(
             "open",
-            input=inp.model_dump(mode="json"),
+            None,
+            ctx,
+            input=self._dump(inp),
             calctypes=sorted(CalcType(c).value for c in calctypes)
             if calctypes
             else None,
             ctx=self._ctx(ctx),
         )
-        return WorkerSession(self, reply["session"], inp, on_close)
+        version = str(reply.get("program_version") or self.version())
+        return WorkerSession(self, reply["session"], inp, version, on_close, ctx)
 
     def _compute_any(self, inputs: Any, ctx: RunContext | None, raise_exc: bool) -> Any:
         """Compute for a session over compute: one input raises, a list does not."""
@@ -355,6 +411,9 @@ class Worker:
         self._dead = self._dead or ProgramError.of(
             "environment", f"The worker for {self.spec} is closed.", code="worker_died"
         )
+        self._calls.close_all()  # sessions its program opened here
+        if self._dir is not None:
+            shutil.rmtree(self._dir, ignore_errors=True)
 
     def __enter__(self) -> Worker:
         """Use the worker as a context manager that stops it."""
@@ -365,10 +424,73 @@ class Worker:
         self.close()
 
     def __del__(self) -> None:
-        """Do not leave a worker process behind."""
+        """Do not leave a worker process or its array directory behind."""
         proc = getattr(self, "_proc", None)
         if proc is not None and proc.poll() is None:
             proc.kill()
+        directory = getattr(self, "_dir", None)
+        if directory is not None:
+            shutil.rmtree(directory, ignore_errors=True)
+
+
+class _Parent:
+    """This process's runner, as the program that answers a worker's subprogram calls.
+
+    A `qccompute.serve.Host` answers the calls with it. ``ctx`` is the grant of the
+    message in flight: the worker program's subprograms run within it, exactly as
+    they would for the program in this process.
+    """
+
+    name = "subprograms"
+
+    def __init__(self) -> None:
+        self.ctx: RunContext | None = None
+
+    def version(self) -> str:
+        return ""
+
+    def capabilities(self) -> Capabilities:
+        return Capabilities(calctypes=frozenset(CalcType), sessions=True, batches=True)
+
+    def settings_schema(self, calctype: CalcType) -> dict[str, Any]:
+        return {}
+
+    def record_schema(self, calctype: CalcType) -> dict[str, Any]:
+        return {}
+
+    def plan(self, inp: ProgramInput) -> Plan:
+        from .runner import _not_found
+
+        program = find_program(inp.program)
+        if program is None:
+            raise _not_found(inp)
+        return plan_of(program, inp)
+
+    def _grant(self) -> RunContext:
+        if self.ctx is None:
+            raise ProgramError.of(
+                "internal", "a subprogram call came with no calculation in flight"
+            )
+        return self.ctx
+
+    def compute(
+        self, inp: ProgramInput, ctx: RunContext | None = None
+    ) -> ProgramOutput[Any, Data]:
+        return self._grant().compute(inp, raise_exc=False)
+
+    def compute_batch(
+        self, inputs: Sequence[ProgramInput], ctx: RunContext | None = None
+    ) -> list[ProgramOutput[Any, Data]]:
+        return self._grant().compute(list(inputs), raise_exc=False)
+
+    def open_session(
+        self,
+        inp: ProgramInput,
+        ctx: RunContext | None = None,
+        calctypes: frozenset[CalcType] | None = None,
+    ) -> Session:
+        threads = None if ctx is None else ctx.threads
+        return self._grant().session(inp, threads=threads, calctypes=calctypes)
 
 
 _REQUEST_DEFAULTS = Request().model_dump(mode="json")
@@ -406,33 +528,58 @@ class _ClosingComputeSession(ComputeSession):
         super().close()
 
 
-class WorkerSession:
-    """A program's own session in a worker process; see `qccompute.program.Session`.
+class _Peer(Protocol):
+    """The other end of a session's pipe: a `Worker`, or (in a worker) its client."""
 
-    Positions and results cross the pipe as shortest round-trip decimals, so they are
-    bit for bit those of the session in process.
+    @property
+    def alive(self) -> bool: ...
+
+    def _ask(
+        self,
+        op: str,
+        timeout: float | None = None,
+        grant: RunContext | None = None,
+        **fields: Any,
+    ) -> Any: ...
+
+    def _load(self, cls: type[M], data: Any) -> M: ...
+
+
+class WorkerSession:
+    """A session in another process; see `qccompute.program.Session`.
+
+    A program's own session in a worker, or, inside a worker, a subprogram's session
+    in its client. Positions and results cross the pipe as shortest round-trip
+    decimals (large arrays as ``.npy`` files), so they are bit for bit those of the
+    session in process.
     """
 
     def __init__(
         self,
-        worker: Worker,
+        worker: _Peer,
         key: str,
         inp: ProgramInput,
+        program_version: str = "",
         on_close: Callable[[], None] | None = None,
+        grant: RunContext | None = None,
     ) -> None:
         """Wrap an open session of a worker."""
         self._worker = worker
         self._key = key
         self._inp = inp
         self._on_close = on_close
+        self._grant = grant
         self._closed = False
-        self.program: str = worker.name
-        self.program_version: str = worker.version()
+        self.program: str = inp.program
+        self.program_version: str = program_version
 
     @property
     def input_data(self) -> ProgramInput:
         """The input the session was opened with."""
         return self._inp
+
+    def _ask(self, op: str, **fields: Any) -> Any:
+        return self._worker._ask(op, None, self._grant, session=self._key, **fields)
 
     def compute(
         self,
@@ -464,10 +611,7 @@ class WorkerSession:
             raise ProgramError.of(
                 "numerical", "positions are not finite", code="non_finite"
             )
-        fields = _request_fields(request)
-        frame = self._frame(
-            self._worker._ask("compute", session=self._key, **fields), request
-        )
+        frame = self._frame(self._ask("compute", **_request_fields(request)), request)
         if not frame.success:
             error = frame.error or ErrorInfo(kind=ErrorKind.internal, message="failed")
             raise ProgramError(error, frame=frame)
@@ -480,7 +624,7 @@ class WorkerSession:
             if request.positions is not None:
                 structure = structure.model_copy(update={"geometry": request.positions})
             result = {**result, "structure": structure}
-        return Frame.model_validate(result)
+        return self._worker._load(Frame, result)
 
     def compute_many(self, requests: Sequence[Request]) -> list[Frame]:
         """Evaluate many geometries; see `qccompute.program.Session.compute_many`.
@@ -505,10 +649,8 @@ class WorkerSession:
             else:
                 sent.append(i)
         if sent:
-            result = self._worker._ask(
-                "compute_many",
-                session=self._key,
-                requests=[_request_fields(requests[i]) for i in sent],
+            result = self._ask(
+                "compute_many", requests=[_request_fields(requests[i]) for i in sent]
             )
             for i, f in zip(sent, result, strict=True):
                 frames[i] = self._frame(f, requests[i])
@@ -517,13 +659,13 @@ class WorkerSession:
     def reset(self, lineage: Lineage = ...) -> None:
         """Forget one lineage's history (None: the default one); omitted: all."""
         if lineage is ...:
-            self._worker._ask("reset", session=self._key)
+            self._ask("reset")
         else:
-            self._worker._ask("reset", session=self._key, lineage=lineage)
+            self._ask("reset", lineage=lineage)
 
     def plan(self) -> Plan:
         """The session's pinned plan."""
-        return Plan.model_validate(self._worker._ask("plan", session=self._key))
+        return Plan.model_validate(self._ask("plan"))
 
     def close(self) -> None:
         """Close the session in the worker."""
@@ -532,7 +674,7 @@ class WorkerSession:
         self._closed = True
         if self._worker.alive:
             try:
-                self._worker._ask("close", session=self._key)
+                self._ask("close")
             except ProgramError:
                 pass
         if self._on_close is not None:

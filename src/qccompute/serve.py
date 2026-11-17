@@ -1,7 +1,7 @@
 """The worker: one loop that hosts any program's sessions in its own process.
 
-    python -m qccompute.serve linus                  # stdin/stdout, one client
-    python -m qccompute.serve linus --socket PATH    # a Unix socket, one client at a time
+    python -m qccompute.serve mychem                  # stdin/stdout, one client
+    python -m qccompute.serve mychem --socket PATH    # a Unix socket, one client at a time
 
 A worker keeps a program alive between calls (warm starts, a live GPU context) and
 isolates it: a crash ends the worker, not its caller. The program is found by name
@@ -13,25 +13,41 @@ qcdata and the protocol, and knows nothing of the program beyond it. Design:
 Wire, one JSON message per line:
 
 - The first line is the hello: ``{"protocol": 1, "program", "version", "capabilities",
-  "extras"}``; ``extras`` are the capabilities' (``{"numerics_epoch": 8}``), so a store
-  guard can check them without importing the program.
+  "extras", "array_files": true, "calls": true}``; ``extras`` are the capabilities'
+  (``{"numerics_epoch": 8}``), so a store guard can check them without importing the
+  program. ``array_files`` and ``calls`` say what the ``options`` message may turn on.
 - Every message carries an ``id``; replies are ``{"id", "ok": true, "result"}`` or
   ``{"id", "ok": false, "error": ErrorInfo}``. ``ok: false`` is for the message itself
   (bad JSON, an unknown op or session, a failed open or plan); a failed calculation is a
   result: a failed Frame or ProgramOutput.
-- Ops: ``open {input, calctypes, ctx}`` -> ``{"session"}``; ``compute {session,
-  positions, calctype, accuracy, lineage, outputs, seed, commit}`` -> Frame;
+- Ops: ``open {input, calctypes, ctx}`` -> ``{"session", "program_version"}``; ``compute
+  {session, positions, calctype, accuracy, lineage, outputs, seed, commit}`` -> Frame;
   ``compute_many {session, requests}`` -> [Frame]; ``reset {session, lineage}`` (absent:
   every lineage; null: the default one); ``plan {session}``, ``{session, calctype}`` or
   ``{input}``; ``close {session}``; ``compute {input, ctx}`` (a one-off) ->
   ProgramOutput; ``compute_batch {inputs, ctx}`` -> [ProgramOutput]; ``lineages
-  {session}`` where the session offers them.
+  {session}`` where the session offers them; ``options {array_dir, calls}``.
 - ``ctx`` is ``{threads, memory_gib, device_memory_gib, timeout, scratch_dir, gpus}``.
   The GPU is fixed when the worker is spawned, so ``gpus`` must be empty or match
   ``CUDA_VISIBLE_DEVICES``.
 - Numbers are shortest round-trip decimals, so positions and results cross bit for bit.
   No NaN or Infinity: a message holding one is refused, and a non-finite result becomes a
   failed frame (kind ``numerical``, code ``non_finite``).
+- ``options`` sets what this connection uses; a plain JSON-lines client never sends it
+  and gets neither:
+
+  - ``array_dir``: a directory both sides can read and write (workers are local). An
+    array field over 1 MiB, in a message either way, crosses as a ``.npy`` file there,
+    with qcdata's pointer ``{path, shape, dtype, sha256}`` in its place (the format of a
+    saved model's arrays); the reader checks it and deletes the file.
+  - ``calls: true``: the client runs the subprograms of this worker's program (its
+    ``ctx.compute`` and ``ctx.session``), so they see the programs the client sees,
+    registered ones included, and share its grant. While a message is in flight the
+    worker may write call lines, ``{"call", "op", ...}`` with the ops above (``compute
+    {input}``, ``compute_batch {inputs}``, ``open {input, calctypes, ctx: {threads}}``
+    and the session ops); the client answers each on stdin, ``{"call", "ok", "result"}``
+    or ``{"call", "ok": false, "error"}``, in any order. Without it, subprograms run in
+    the worker's own default runner.
 - End of input closes every session and exits 0. After a reply whose error has the code
   ``device_lost`` (a GPU fault that poisoned the device context) the worker exits 3:
   nothing more can run in this process.
@@ -39,8 +55,6 @@ Wire, one JSON message per line:
 Hygiene: stdout carries protocol lines only. At start the worker writes the protocol to a
 dup of the original stdout and points file descriptor 1 at stderr, because CUDA, BLAS and
 other libraries print.
-
-First written by the linus session (SESSION package) against this protocol.
 """
 
 from __future__ import annotations
@@ -52,9 +66,10 @@ import json
 import os
 import socket
 import sys
+import threading
 import traceback
+from collections import deque
 from collections.abc import Callable, Iterable, Iterator
-from enum import Enum
 from pathlib import Path
 from typing import IO, Any
 
@@ -71,6 +86,7 @@ from qcdata import (
     Request,
 )
 
+from . import _wire
 from .program import (
     BatchProgram,
     Program,
@@ -89,7 +105,9 @@ __all__ = ["PROTOCOL", "EXIT_DEVICE_LOST", "Host", "serve", "main"]
 PROTOCOL = 1
 #: The exit status after a ``device_lost`` reply.
 EXIT_DEVICE_LOST = 3
-_OPS = "open, compute, compute_batch, compute_many, reset, plan, close, lineages"
+_OPS = (
+    "open, compute, compute_batch, compute_many, reset, plan, close, lineages, options"
+)
 
 
 class MessageError(Exception):
@@ -133,36 +151,9 @@ def load_program(spec: str) -> Program:
     return found
 
 
-def _dump(value: Any) -> Any:
-    """A model, or a list of them, as Python values for `_encode`."""
-    if isinstance(value, list):
-        return [_dump(v) for v in value]
-    if hasattr(value, "model_dump"):
-        return value.model_dump(mode="python")
-    return value
-
-
-def _plain(x: Any) -> Any:
-    """``json``'s fallback: numpy values, paths, enums and sets as JSON values."""
-    if hasattr(x, "tolist"):
-        return x.tolist()
-    if isinstance(x, Path):
-        return str(x)
-    if isinstance(x, Enum):
-        return x.value
-    if isinstance(x, set | frozenset):
-        return sorted(x, key=str)
-    raise TypeError(f"{type(x).__name__} is not JSON serializable")
-
-
-def _encode(reply: dict[str, Any]) -> str:
-    """One protocol line; ValueError on NaN or Infinity."""
-    return json.dumps(reply, allow_nan=False, separators=(",", ":"), default=_plain)
-
-
 def _finite(value: Any) -> bool:
     try:
-        json.dumps(value, allow_nan=False, default=_plain)
+        json.dumps(value, allow_nan=False, default=_wire.plain)
     except ValueError:
         return False
     return True
@@ -212,13 +203,22 @@ class Host:
 
     Args:
         program: The program the worker hosts.
+        array_dir: Where array files cross (the ``options`` message sets it per
+            connection); None: arrays cross inline.
+
+    Attributes:
+        connection: The client being served, through which the program's subprograms
+            run when it asked for ``calls``.
     """
 
-    def __init__(self, program: Program):
+    def __init__(self, program: Program, array_dir: Path | None = None):
         """Host a program."""
         self.program = program
+        self.array_dir = array_dir
+        self.connection: _Connection | None = None
         self.sessions: dict[str, Session] = {}
         self._ids = itertools.count(1)
+        self._subprograms = _ClientRunner(self)
         self.device_lost = False
 
     def hello(self) -> dict[str, Any]:
@@ -230,10 +230,12 @@ class Host:
             "version": self.program.version(),
             "capabilities": caps,
             "extras": dict(caps.get("extras") or {}),
+            "array_files": True,
+            "calls": True,
         }
 
     def handle(self, msg: dict[str, Any]) -> Any:
-        """The result of one message, as Python values.
+        """The result of one message: models, lists of them, or plain values.
 
         Raises:
             MessageError: The message cannot be acted on.
@@ -246,8 +248,43 @@ class Host:
             raise MessageError(f"unknown op {op!r}; ops: {_OPS}")
         return fn(msg)
 
+    def answer(self, msg: dict[str, Any], key: str = "id") -> str:
+        """The reply line to one parsed message, under ``key`` (``id``, or ``call``)."""
+        mid = msg.get(key)
+        try:
+            result = _wire.dump(self.handle(msg), self.array_dir)
+            try:
+                return _wire.encode({key: mid, "ok": True, "result": result})
+            except ValueError:
+                return _wire.encode(
+                    {key: mid, "ok": True, "result": _non_finite(result)}
+                )
+        except (MessageError, ProgramError) as e:  # ProgramError: a closed session
+            error = e.error
+        except Exception as e:  # noqa: BLE001 - a bug in the loop or a program: keep serving
+            traceback.print_exc(file=sys.stderr)
+            error = ErrorInfo(
+                kind=ErrorKind.internal, message=f"{type(e).__name__}: {e}"
+            )
+        return _wire.encode(
+            {key: mid, "ok": False, "error": error.model_dump(mode="json")}
+        )
+
+    def op_options(self, msg: dict[str, Any]) -> dict[str, Any]:
+        """Set this connection's array directory and calls; the options in effect."""
+        directory = msg.get("array_dir")
+        if directory is not None and not Path(directory).is_dir():
+            raise MessageError(f"array_dir {directory!r} is not a directory")
+        self.array_dir = None if directory is None else Path(directory)
+        if self.connection is not None:
+            self.connection.calls = bool(msg.get("calls"))
+        return {
+            "array_dir": directory,
+            "calls": self.connection is not None and self.connection.calls,
+        }
+
     def op_open(self, msg: dict[str, Any]) -> dict[str, str]:
-        """Open a session; its id."""
+        """Open a session; its id and the program's version."""
         if not isinstance(self.program, SessionProgram):
             raise MessageError(
                 f"{self.program.name} has no sessions", ErrorKind.unsupported
@@ -266,14 +303,14 @@ class Host:
             raise MessageError.of(e) from None
         key = f"s{next(self._ids)}"
         self.sessions[key] = session
-        return {"session": key}
+        return {"session": key, "program_version": session.program_version}
 
     def op_compute(self, msg: dict[str, Any]) -> Any:
         """A session's frame, or a one-off output for ``input``."""
         if "input" in msg:
             out = self._compute(self._input(msg), self._ctx(msg.get("ctx")))
             self._watch(out)
-            return _dump(out)
+            return out
         session = self._session(msg)
         fields = ("positions", "calctype", "accuracy", "lineage", "outputs", "seed")
         r = _request({k: msg[k] for k in (*fields, "commit") if k in msg})
@@ -292,7 +329,7 @@ class Host:
                 self._structure(session, r), e, self.program.name
             )
         self._watch(frame)
-        return _dump(frame)
+        return frame
 
     def op_compute_batch(self, msg: dict[str, Any]) -> Any:
         """Outputs of many one-off inputs, computed together; failures in place."""
@@ -302,12 +339,12 @@ class Host:
             try:
                 outs = list(self.program.compute_batch(inputs, ctx))  # type: ignore[arg-type]
             except Exception as e:  # noqa: BLE001 - a bug: every input fails with it
-                outs = [_failed(i, e) for i in inputs]
+                outs = [_failed(i, e, self.program.name) for i in inputs]
         else:
             outs = [self._compute(i, ctx) for i in inputs]
         for out in outs:
             self._watch(out)
-        return _dump(outs)
+        return outs
 
     def _compute(
         self, inp: ProgramInput | FileInput, ctx: RunContext
@@ -316,7 +353,7 @@ class Host:
         try:
             return self.program.compute(inp, ctx)  # type: ignore[arg-type]
         except Exception as e:  # noqa: BLE001 - failures are results on the wire
-            return _failed(inp, e)
+            return _failed(inp, e, self.program.name)
         finally:
             ctx.cleanup()
 
@@ -332,7 +369,7 @@ class Host:
             frames = group.results
         for frame in frames:
             self._watch(frame)
-        return _dump(list(frames))
+        return list(frames)
 
     def op_reset(self, msg: dict[str, Any]) -> None:
         """Forget one lineage (null: the default one), or every lineage when absent."""
@@ -355,7 +392,7 @@ class Host:
         """A session's plan, its input's plan at another calctype, or an input's plan."""
         try:
             if "input" in msg:
-                return _dump(plan_of(self.program, self._input(msg)))  # type: ignore[arg-type]
+                return plan_of(self.program, self._input(msg))  # type: ignore[arg-type]
             session = self._session(msg)
             if msg.get("calctype"):
                 try:
@@ -363,8 +400,8 @@ class Host:
                 except ValueError as e:
                     raise MessageError(str(e)) from None
                 inp = session.input_data.model_copy(update={"calctype": calctype})
-                return _dump(plan_of(self.program, inp))
-            return _dump(session.plan())
+                return plan_of(self.program, inp)
+            return session.plan()
         except ProgramError as e:
             raise MessageError.of(e) from None
 
@@ -375,7 +412,7 @@ class Host:
 
     def close_all(self) -> None:
         """Close every session, reporting (not raising) failures."""
-        for session in self.sessions.values():
+        for session in list(self.sessions.values()):
             try:
                 session.close()
             except Exception as e:  # noqa: BLE001 - closing at exit: report, go on
@@ -386,8 +423,8 @@ class Host:
         try:
             data = msg["input"]
             if isinstance(data, dict) and "calctype" not in data:
-                return FileInput.model_validate(data)
-            return ProgramInput.model_validate(data)
+                return _wire.load(FileInput, data, self.array_dir)
+            return _wire.load(ProgramInput, data, self.array_dir)
         except Exception as e:  # noqa: BLE001 - a ValidationError or a missing key
             raise MessageError(f"invalid input: {e}") from None
 
@@ -431,6 +468,7 @@ class Host:
             timeout=fields.get("timeout"),
             gpus=visible,
             scratch=Path(scratch) if scratch else None,
+            runner=self._subprograms,
         )
 
     def _watch(self, out: Frame | ProgramOutput[Any, Any]) -> None:
@@ -442,22 +480,213 @@ class Host:
             self.device_lost = True
 
 
-def _failed(inp: ProgramInput | FileInput, e: Exception) -> ProgramOutput[Any, Any]:
-    """The failed output of a one-off compute that raised."""
-    trace = "".join(traceback.format_exception(e))
-    if isinstance(e, ProgramError):
-        attached = e.output
-        if isinstance(attached, ProgramOutput):
-            return attached
+def _failed(
+    inp: ProgramInput | FileInput, e: Exception, program: str
+) -> ProgramOutput[Any, Any]:
+    """The failed output of a one-off compute that raised.
+
+    As in the runner: a subprogram's failure the program let escape is kind
+    ``program`` with the subprogram's error as its cause; any other exception than a
+    `ProgramError` is a bug, kind ``internal``.
+    """
+    from .runner import _as_failure
+
+    if not isinstance(e, ProgramError | ExceptionGroup):
+        traceback.print_exc(file=sys.stderr)
+    return _as_failure(inp, e, program)[0]
+
+
+class _Connection:
+    """One client of the worker: its message lines, and calls to it for subprograms.
+
+    The serve loop reads messages; while one is handled, the threads of the program
+    that make calls read the client's answers, one thread at a time, and hand each to
+    the thread waiting for it.
+    """
+
+    def __init__(self, lines: Iterator[str], write: Callable[[str], None]) -> None:
+        self._lines = lines
+        self._write = write
+        self.calls = False
+        self._write_lock = threading.Lock()
+        self._read = threading.Condition()
+        self._reading = False
+        self._eof = False
+        self._answers: dict[int, dict[str, Any]] = {}
+        self._backlog: deque[str] = deque()
+        self._ids = itertools.count(1)
+
+    def write(self, line: str) -> None:
+        """Write one line to the client."""
+        with self._write_lock:
+            self._write(line)
+
+    def messages(self) -> Iterator[str]:
+        """The client's message lines, for the serve loop."""
+        while True:
+            with self._read:
+                line = self._backlog.popleft() if self._backlog else None
+                if line is None and self._eof:
+                    return
+            if line is None:
+                line = next(self._lines, None)
+                if line is None:
+                    return
+            yield line
+
+    def ask(self, op: str, **fields: Any) -> Any:
+        """Send a call to the client and wait for its answer's result.
+
+        Raises:
+            ProgramError: The client refused the call, or is gone.
+        """
+        n = next(self._ids)
         try:
-            return ProgramOutput.failure(
-                inp, e.error, results=e.results, traceback=trace
+            self.write(_wire.encode({"call": n, "op": op, **fields}))
+        except (OSError, ValueError):  # the client is gone
+            self._eof = True
+        with self._read:
+            while n not in self._answers:
+                if self._eof:
+                    raise ProgramError.of(
+                        "environment",
+                        "the worker's client closed before answering a subprogram call",
+                        code="worker_died",
+                    )
+                if self._reading:
+                    self._read.wait()
+                    continue
+                self._reading = True
+                self._read.release()
+                try:
+                    line = next(self._lines, None)
+                finally:
+                    self._read.acquire()
+                    self._reading = False
+                    self._read.notify_all()
+                self._take(line)
+            answer = self._answers.pop(n)
+        if not answer.get("ok"):
+            raise ProgramError(ErrorInfo.model_validate(answer.get("error")))
+        return answer.get("result")
+
+    def _take(self, line: str | None) -> None:
+        """File a line read while waiting: an answer, or a message for the loop."""
+        if line is None:
+            self._eof = True
+            return
+        try:
+            msg = json.loads(line)
+        except ValueError:
+            msg = None
+        if isinstance(msg, dict) and "call" in msg and "op" not in msg:
+            self._answers[msg["call"]] = msg
+        elif line.strip():
+            self._backlog.append(line)
+
+
+class _ClientRunner:
+    """A worker program's subprograms, run by the worker's client when it asked to.
+
+    The client's runner finds them (programs registered there included) and runs them
+    within its grant; without ``calls``, they run in this process's default runner.
+    """
+
+    def __init__(self, host: Host) -> None:
+        self._host = host
+
+    def _connection(self) -> _Connection | None:
+        connection = self._host.connection
+        return connection if connection is not None and connection.calls else None
+
+    def _subcompute(self, inputs: Any, ctx: RunContext, raise_exc: bool) -> Any:
+        from .runner import _error, _subprogram_results, default_runner
+
+        connection = self._connection()
+        if connection is None:
+            return default_runner()._subcompute(inputs, ctx, raise_exc)
+        directory = self._host.array_dir
+        if isinstance(inputs, ProgramInput | FileInput):
+            wire = [connection.ask("compute", input=self._dump(inputs))]
+        else:
+            inputs = list(inputs)
+            wire = connection.ask(
+                "compute_batch", inputs=[self._dump(i) for i in inputs]
             )
-        except Exception:  # noqa: BLE001 - partial results of the wrong type
-            return ProgramOutput.failure(inp, e.error, traceback=trace)
-    traceback.print_exc(file=sys.stderr)
-    error = ErrorInfo(kind=ErrorKind.internal, message=f"{type(e).__name__}: {e}")
-    return ProgramOutput.failure(inp, error, traceback=trace)
+        outputs = [_wire.load(ProgramOutput, r, directory) for r in wire]
+        results = [(o, None if o.success else _error(o)) for o in outputs]
+        return _subprogram_results(inputs, results, raise_exc)
+
+    def _subsession(
+        self,
+        inp: ProgramInput,
+        calctypes: Iterable[CalcType | str] | None,
+        threads: int | None,
+        ctx: RunContext,
+    ) -> Session:
+        from .runner import _Guarded, default_runner
+        from .worker import WorkerSession
+
+        connection = self._connection()
+        if connection is None:
+            return default_runner()._subsession(inp, calctypes, threads, ctx)
+        reply = connection.ask(
+            "open",
+            input=self._dump(inp),
+            calctypes=sorted(CalcType(c).value for c in calctypes)
+            if calctypes
+            else None,
+            ctx={} if threads is None else {"threads": threads},
+        )
+        peer = _ClientPeer(connection, self._host)
+        session = WorkerSession(
+            peer, reply["session"], inp, str(reply.get("program_version") or "")
+        )
+        return _Guarded(session, None, inp.program)
+
+    def _dump(self, inp: ProgramInput | FileInput) -> Any:
+        return _wire.dump(inp, self._host.array_dir)
+
+
+class _ClientPeer:
+    """The client, as the peer a `qccompute.worker.WorkerSession` talks to."""
+
+    def __init__(self, connection: _Connection, host: Host) -> None:
+        self._connection = connection
+        self._host = host
+        self.alive = True
+
+    def _ask(
+        self,
+        op: str,
+        timeout: float | None = None,
+        grant: RunContext | None = None,
+        **fields: Any,
+    ) -> Any:
+        return self._connection.ask(op, **fields)
+
+    def _load(self, cls: Any, data: Any) -> Any:
+        return _wire.load(cls, data, self._host.array_dir)
+
+
+def _reply(host: Host, line: str) -> str | None:
+    """The reply line to one message line; None for a late answer to a call."""
+    try:
+        msg = json.loads(line, parse_constant=_no_constant)
+        if not isinstance(msg, dict):
+            raise MessageError("a message is a JSON object")
+    except (ValueError, MessageError) as e:
+        error = (
+            e.error
+            if isinstance(e, MessageError)
+            else ErrorInfo(kind=ErrorKind.input, message=f"bad JSON: {e}")
+        )
+        return _wire.encode(
+            {"id": _id_of(line), "ok": False, "error": error.model_dump(mode="json")}
+        )
+    if "call" in msg and "op" not in msg:
+        return None
+    return host.answer(msg)
 
 
 def _id_of(line: str) -> Any:
@@ -469,38 +698,10 @@ def _id_of(line: str) -> Any:
     return msg.get("id") if isinstance(msg, dict) else None
 
 
-def _reply(host: Host, line: str) -> str:
-    """The reply line to one message line."""
-    try:
-        msg = json.loads(line, parse_constant=_no_constant)
-        if not isinstance(msg, dict):
-            raise MessageError("a message is a JSON object")
-    except (ValueError, MessageError) as e:
-        error = (
-            e.error
-            if isinstance(e, MessageError)
-            else ErrorInfo(kind=ErrorKind.input, message=f"bad JSON: {e}")
-        )
-        return _encode(
-            {"id": _id_of(line), "ok": False, "error": error.model_dump(mode="json")}
-        )
-    mid = msg.get("id")
-    try:
-        result = host.handle(msg)
-        try:
-            return _encode({"id": mid, "ok": True, "result": result})
-        except ValueError:
-            return _encode({"id": mid, "ok": True, "result": _non_finite(result)})
-    except (MessageError, ProgramError) as e:  # ProgramError: e.g. a closed session
-        error = e.error
-    except Exception as e:  # noqa: BLE001 - a bug in the loop or a program: keep serving
-        traceback.print_exc(file=sys.stderr)
-        error = ErrorInfo(kind=ErrorKind.internal, message=f"{type(e).__name__}: {e}")
-    return _encode({"id": mid, "ok": False, "error": error.model_dump(mode="json")})
-
-
 def serve(host: Host, lines: Iterable[str], write: Callable[[str], None]) -> int:
     """Answer every message of ``lines`` through ``write``, after the hello.
+
+    Each call is one connection: its ``options`` start unset.
 
     Args:
         host: The program's sessions.
@@ -511,11 +712,17 @@ def serve(host: Host, lines: Iterable[str], write: Callable[[str], None]) -> int
         The exit status: 0 at the end of input, `EXIT_DEVICE_LOST` after a
         ``device_lost`` reply.
     """
-    write(_encode(host.hello()))
-    for line in lines:
+    connection = _Connection(iter(lines), write)
+    host.connection = connection
+    host.array_dir = None
+    connection.write(_wire.encode(host.hello()))
+    for line in connection.messages():
         if not line.strip():
             continue
-        write(_reply(host, line))
+        reply = _reply(host, line)
+        if reply is None:
+            continue
+        connection.write(reply)
         if host.device_lost:
             return EXIT_DEVICE_LOST
     return 0

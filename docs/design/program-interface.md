@@ -213,12 +213,28 @@ between calls. `qccompute.worker.Worker` is its client.
 - **Transport:** stdin and stdout, one JSON message per line, one client per connection;
   `--socket PATH` serves a Unix socket on the same framing.
 - **Hello:** the first line, `{"protocol": 1, "program", "version", "capabilities",
-  "extras"}`.
+  "extras", "array_files": true, "calls": true}`.
 - **Envelope:** every message has an `id`; replies are `{"id", "ok": true, "result"}` or
   `{"id", "ok": false, "error"}`. `ok: false` is for the message itself; a failed
   calculation is a result (a failed output or frame).
 - **Ops:** `open`, `compute` (a session's request, or a one-off `input`), `compute_many`,
-  `compute_batch`, `reset`, `plan`, `close`, `lineages`. End of input closes every session.
+  `compute_batch`, `reset`, `plan`, `close`, `lineages`, `options`. End of input closes
+  every session.
+- **Options:** a client turns on what the hello offers with `options {array_dir,
+  calls}`, per connection; a plain JSON-lines client sends nothing and gets neither.
+- **Large arrays:** with `array_dir` (workers are local), an array field over 1 MiB, in
+  a message either way, crosses as a `.npy` file in that directory, with qcdata's pointer
+  `{path, shape, dtype, sha256}` in its place, as in a saved model; the reader checks it
+  and deletes the file. A 1200 x 1200 Hessian's output crosses in 20 ms instead of
+  0.85 s and a 28 MB line.
+- **Subprograms run in the client:** with `calls: true`, the worker's program's
+  `ctx.compute` and `ctx.session` come back to the client as call lines,
+  `{"call", "op", ...}` with the ops above, which the client answers in any order
+  (`{"call", "ok", "result"}`) while the message is in flight. So a subprogram of a
+  program in a worker (geomeTRIC's gradients) is any program the client finds,
+  registered ones included, run within the client's grant, and a nested worker is
+  started by the client, never by a worker. Without it, subprograms run in the
+  worker's own default runner.
 - **Context on the wire:** `{threads, memory_gib, device_memory_gib, timeout,
   scratch_dir}`; the GPUs are fixed when the worker starts.
 - **Numbers:** shortest round-trip decimals, so positions and results cross bit for bit;
@@ -243,7 +259,8 @@ with the failed output and the logs when it fails.
   `CUDA_VISIBLE_DEVICES`.
 - Codecs that call a Python library take over the process's output streams and working
   directory while they run, so they are `in_process=False` and run in workers.
-- geomeTRIC and Sella run their gradient subprograms through `ctx.compute`.
+- geomeTRIC and Sella run their gradient subprograms through `ctx.compute`, which from a
+  worker comes back to the runner's process.
 - An external program's `numerics` is the sha256 of the executable that would run; a
   library's, its version.
 - A `qcdata.FileInput` runs under the `files` program and returns every file the command

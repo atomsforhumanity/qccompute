@@ -191,3 +191,8 @@ under qccodec's `files` program and returns every file the command wrote; see
 stdin and stdout (or a Unix socket); `qccompute.worker.Worker` is its client, with the
 same `compute`, `plan` and sessions as the program in process. The runner uses them for
 programs that cannot share a process and for `isolation="process"`.
+
+A program in a worker runs its subprograms back in your process: geomeTRIC's gradients
+can come from a `FunctionProgram` you registered in your script, and they share your
+runner's grant. Large arrays (Hessians, wavefunctions) cross between the processes as
+`.npy` files rather than as text.

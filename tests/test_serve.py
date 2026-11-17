@@ -151,6 +151,32 @@ def test_failures_and_plans(client):
     assert client.p.stdout.read() == ""
 
 
+def test_options_send_large_arrays_as_files(client, tmp_path):
+    """A client that names an array directory gets arrays over 1 MiB as .npy files."""
+    from qcdata import ProgramOutput
+    from qcdata._array_files import DIRECTORY
+
+    assert client.hello["array_files"] is True and client.hello["calls"] is True
+    n = 130  # a 390 x 390 Hessian: 1.2 MB of float64
+    side = 6
+    grid = [(i, j, k) for i in range(side) for j in range(side) for k in range(side)]
+    big = Structure(symbols=["Ar"] * n, geometry=7.2 * np.array(grid[:n], float))
+    inp = ProgramInput.model_validate(
+        {**INP.model_dump(), "structure": big, "calctype": "hessian"}
+    )
+    plain = client.ask(op="compute", input=inp.model_dump(mode="json"))["result"]
+    assert isinstance(plain["results"]["hessian"], list)  # no options: inline
+    options = client.ask(op="options", array_dir=str(tmp_path), calls=False)
+    assert options["result"] == {"array_dir": str(tmp_path), "calls": False}
+    reply = client.ask(op="compute", input=inp.model_dump(mode="json"))["result"]
+    pointer = reply["results"]["hessian"]
+    assert set(pointer) == {"path", "shape", "dtype", "sha256"}
+    assert pointer["shape"] == [390, 390] and (tmp_path / pointer["path"]).exists()
+    out = ProgramOutput.model_validate(reply, context={DIRECTORY: tmp_path})
+    assert np.array_equal(out.results.hessian, plain["results"]["hessian"])
+    assert not client.ask(op="options", array_dir=str(tmp_path / "nope"))["ok"]
+
+
 def test_stdout_carries_protocol_lines_only():
     c = Client(worker("tests.serve_programs:noisy"))
     noisy = INP.model_copy(update={"program": "noisy"})

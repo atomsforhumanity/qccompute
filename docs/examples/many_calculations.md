@@ -30,8 +30,9 @@ outputs = qccompute.compute(inputs)
    GPUs). The plan is handed to the program, so nothing is planned twice.
 3. **Packing.** Calculations are admitted in input order while their shares of the runner
    sum to at most one. A calculation's share is the larger of its share of the threads
-   and its share of the GPUs; its host memory follows the share. On 16 threads, eight
-   2-thread xtb calculations run at once.
+   and its share of the GPUs; its host memory is its share of the runner's (unless its
+   `memory_gib` keyword asks for an amount). On 16 threads, eight 2-thread xtb
+   calculations run at once.
 4. **Placement.** Programs that may share this process run in its threads (one at a time
    for programs that are not thread-safe); programs that cannot (they capture the
    process's output streams, as Python libraries run by qccodec do) run in worker

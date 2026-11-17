@@ -1,7 +1,7 @@
 """Make a program of two Python functions and run it like any other program.
 
 A Morse potential between two atoms: the smallest complete program. The runner gives
-it lists, sessions and the store, exactly as for linus or an external program.
+it lists, sessions and the store, exactly as any other program.
 """
 
 import numpy as np
@@ -32,10 +32,10 @@ inp = ProgramInput(program="morse", calctype=CalcType.gradient, structure=h2)
 out = qccompute.compute(inp)
 print(out.results.energy, out.results.gradient[1])
 
-# A scan along the bond, side by side
+# A scan along the bond, side by side: the input at each new geometry
 scan = [
-    inp.model_copy(update={"structure": h2.model_copy(update={"geometry": g})})
-    for g in (np.array([[0, 0, 0], [0, 0, r]]) for r in np.linspace(1.0, 3.0, 9))
+    ProgramInput.from_spec(inp, h2.with_geometry([[0, 0, 0], [0, 0, r]]))
+    for r in np.linspace(1.0, 3.0, 9)
 ]
 energies = [o.results.energy for o in qccompute.compute(scan)]
 print(np.round(energies, 4))

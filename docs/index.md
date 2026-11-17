@@ -102,15 +102,22 @@ holds every frame in request order.
 
 `qccompute.compute` and `qccompute.session` are the methods of the default runner: every
 core this process may use (its CPU affinity and cgroup quota) and every visible GPU. It is
-made on first use and cannot be reconfigured. A `Runner` of your own takes a share:
+made on first use and cannot be reconfigured.
+
+Each calculation gets the threads it asks for: its `threads` keyword, else what its
+program's plan says (1 unless the program states more), at most the runner's. A 3-atom
+gradient does not get 128 threads because the machine has them; ask for more with
+`keywords={"threads": 8}`. Sessions and subprograms get threads the same way.
+
+A `Runner` of your own takes a share:
 
 ```python
 with qccompute.Runner(threads=16, gpus=["0"], per_gpu=2, isolation="process") as runner:
     outputs = runner.compute(inputs, timeout=3600)
 ```
 
-- `threads`, `gpus`: the share. Each calculation gets its own share of it in a
-  `qccompute.RunContext`; host memory and GPU memory follow. A calculation's share is the
+- `threads`, `gpus`: the share, and the most one calculation gets. Each calculation gets
+  its grant in a `qccompute.RunContext`; in a list, host memory and GPU memory follow. A calculation's share is the
   larger of its share of the threads and its share of the GPUs; with `per_gpu=k`, k
   calculations share each GPU and each counts as 1/k of it.
 - `isolation`: `"auto"` runs programs in this process unless they cannot share it (they

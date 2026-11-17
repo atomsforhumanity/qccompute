@@ -154,7 +154,10 @@ class Resources(QCDataBaseModel):
     """What one calculation needs from the machine; the runner schedules by it.
 
     Attributes:
-        threads: CPU threads.
+        threads: CPU threads the calculation asks for when its input has no
+            ``threads`` keyword: the runner grants this many, at most its own. The
+            default is 1; a program that runs faster on more threads by default says
+            how many (a small molecule rarely gains from more than a few).
         memory_gib: Host memory (GiB), if known.
         gpus: Number of GPUs.
         device_memory_gib: Memory per GPU (GiB), if capped; several calculations may
@@ -176,8 +179,9 @@ class Plan(QCDataBaseModel):
     Attributes:
         resolved: The settings with every ``"auto"`` replaced, and why; exactly what
             the run's `ProgramOutput.resolved` will hold.
-        resources: What the calculation needs. A program with subprograms gives the
-            largest over its subprograms' plans.
+        resources: What the calculation needs; the runner grants its threads (unless
+            the input's ``threads`` keyword asks) and packs lists by it. A program with
+            subprograms gives the largest over its subprograms' plans.
         warnings: What the program would warn about.
         record: The program's own detail of the plan (linus: placement, arithmetic
             and memory plan), shaped like a run's record.
@@ -261,14 +265,16 @@ class RunContext:
     the grant is a ``resource_capped`` warning, not an error.
 
     Attributes:
-        threads: CPU threads granted. None: not granted (a direct call).
+        threads: CPU threads granted: what the input asks for (its ``threads``
+            keyword, else ``plan.resources.threads``), at most the runner's. None: not
+            granted (a direct call).
         gpus: Identifiers of the GPUs granted (as for ``CUDA_VISIBLE_DEVICES``).
         memory_gib: Host memory granted (GiB): the calculation's share of the
             runner's memory. None: not known.
         device_memory_gib: Memory granted on each GPU (GiB): 1/k of it when k
             calculations share a GPU. None: not known or not granted.
-        plan: The runner's plan of this input, when it made one (for a list), so the
-            program need not plan again; exactly what ``program.plan(input)``
+        plan: The runner's plan of this input, when it made one, so the program need
+            not plan again; exactly what ``program.plan(input)``
             returned.
     """
 
@@ -383,11 +389,12 @@ class RunContext:
     def compute(self, inputs: Any, /, *, raise_exc: bool = True) -> Any:
         """Run subprograms within this calculation's grant, as ``Runner.compute`` does.
 
-        A list runs side by side within the grant. Failures raise as from
-        ``qccompute.compute``: `qcdata.ProgramError` for one input, `qcdata.ProgramErrors`
-        for a list; ``raise_exc=False`` returns them in place. A subprogram's failure
-        that the program lets escape fails it with kind ``program`` and the
-        subprogram's error as ``cause``.
+        Each gets the threads it asks for (its ``threads`` keyword, else its plan's),
+        at most the grant; a list runs side by side within the grant. Failures raise
+        as from ``qccompute.compute``: `qcdata.ProgramError` for one input,
+        `qcdata.ProgramErrors` for a list; ``raise_exc=False`` returns them in place.
+        A subprogram's failure that the program lets escape fails it with kind
+        ``program`` and the subprogram's error as ``cause``.
 
         Args:
             inputs: One input, or a list of independent inputs.
@@ -413,7 +420,9 @@ class RunContext:
             structure: With a spec: the atoms, charge, multiplicity and first
                 geometry.
             threads: This session's share of the grant (a program with 16 threads
-                running 8 tasks gives each session 2); None: the whole grant.
+                running 8 tasks gives each session 2), which its host memory follows;
+                None: the threads the subprogram asks for (its ``threads`` keyword,
+                else its plan's), at most the grant.
             calctypes: The calctypes the session may run (see `session_calctypes`).
 
         Returns:
@@ -427,10 +436,7 @@ class RunContext:
             if structure is None:
                 raise TypeError("A session from a ProgramSpec needs its structure.")
             inp = ProgramInput.from_spec(spec, structure)
-        share = threads if threads is not None else self.threads
-        if share is not None and self.threads is not None:
-            share = min(share, self.threads)
-        return self._get_runner()._subsession(inp, calctypes, share, self)
+        return self._get_runner()._subsession(inp, calctypes, threads, self)
 
 
 @runtime_checkable
@@ -1046,6 +1052,9 @@ def plan_of(program: Program, inp: ProgramInput) -> Plan:
     return Plan.model_validate(program.plan(inp), from_attributes=True)
 
 
+_EMPTY_PLAN = Plan(resolved=Resolved())
+
+
 class FunctionProgram:
     """A program made of Python functions of the positions.
 
@@ -1140,7 +1149,7 @@ class FunctionProgram:
                 f"{self.name} has no settings; unknown {sorted(inp.keywords)}.",
                 code="unknown_key",
             )
-        return Plan(resolved=Resolved())
+        return _EMPTY_PLAN
 
     def compute(
         self, inp: ProgramInput, ctx: RunContext | None = None
@@ -1152,7 +1161,8 @@ class FunctionProgram:
                 ``internal``; the failed output holds its traceback).
         """
         start = time.perf_counter()
-        self.plan(inp)
+        if ctx is None or ctx.plan is None:  # a runner hands on the plan it made
+            self.plan(inp)
         assert inp.structure is not None
         x = np.asarray(inp.structure.geometry, dtype=float).reshape(-1, 3)
         provenance = Provenance(program=self.name, program_version=self._version)

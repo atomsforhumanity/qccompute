@@ -8,11 +8,14 @@ done with it::
     with qccompute.Runner(threads=16) as runner:
         outputs = runner.compute(inputs, store=store, tags=["screen"])
 
-Every input goes one path: find the program by name, plan it (lists only, to pack them),
-place it (this process, or a worker process for programs that cannot share one), call
-``compute`` or ``compute_batch`` with a `qccompute.program.RunContext`, and record the
-execution. A failed calculation raises `qcdata.ProgramError` with the failed output as
-its ``output``; a list runs everything first and raises `qcdata.ProgramErrors`.
+Every input goes one path: find the program by name, plan it (the threads it asks for,
+and how to pack a list), place it (this process, or a worker process for programs that
+cannot share one), call ``compute`` or ``compute_batch`` with a
+`qccompute.program.RunContext`, and record the execution. A calculation gets the threads
+it asks for: its ``threads`` keyword, else its plan's (1 unless the program says
+otherwise), at most the runner's. A failed calculation raises `qcdata.ProgramError` with
+the failed output as its ``output``; a list runs everything first and raises
+`qcdata.ProgramErrors`.
 """
 
 from __future__ import annotations
@@ -363,6 +366,26 @@ def _as_failure(
     return out, wrapped
 
 
+def _threads(inp: Input, plan: Plan, cap: int) -> int:
+    """The threads a calculation gets: what it asks for, at most ``cap``.
+
+    It asks with its ``threads`` keyword, else through its plan
+    (``Plan.resources.threads``, 1 unless the program says otherwise).
+    """
+    requested = inp.keywords.get("threads") if isinstance(inp, ProgramInput) else None
+    if isinstance(requested, bool) or not isinstance(requested, int) or requested < 1:
+        requested = plan.resources.threads
+    return max(1, min(requested, cap))
+
+
+def _refused(inp: Input, exc: BaseException) -> tuple[Output, ProgramError]:
+    """The failed output of an input that failed before it ran (not found, refused)."""
+    out, failure = _as_failure(inp, exc, inp.program)
+    out = _with_execution(out, 0.0, None)
+    failure.output = out
+    return out, failure
+
+
 def _put(
     store: Store,
     out: Output,
@@ -467,11 +490,12 @@ class _Task:
         inputs: list[Input],
         entry: _Entry,
         plan: Plan,
+        threads: int,
     ) -> None:
         self.indices = indices
         self.inputs = inputs
         self.entry = entry
-        self.threads = plan.resources.threads
+        self.threads = threads
         self.gpus = plan.resources.gpus
         self.plan = plan
 
@@ -483,8 +507,9 @@ class Runner:
     """Runs programs on a share of this machine: one input, a list, or a session.
 
     Args:
-        threads: CPU threads the runner may use at once; None: every core this process
-            may use (its affinity and cgroup quota).
+        threads: CPU threads the runner may use at once, and the most one
+            calculation gets; None: every core this process may use (its affinity and
+            cgroup quota).
         gpus: GPUs it may use: ``"auto"`` for every visible GPU (``CUDA_VISIBLE_DEVICES``
             or ``nvidia-smi``), or a list of device identifiers; ``()`` for none.
         backend: Where calculations run. Only ``"local"`` (this machine) for now.
@@ -574,6 +599,17 @@ class Runner:
         if program is None:
             return None
         return self._entry_of(program)
+
+    def _plan(self, inp: Input) -> tuple[_Entry, Plan]:
+        """The program of an input and its plan.
+
+        Raises:
+            ProgramError: The program is not installed, or refuses the input.
+        """
+        entry = self._entry(inp)
+        if entry is None:
+            raise _not_found(inp)
+        return entry, plan_of(entry.program, inp)  # type: ignore[arg-type]
 
     def _entry_of(self, program: Program) -> _Entry:
         entry = self._entries.get(id(program))
@@ -702,6 +738,22 @@ class Runner:
             failure.output = out
         return out, failure
 
+    def _run(
+        self,
+        inp: Input,
+        cap: int,
+        devices: Sequence[str] | None,
+        memory: float | None,
+        timeout: float | None,
+    ) -> tuple[Output, ProgramError | None]:
+        """Plan and run one input with the threads it asks for, at most ``cap``."""
+        try:
+            entry, plan = self._plan(inp)
+        except Exception as e:  # noqa: BLE001 - refused before running
+            return _refused(inp, e)
+        threads = _threads(inp, plan, cap)
+        return self._execute(inp, threads, devices, memory, timeout, plan, entry)
+
     def identities(self, inp: Input) -> dict[str, str]:
         """The numerics identity of the input's program and of every subprogram.
 
@@ -764,9 +816,7 @@ class Runner:
                 if tags:
                     store.tag(key, *tags)
                 return hit, None if hit.success else _error(hit)
-        out, failure = self._execute(
-            inp, self.threads, None, self._host_memory(), timeout
-        )
+        out, failure = self._run(inp, self.threads, None, self._host_memory(), timeout)
         if store is not None:
             _put(store, out, identities, tags, meta)
         return out, failure
@@ -812,10 +862,12 @@ class Runner:
     ) -> Output | list[Output]:
         """Run one input, or a list of independent inputs side by side.
 
-        One input gets the runner's whole share of the machine. A list's inputs are
-        planned first (an input its program refuses fails at once, without running),
-        then packed by the threads and GPUs their plans ask for; inputs of a program
-        with batches go to it together.
+        Every input is planned first: an input its program refuses fails at once,
+        without running. A calculation gets the threads it asks for: its ``threads``
+        keyword, else its plan's (``Plan.resources.threads``: 1 unless the program
+        says otherwise), at most the runner's ``threads``. A list's calculations are
+        packed into the runner's threads and GPUs by what they ask for; inputs of a
+        program with batches go to it together.
 
         Args:
             inputs: One input, or a list of them (of any programs).
@@ -931,10 +983,12 @@ class Runner:
 
         A program with sessions of its own (``capabilities().sessions``) opens one,
         pinned to the input's settings and warm-started between geometries: in this
-        process it is the program's own session object (``linus.Session``), exactly
+        process it is the program's own session object (``mychem.Session``), exactly
         what a direct user gets. For any other program the session runs each
-        geometry through ``compute``. Programs in worker processes give a session
-        over the worker's pipe, with the same methods.
+        geometry through ``compute``, from scratch (``record["warm_start"]`` is
+        false): it is a convenience, not a speed-up. Programs in worker processes give
+        a session over the worker's pipe, with the same methods. The session gets the
+        threads its input asks for (as in `compute`), at most the runner's.
 
         Args:
             inp: The program, model, keywords and structure; its calctype and
@@ -949,7 +1003,7 @@ class Runner:
             ProgramError: The program is not installed or rejects the input.
         """
         return self._open_session(
-            inp, calctypes, self.threads, None, self._host_memory(), None, False
+            inp, calctypes, None, self.threads, None, self._host_memory(), None, False
         )
 
     # ------------------------------------------------------------------ lists
@@ -981,29 +1035,24 @@ class Runner:
                         store.tag(keys[i], *tags)
                     yield i, hit, None if hit.success else _error(hit)
                     continue
-            entry = self._entry(inp)
             try:
-                if entry is None:
-                    raise _not_found(inp)
-                plan = plan_of(entry.program, inp)  # type: ignore[arg-type]
+                entry, plan = self._plan(inp)
             except Exception as e:  # noqa: BLE001 - refused before running
-                out, failure = _as_failure(inp, e, inp.program)
-                out = _with_execution(out, 0.0, None)
-                failure.output = out
+                out, failure = _refused(inp, e)
                 if store is not None:
                     _put(store, out, identities[i], tags, meta)
                 yield i, out, failure
                 continue
-            assert entry is not None
+            wanted = _threads(inp, plan, threads)
             if entry.caps.batches and isinstance(entry.program, BatchProgram):
                 task = batches.get(id(entry))
                 if task is not None:
                     task.indices.append(i)
                     task.inputs.append(inp)
                     continue
-                task = batches[id(entry)] = _Task([i], [inp], entry, plan)
+                task = batches[id(entry)] = _Task([i], [inp], entry, plan, wanted)
             else:
-                task = _Task([i], [inp], entry, plan)
+                task = _Task([i], [inp], entry, plan, wanted)
             tasks.append(task)
         if not tasks:
             return
@@ -1087,13 +1136,16 @@ class Runner:
     # ------------------------------------------------------------------ subprograms
 
     def _subcompute(self, inputs: Any, ctx: RunContext, raise_exc: bool) -> Any:
-        """``RunContext.compute``: subprograms within a calculation's grant."""
+        """``RunContext.compute``: subprograms within a calculation's grant.
+
+        Each gets the threads it asks for (`_threads`), at most the grant's.
+        """
         threads = ctx.threads or self.threads
         devices = ctx.gpus if ctx.threads is not None else None
         memory = ctx.memory_gib if ctx.threads is not None else self._host_memory()
         timeout = ctx.timeout
         if isinstance(inputs, ProgramInput | FileInput):
-            out, failure = self._execute(inputs, threads, devices, memory, timeout)
+            out, failure = self._run(inputs, threads, devices, memory, timeout)
             if failure is not None and raise_exc:
                 failure._subprogram = inputs.program  # type: ignore[attr-defined]
                 raise failure
@@ -1123,29 +1175,37 @@ class Runner:
         threads: int | None,
         ctx: RunContext,
     ) -> Session:
-        """``RunContext.session``: a subprogram's session within a grant."""
+        """``RunContext.session``: a subprogram's session within a grant.
+
+        ``threads`` is the parent's own split of its grant, and host memory follows
+        it; None: the threads the subprogram asks for, at most the grant.
+        """
+        cap = ctx.threads or self.threads
         devices = ctx.gpus if ctx.threads is not None else None
-        share = threads or ctx.threads or self.threads
         memory = ctx.memory_gib if ctx.threads is not None else self._host_memory()
-        if memory is not None and ctx.threads:
-            memory = memory * min(1.0, share / ctx.threads)
+        if threads is not None:
+            threads = max(1, min(threads, cap))
+            if memory is not None and ctx.threads:
+                memory = memory * min(1.0, threads / ctx.threads)
         return self._open_session(
-            inp, calctypes, share, devices, memory, ctx.timeout, True
+            inp, calctypes, threads, cap, devices, memory, ctx.timeout, True
         )
 
     def _open_session(
         self,
         inp: ProgramInput,
         calctypes: Iterable[CalcType | str] | None,
-        threads: int,
+        threads: int | None,
+        cap: int,
         devices: Sequence[str] | None,
         memory: float | None,
         timeout: float | None,
         subprogram: bool,
     ) -> Session:
-        entry = self._entry(inp)
-        if entry is None:
-            raise _not_found(inp)
+        """Open a session with ``threads``, or (None) the threads its plan asks for."""
+        entry, plan = self._plan(inp)
+        if threads is None:
+            threads = _threads(inp, plan, cap)
         allowed = session_calctypes(calctypes) if calctypes else None
         granted = self._devices(entry, devices)
         ctx = self._context(threads, granted, memory, timeout, None)
@@ -1295,8 +1355,10 @@ _default_lock = threading.Lock()
 def default_runner() -> Runner:
     """The runner of ``qccompute.compute``: this machine, made on first use.
 
-    It uses every core this process may use and every visible GPU, runs programs in
-    this process unless they cannot share it, and closes its workers at exit. It
+    It shares every core this process may use and every visible GPU (each calculation
+    gets the threads it asks for, 1 unless its input or program says more), runs
+    programs in this process unless they cannot share it, and closes its workers at
+    exit. It
     cannot be reconfigured; make a `Runner` for anything else.
     """
     global _default

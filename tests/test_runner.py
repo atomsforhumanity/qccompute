@@ -214,15 +214,73 @@ def toy_registered():
 # --------------------------------------------------------------------- one input
 
 
-def test_one_input_runs_in_process_with_the_whole_grant():
+def test_one_input_runs_in_process_with_the_threads_it_asks_for():
     out = qccompute.compute(toy_input("hessian", sigma="auto"))
     assert out.success
     assert out.resolved.settings["sigma"] == 6.0
     assert out.results.hessian.shape == (9, 9)
     assert out.results.gradient.shape == (3, 3)
     assert out.execution.wall_time is not None and out.execution.hostname
-    assert out.execution.threads == default_runner().threads
+    assert out.execution.threads == 1  # the toy's plan asks for 1, not the machine
     assert "total" in out.execution.timings
+
+
+def test_threads_come_from_the_keyword_else_the_plan_capped_at_the_runner():
+    class Planned(Recording):
+        def plan(self, inp):
+            plan = super().plan(inp.model_copy(update={"program": "toy"}))
+            return plan.model_copy(update={"resources": Resources(threads=3)})
+
+    recording = Recording("rec")
+    planned = Planned("planned")
+    register_program(recording)
+    register_program(planned)
+    with Runner(threads=4) as runner:
+        runner.compute(toy_input(program="rec"))  # nothing asked: 1
+        runner.compute(toy_input(program="rec", threads=2))  # the keyword
+        runner.compute(toy_input(program="rec", threads=64))  # capped at the runner
+        runner.compute(toy_input(program="planned"))  # the plan
+        runner.compute(toy_input(program="planned", threads=1))  # the keyword wins
+        with runner.session(toy_input(program="rec")) as s:  # sessions alike
+            s.compute()
+        with runner.session(toy_input(program="planned")) as s:
+            s.compute()
+    assert [c.threads for c in recording.contexts] == [1, 2, 4]
+    assert [c.threads for c in planned.contexts] == [3, 1]
+    assert all(c.plan is not None for c in recording.contexts)  # handed on
+    plain = NoSessions("plain")
+    register_program(plain)
+    with Runner(threads=4) as runner, runner.session(toy_input(program="plain")) as s:
+        s.compute_many([Request(), Request()])
+    assert [c.threads for c in plain.contexts] == [1, 1]
+    with pytest.raises(ProgramError) as e:  # refused by its plan, without running
+        Runner(threads=4).compute(toy_input(program="rec", sigmaa=1.0))
+    assert e.value.error.code == "unknown_key" and len(recording.contexts) == 3
+    assert e.value.output.execution.wall_time == 0.0
+
+    class Parent(FiniteDifference):
+        """Asks for 4 threads; its subprograms ask for their own."""
+
+        name = "parent"
+
+        def plan(self, inp):
+            return Plan(resolved=Resolved(), resources=Resources(threads=4))
+
+        def compute(self, inp, ctx=None):
+            child = inp.subprograms[0]
+            ctx.compute(ProgramInput.from_spec(child, inp.structure))
+            with ctx.session(child, inp.structure) as s:
+                s.compute()
+            with ctx.session(child, inp.structure, threads=3) as s:
+                s.compute()
+            return super().compute(inp, ctx)
+
+    register_program(Parent())
+    del plain.contexts[:]
+    with Runner(threads=8) as runner:
+        runner.compute(fd_input("plain").model_copy(update={"program": "parent"}))
+    # compute and session ask for 1; the parent's split gives 3; fd's session 1
+    assert [c.threads for c in plain.contexts][:3] == [1, 1, 3]
 
 
 def test_failures_raise_program_errors_with_the_output():
@@ -570,6 +628,9 @@ def test_subprogram_lists_and_their_failures():
     class Fanout(ToyProgram):
         name = "fanout"
 
+        def plan(self, inp):
+            return Plan(resolved=Resolved(), resources=Resources(threads=2))
+
         def compute(self, inp, ctx=None):
             spec = inp.subprograms[0]
             children = [
@@ -656,7 +717,7 @@ def test_isolation_process_runs_every_program_in_a_worker():
 
     register_program(toy.program)  # importable: workers load it as module:attribute
     with Runner(threads=2, isolation="process") as runner:
-        out = runner.compute(toy_input())
+        out = runner.compute(toy_input(threads=2))
         assert out.success and out.execution.threads == 2
         with runner.session(toy_input()) as s:
             assert type(s).__name__ == "WorkerSession"
@@ -692,7 +753,7 @@ def test_programs_with_subprograms_called_directly_go_to_the_default_runner():
     assert "register_program" in e.value.error.message
     register_program(fd)
     out = fd.compute(fd_input())
-    assert out.success and out.execution.threads == default_runner().threads
+    assert out.success and out.execution.threads == 1  # what fd's plan asks for
 
 
 def test_the_runner_attaches_the_output_a_program_raised_without():

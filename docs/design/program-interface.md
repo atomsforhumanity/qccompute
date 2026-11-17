@@ -66,15 +66,16 @@ complete program: functions of the positions, no settings, in process and thread
 always passes one. It carries the calculation's share of the machine and the way to run
 subprograms:
 
-- `threads`, `gpus`: the grant. A program uses the smaller of its own request (its
-  `threads` keyword) and the grant, or the grant when it requested nothing; a capped
-  request is a `resource_capped` warning.
+- `threads`, `gpus`: the grant. The threads are what the input asks for (its `threads`
+  keyword, else `plan.resources.threads`, which is 1 unless the program says more), at
+  most the runner's (or, for a subprogram, the parent's grant). A program uses the
+  smaller of its own request and the grant, or the grant when it requested nothing; a
+  capped request is a `resource_capped` warning.
 - `memory_gib`, `device_memory_gib`: host and GPU memory, following the calculation's
   share (below).
 - `timeout`: the seconds left. A program that starts processes kills them when it runs
   out and fails with kind `timeout`.
-- `plan`: the runner's plan of the input, when it made one, so the program need not plan
-  again.
+- `plan`: the runner's plan of the input, so the program need not plan again.
 - `scratch`: a directory, made on first use and removed when the call returns.
 - `compute(inputs, raise_exc=True)` and `session(spec, structure, threads=, calctypes=)`:
   subprograms, within the grant.
@@ -156,15 +157,19 @@ options: `store`, `timeout`, `rerun`, `tags`, `meta`, `raise_exc`. `qccompute.co
 and `qccompute.session` are the methods of the default runner: this machine (every core
 this process may use, every visible GPU), made on first use, never reconfigured.
 
-Every input goes one path: find the program, plan it (lists only), place it (this
-process, or a worker process for programs with `in_process=False` and for
-`isolation="process"`), call `compute` or `compute_batch` with a context, record the
-execution.
+Every input goes one path: find the program, plan it (an input its program refuses
+fails without running), place it (this process, or a worker process for programs with
+`in_process=False` and for `isolation="process"`), call `compute` or `compute_batch`
+with a context, record the execution.
 
 **Resources.** qc* never allocates machines, queues work or enforces limits: a
 dispatcher (a batch system, Kubernetes) gives the process its cores, memory and GPUs. A
-runner shares them out. One input gets the whole runner. A list's calculations are
-admitted in input order while their shares sum to at most one; a calculation's share is
+runner shares them out. Each calculation gets the threads it asks for (its `threads`
+keyword, else its plan's: 1 unless the program says more), at most the runner's; a
+session likewise, and a subprogram at most its parent's grant (or the share the parent
+gives a session with `threads=`). Asking for nothing never means "the whole machine": a
+3-atom tblite gradient ran in 1.2 ms on one thread and 221 ms (10 CPU-seconds) with 46.
+A list's calculations are admitted in input order while their shares sum to at most one; a calculation's share is
 the larger of its share of the threads and its share of the GPUs, where each of k
 calculations on one GPU counts as 1/k of it. Host memory and GPU memory follow the share.
 There are no memory estimates and no memory scheduling.
@@ -241,8 +246,9 @@ with the failed output and the logs when it fails.
 
 ## Cost
 
-On one core, `qccompute.compute` adds about 7 µs to a direct call of an in-process program
-(finding it, its context, recording the execution). Through qccodec, a trivial external
+On one core, `qccompute.compute` adds about 4 µs to a direct call of a `FunctionProgram`
+and about 9 µs for the toy program (finding it, planning it, its context, recording the
+execution); the runner hands its plan on in `ctx.plan`, so a program need not plan twice. Through qccodec, a trivial external
 command takes about 0.26 ms more than launching it in a fresh directory by hand. A worker
 round trip for the toy program costs about 0.14 ms (JSON on a pipe), and starting a
 worker about 0.15 s plus the program's own imports, once.

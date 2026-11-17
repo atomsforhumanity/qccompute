@@ -38,6 +38,7 @@ with qccompute.session(inp) as s:            # one molecule at many geometries
 
 - **Failures raise.** A failed calculation raises `qcdata.ProgramError`; its `output` is the failed `ProgramOutput`, with partial results and logs. A list runs everything first, then raises one `qcdata.ProgramErrors` group whose `results` holds every output in order. `raise_exc=False` returns failures in place.
 - **A store, if you want one.** `compute(inputs, store=store, tags=[...])` looks each input up first and stores what it ran, with the identities of the programs that made it; a run is reused only when those are the programs that would run now.
+- **Threads per calculation.** Each calculation gets the threads it asks for: its `threads` keyword, else its program's plan (1 unless the program states more), at most the runner's.
 - **A share of the machine.** `qccompute.compute` and `qccompute.session` belong to the default runner: every core and GPU this process may use. A `Runner` of your own takes a share and closes its worker processes when done:
 
 ```python

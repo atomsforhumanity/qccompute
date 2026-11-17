@@ -1275,6 +1275,18 @@ _ACCURACY_SCHEMA: dict[str, Any] = {
     "x-concern": "convergence",
 }
 
+#: The JSON Schema of the shared keyword ``threads`` of a program the runner grants
+#: threads to and that has nothing of its own to say about them (`FunctionProgram`).
+_THREADS_SCHEMA: dict[str, Any] = {
+    "type": "integer",
+    "minimum": 1,
+    "default": 1,
+    "description": "CPU threads the calculation asks for; the runner grants them, at "
+    "most its own.",
+    "x-tier": "common",
+    "x-concern": "resource",
+}
+
 #: The JSON Schema of the shared record key ``accuracy`` of a target met with no
 #: thresholds.
 _ACCURACY_RECORD_SCHEMA: dict[str, Any] = {
@@ -1441,11 +1453,12 @@ class FunctionProgram:
     """A program made of Python functions of the positions.
 
     For a model surface, an ML potential in a script, or teaching: the smallest
-    complete program. It has no settings (any keyword is an ``unknown_key`` input
-    error) but the shared ``accuracy``, which it records as met, since the functions
-    converge nothing (``{"target", "thresholds": {}, "estimate"}`` with an estimate of
-    0.0 per target, as qcdata's conventions give). It ignores the model, runs in
-    process and is thread-safe::
+    complete program. Its keywords are the shared ``threads`` (what it asks the runner
+    for; 1 by default), the shared ``accuracy``, which it records as met, since the
+    functions converge nothing (``{"target", "thresholds": {}, "estimate"}`` with an
+    estimate of 0.0 per target, as qcdata's conventions give), and the settings it
+    declares; any other keyword is an ``unknown_key`` input error. It runs in process
+    and is thread-safe::
 
         def morse(x):  # positions (bohr, n x 3) -> energy (Eh), gradient (Eh/bohr)
             ...
@@ -1455,15 +1468,21 @@ class FunctionProgram:
         out = qccompute.compute(ProgramInput(program="morse", calctype="gradient",
                                              structure=h2))
 
+    With ``takes_input=True`` the functions also get the input, so one program serves
+    any molecule and setting: ``energy_gradient(positions, inp)`` reads the symbols,
+    charge, multiplicity, model and keywords (an engine over a library's calculator).
+    Without it they get the positions alone and the program ignores the model.
+
     An exception from a function is a failed calculation of kind ``internal``, with
-    the function's traceback in the failed output.
+    the function's traceback in the failed output; a `qcdata.ProgramError` it raises
+    (kind ``input`` for a setting's value it refuses) is the calculation's failure.
 
     Args:
         name: The program's name, as in ``ProgramInput.program``.
-        energy_gradient: Positions (bohr, n_atoms x 3) to the energy (Eh) and the
-            gradient (Eh/bohr, n_atoms x 3).
-        hessian: Positions to the Hessian (Eh/bohr^2, 3 n_atoms x 3 n_atoms); without
-            it the program computes energies and gradients only.
+        energy_gradient: Positions (bohr, n_atoms x 3), and with ``takes_input`` the
+            input, to the energy (Eh) and the gradient (Eh/bohr, n_atoms x 3).
+        hessian: The same arguments to the Hessian (Eh/bohr^2, 3 n_atoms x 3
+            n_atoms); without it the program computes energies and gradients only.
         version: The program's version and numerics identity, for provenance and the
             store. None: a digest of the functions (``fn-`` and 16 hex digits), taken
             on each use, of their code, constants, defaults, closures and the module
@@ -1472,13 +1491,19 @@ class FunctionProgram:
             never serves results of the old function. An object the functions use
             that is not plain data (an ML model) counts by its type and attributes;
             give ``version`` when that is not enough (a model's checksum).
+        takes_input: Call the functions with the input after the positions.
+        settings: The JSON Schema of the keywords the functions read (an object
+            schema; its ``properties`` name them, with ``x-unit``, ``x-tier`` and
+            ``x-concern`` as for any program). Needs ``takes_input``: a keyword the
+            functions never see would change nothing. The program refuses keys it
+            does not name; checking their values is the functions' (or
+            ``qccompute.testing``'s, against the schema).
+
+    Raises:
+        ValueError: ``settings`` without ``takes_input``, or naming ``accuracy`` or
+            ``threads``, which every FunctionProgram accepts.
     """
 
-    _SCHEMA: dict[str, Any] = {
-        "type": "object",
-        "properties": {"accuracy": _ACCURACY_SCHEMA},
-        "additionalProperties": False,
-    }
     _RECORD_SCHEMA: dict[str, Any] = {
         "type": "object",
         "properties": {"accuracy": _ACCURACY_RECORD_SCHEMA},
@@ -1487,16 +1512,42 @@ class FunctionProgram:
     def __init__(
         self,
         name: str,
-        energy_gradient: Callable[[np.ndarray], tuple[float, Any]],
-        hessian: Callable[[np.ndarray], Any] | None = None,
+        energy_gradient: Callable[..., tuple[float, Any]],
+        hessian: Callable[..., Any] | None = None,
         *,
         version: str | None = None,
+        takes_input: bool = False,
+        settings: Mapping[str, Any] | None = None,
     ) -> None:
         """Make a program of the functions."""
+        declared = dict((settings or {}).get("properties") or {})
+        if declared and not takes_input:
+            raise ValueError(
+                f"{name}: settings need takes_input=True; the functions would never "
+                "see a keyword, so it could not affect the calculation."
+            )
+        shared = sorted({"accuracy", "threads"} & set(declared))
+        if shared:
+            raise ValueError(
+                f"{name}: {shared} are shared keywords every FunctionProgram accepts; "
+                "do not declare them."
+            )
         self.name = name
         self._energy_gradient = energy_gradient
         self._hessian = hessian
         self._version = version
+        self._takes_input = takes_input
+        self._schema: dict[str, Any] = {
+            **(settings or {}),
+            "type": "object",
+            "properties": {
+                **declared,
+                "accuracy": _ACCURACY_SCHEMA,
+                "threads": _THREADS_SCHEMA,
+            },
+            "additionalProperties": False,
+        }
+        self._keys = frozenset(self._schema["properties"])
         calctypes = {CalcType.energy, CalcType.gradient}
         if hessian is not None:
             calctypes.add(CalcType.hessian)
@@ -1530,23 +1581,23 @@ class FunctionProgram:
         return self._caps
 
     def settings_schema(self, calctype: CalcType) -> dict[str, Any]:
-        """No settings but the shared ``accuracy``."""
-        return self._SCHEMA
+        """The settings declared, and the shared ``accuracy`` and ``threads``."""
+        return self._schema
 
     def record_schema(self, calctype: CalcType) -> dict[str, Any]:
         """The shared ``accuracy``, when a target is given."""
         return self._RECORD_SCHEMA
 
     def plan(self, inp: ProgramInput) -> Plan:
-        """Check the input: a structure, a supported calctype, no keywords but accuracy.
+        """Check the input: a structure, a supported calctype, keywords it knows.
 
-        An ``accuracy`` target is met: the plan's record holds the record key
-        ``accuracy``, which the run records.
+        The resolved settings are the keywords given. An ``accuracy`` target is met:
+        the plan's record holds the record key ``accuracy``, which the run records.
 
         Raises:
-            ProgramError: Kind ``input`` (``unknown_key``; a malformed ``accuracy``,
-                ``no_effect`` for one with no target; no structure) or
-                ``unsupported``.
+            ProgramError: Kind ``input`` (``unknown_key``; ``threads`` that is not a
+                positive integer; a malformed ``accuracy``, ``no_effect`` for one with
+                no target; no structure) or ``unsupported``.
         """
         if inp.calctype not in self._caps.calctypes:
             raise ProgramError.of(
@@ -1556,21 +1607,27 @@ class FunctionProgram:
             )
         if inp.structure is None:
             raise ProgramError.of("input", f"{self.name} needs a structure.")
-        unknown = sorted(set(inp.keywords) - {"accuracy"})
+        if not inp.keywords:
+            return _EMPTY_PLAN
+        unknown = sorted(set(inp.keywords) - self._keys)
         if unknown:
             raise ProgramError.of(
                 "input",
-                f"{self.name} has no settings; unknown {unknown}.",
+                f"{self.name} has the settings {sorted(self._keys)}; unknown {unknown}.",
                 code="unknown_key",
             )
+        threads = inp.keywords.get("threads", 1)
+        if isinstance(threads, bool) or not isinstance(threads, int) or threads < 1:
+            raise ProgramError.of(
+                "input", f"threads is a positive integer, not {threads!r}."
+            )
+        settings = dict(inp.keywords)
         target = Accuracy.from_keywords(inp.keywords)
         if target is None:
-            return _EMPTY_PLAN
+            return Plan(resolved=Resolved(settings=settings))
         met = _accuracy_met(target)
-        return Plan(
-            resolved=Resolved(settings={"accuracy": met["target"]}),
-            record={"accuracy": met},
-        )
+        settings["accuracy"] = met["target"]
+        return Plan(resolved=Resolved(settings=settings), record={"accuracy": met})
 
     def compute(
         self, inp: ProgramInput, ctx: RunContext | None = None
@@ -1587,15 +1644,23 @@ class FunctionProgram:
         assert inp.structure is not None
         x = np.asarray(inp.structure.geometry, dtype=float).reshape(-1, 3)
         provenance = Provenance(program=self.name, program_version=self.version())
+        # What the runner granted; called directly, what the input asks for.
+        threads = (ctx.threads if ctx is not None else None) or inp.keywords.get(
+            "threads", 1
+        )
+        given = (inp,) if self._takes_input else ()
         try:
-            energy, gradient = self._energy_gradient(x.copy())
+            energy, gradient = self._energy_gradient(x.copy(), *given)
             values: dict[str, Any] = {"energy": float(energy)}
             if inp.calctype != CalcType.energy:
                 values["gradient"] = np.asarray(gradient, dtype=float).reshape(-1, 3)
             if inp.calctype == CalcType.hessian:
                 assert self._hessian is not None
-                values["hessian"] = np.asarray(self._hessian(x.copy()), dtype=float)
+                hessian = self._hessian(x.copy(), *given)
+                values["hessian"] = np.asarray(hessian, dtype=float)
             results = SinglePointData(provenance=provenance, **values)
+        except ProgramError:  # the function's own refusal or failure
+            raise
         except Exception as e:  # noqa: BLE001 - the function's failure, with its trace
             error = ErrorInfo(
                 kind=ErrorKind.internal, message=f"{type(e).__name__}: {e}"
@@ -1604,7 +1669,7 @@ class FunctionProgram:
                 inp,
                 error,
                 traceback="".join(traceback.format_exception(e)),
-                execution=ExecutionInfo(threads=1),
+                execution=ExecutionInfo(threads=threads),
             )
             raise ProgramError(error, output=out) from e
         return ProgramOutput(
@@ -1614,6 +1679,6 @@ class FunctionProgram:
             resolved=plan.resolved,
             record=plan.record,
             execution=ExecutionInfo(
-                threads=1, timings={"total": time.perf_counter() - start}
+                threads=threads, timings={"total": time.perf_counter() - start}
             ),
         )

@@ -1252,6 +1252,70 @@ def test_function_programs():
         )
 
 
+def test_function_programs_may_take_the_input_and_declare_settings():
+    """One program for any molecule and setting; threads always accepted (#59)."""
+    from qccompute.program import FunctionProgram
+    from qccompute.testing import check_program
+
+    seen = []
+
+    def pairs(x, inp):  # a harmonic bond between every pair, per element
+        seen.append(inp)
+        k = inp.keywords.get("k", 1.0)
+        if k <= 0:
+            raise ProgramError.of("input", f"k is positive, not {k}", code="bad_k")
+        scale = 2.0 if inp.model.method == "stiff" else 1.0
+        n = len(inp.structure.symbols)
+        energy, gradient = 0.0, np.zeros_like(x)
+        for i in range(n):
+            for j in range(i + 1, n):
+                d = x[i] - x[j]
+                energy += scale * k * float(d @ d)
+                gradient[i] += 2 * scale * k * d
+                gradient[j] -= 2 * scale * k * d
+        return energy, gradient
+
+    settings = {
+        "type": "object",
+        "properties": {"k": {"type": "number", "exclusiveMinimum": 0, "x-unit": "Eh"}},
+    }
+    program = FunctionProgram(
+        "pairs", pairs, version="1", takes_input=True, settings=settings
+    )
+    inp = toy_input("gradient", program="pairs", k=0.5)
+    schema = program.settings_schema(CalcType.gradient)
+    assert set(schema["properties"]) == {"k", "accuracy", "threads"}
+    assert "honours ctx.threads" in check_program(program, [inp])
+    register_program(program)
+    out = qccompute.compute(inp)
+    assert seen[-1] is inp and out.resolved.settings == {"k": 0.5}
+    stiff = qccompute.compute(
+        inp.model_copy(update={"model": Model(method="stiff")})
+    ).results.energy
+    assert stiff == pytest.approx(2 * out.results.energy)
+    with pytest.raises(ProgramError) as e:
+        qccompute.compute(toy_input(program="pairs", kk=1.0))
+    assert e.value.error.code == "unknown_key"
+    with pytest.raises(ProgramError) as e:  # the function's own refusal
+        qccompute.compute(toy_input(program="pairs", k=-1.0))
+    assert e.value.error.code == "bad_k"
+    # threads: asked of the runner and recorded; every FunctionProgram takes it.
+    with Runner(threads=4) as runner:
+        assert (
+            runner.compute(toy_input(program="pairs", threads=3)).execution.threads == 3
+        )
+    with pytest.raises(ProgramError) as e:
+        qccompute.compute(toy_input(program="pairs", threads=0))
+    assert e.value.error.kind is ErrorKind.input
+    plain = FunctionProgram("plain", lambda x: (0.0, 0 * x))
+    plain.plan(toy_input(program="plain", threads=2))
+    with pytest.raises(ValueError, match="takes_input"):
+        FunctionProgram("f", pairs, settings=settings)
+    with pytest.raises(ValueError, match="threads"):
+        shared = {"properties": {"threads": {"type": "integer"}}}
+        FunctionProgram("f", pairs, takes_input=True, settings=shared)
+
+
 SCALE = 1.0
 
 

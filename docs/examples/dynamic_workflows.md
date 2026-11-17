@@ -55,7 +55,8 @@ with qccompute.Runner(threads=8, isolation="process") as runner:
 - **The runner packs submitted calculations** into its threads and GPUs as it packs a
   list, admitted in the order submitted: on 8 threads, eight one-thread searches run at
   once and the ninth starts when one ends. A stored result resolves its future before
-  `submit` returns, so a rerun of the whole workflow from a store computes nothing.
+  `submit` returns, so a rerun of this workflow from a store computes nothing: it asks
+  for the same inputs again.
 - **`future.result()`** is the output, or raises `qcdata.ProgramError` with the failed
   output as `e.output`, as `compute` does. `concurrent.futures.as_completed`,
   `future.add_done_callback` and `future.cancel()` (before it starts) work as for any
@@ -66,6 +67,14 @@ with qccompute.Runner(threads=8, isolation="process") as runner:
   runs each in a worker process, side by side. On ten reactions of 12 to 30 atoms
   (g-xTB, 8 cores), threads each chaining `compute` took 55.8 s, the three stage lists
   28.0 s, and the same chains on `Runner(threads=8, isolation="process")` 14.8 s.
+- **Rerunning is not resuming.** A rerun is all cache hits only when the workflow, given
+  the same results, asks for exactly the same inputs: the key is the input as given, so
+  a geometry, seed or keyword that differs is a miss. A workflow whose choices depend on
+  timing (which future finished first, a reference structure replaced when a lower one
+  arrives, priorities that read what has been found so far) takes other branches when
+  rerun. The store still serves every calculation it asks for again, but it does not
+  hold the workflow's decisions: what was searched, what was set aside, where it was
+  heading. Such a workflow keeps that decision state itself and resumes from it.
 - **Live progress:** `submit(inp, progress=functools.partial(show, name))` hands each
   calculation's events to a callable that knows which reaction it is (see
   [Progress](../index.md#progress)).

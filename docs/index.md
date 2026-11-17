@@ -175,7 +175,10 @@ failure too; `tags` go onto every key, cache hits included. Every output returne
 store names its run, computed or hit, in `execution.store_run` (`"<key>/<run>"`), so a
 network or a report can cite the exact run and read it back with
 `store.get(key, run=...)`. A store implements `key`, `get`, `put` and `tag`
-(`qccompute.runner.Store`); qcstore is one.
+(`qccompute.runner.Store`); qcstore is one. Rerunning a workflow from a store is all
+cache hits only when it asks for the same inputs; a workflow whose choices depend on
+timing keeps its own decision state (see
+[Dynamic workflows](examples/dynamic_workflows.md)).
 
 ## One calculation at a time, as futures
 

@@ -7,7 +7,7 @@ Instructions for AI coding agents (and a quick reference for people) working in 
 `qccompute` runs programs: the Program protocol (`qccompute.program`), the `Runner` (`qccompute.runner`: finding, planning, placing and running programs, resources, lists, sessions, the store hook), and worker processes (`qccompute.serve` and its client `qccompute.worker`). It depends on qcdata only and must never import qccodec, branch on a program name, or contain program-specific logic; external programs belong in `qccodec`, which registers them as programs. Design: `docs/design/program-interface.md`.
 
 - Failures raise `qcdata.ProgramError` with the failed output as `output`; lists and session `compute_many` run everything, then raise one group holding every result in order.
-- The runner never changes a number by itself; keep the in-process path cheap (it is measured: about 7 us over a direct call).
+- The runner never changes a number by itself; keep the in-process path cheap (it is measured: about 4 us over a direct call of a `FunctionProgram`, planning included).
 - Tests use stand-in programs (`qccompute.testing.toy`, `tests/serve_programs.py`). Integration tests with real programs live in qccodec (`tests/integration/`), which uses qccompute as a test-only dependency.
 
 ## The qc* suite

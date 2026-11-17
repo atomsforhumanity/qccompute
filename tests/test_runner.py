@@ -117,7 +117,9 @@ class FiniteDifference(ToyProgram):
     """Its subprogram's gradient by central differences, through ctx."""
 
     name = "fd"
-    numerics = "0+fd"
+
+    def numerics(self, spec):
+        return "0+fd"
 
     def capabilities(self):
         return super().capabilities().model_copy(update={"sessions": False})
@@ -414,8 +416,7 @@ def test_stored_failures_are_reused_only_when_deterministic():
     with pytest.raises(ProgramError):
         qccompute.compute(unconverged, store=store)  # may succeed another time
     assert len(recording.contexts) == 3
-    recording.numerics = "epoch 2"  # new numbers: no stored run is reused
-    default_runner()._entries.clear()  # the runner reads numerics once per program
+    recording.numerics = lambda spec: "epoch 2"  # new numbers: no stored run reused
     with pytest.raises(ProgramError):
         qccompute.compute(refused, store=store)
     assert len(recording.contexts) == 4
@@ -432,6 +433,41 @@ def test_identities_name_every_program_a_calculation_runs():
     assert (
         store.get(store.key(fd_input("toy")), runner.identities(fd_input("toy"))) is out
     )
+
+    class Epochs(ToyProgram):
+        name = "epochs"
+
+        def numerics(self, spec):
+            return {"lj": "lj-1", "x": "x-2"}[spec.model.method]
+
+    register_program(Epochs())
+    child = fd_input("epochs").subprograms[0]
+    two = fd_input("epochs").model_copy(
+        update={
+            "subprograms": [
+                child,
+                child.model_copy(update={"model": Model(method="x")}),
+            ]
+        }
+    )
+    assert runner.identities(two)["epochs"] == "lj-1 + x-2"
+
+
+def test_warm_started_outputs_are_never_stored():
+    class Warm(ToyProgram):
+        name = "warm"
+
+        def compute(self, inp, ctx=None):
+            out = super().compute(inp.model_copy(update={"program": "toy"}), ctx)
+            return out.model_copy(
+                update={"input_data": inp, "record": {"warm_start": True}}
+            )
+
+    register_program(Warm())
+    store = FakeStore()
+    qccompute.compute(toy_input(program="warm"), store=store)
+    qccompute.compute([toy_input(program="warm"), toy_input()], store=store)
+    assert store.puts == 1  # only the toy's own run
 
 
 # ---------------------------------------------------------------------- sessions

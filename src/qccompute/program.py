@@ -664,8 +664,9 @@ class Program(Protocol):
 
     Structural: a program implements these methods without importing qccompute.
 
-    Optional: ``numerics``, a string that changes whenever results for an unchanged
-    input may change (see `numerics_of`); without it the version stands for it.
+    Optional: ``numerics(spec) -> str``, which changes whenever results for an
+    unchanged input may change (see `numerics_of`); without it the version stands for
+    it.
 
     Attributes:
         name: The program's name, as in ``ProgramInput.program``.
@@ -1060,23 +1061,28 @@ def find_program(name: str) -> Program | None:
         return _installed.setdefault(name, program)
 
 
-def numerics_of(program: Program) -> str:
-    """A program's numerics identity: its ``numerics``, else its version.
+def numerics_of(program: Program, spec: ProgramSpec | FileInput) -> str:
+    """A program's numerics identity for a spec: ``program.numerics(spec)``, else its version.
 
-    ``numerics`` is optional in the protocol: a string that changes whenever the
-    program's results for an unchanged input may change (linus: its numerics epoch;
-    an external program: its executable's version; an ML potential: its model's
-    checksum). A store files every run under the identities of the programs that made
-    it, and a runner reuses a run only when they are those it would run now.
+    ``numerics(spec) -> str`` is optional in the protocol: a string that changes
+    whenever the program's results for an unchanged input may change (linus: its
+    numerics epoch; an external program: its executable's sha256; an ML potential: its
+    model's checksum). It takes the spec (an input, or a subprogram's `ProgramSpec`),
+    so a program of several methods can give each its own. A store files every run
+    under the identities of the programs that made it, and a runner reuses a run only
+    when they are those it would run now.
 
     Args:
         program: The program.
+        spec: The input, or the subprogram's spec, it would run.
 
     Returns:
         The identity.
     """
     numerics = getattr(program, "numerics", None)
-    return str(numerics) if numerics else program.version()
+    if callable(numerics):
+        return str(numerics(spec))
+    return program.version()
 
 
 def capabilities_of(program: Program) -> Capabilities:

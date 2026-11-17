@@ -271,22 +271,15 @@ _HOST: tuple[str, int | None, float | None] | None = None
 
 
 class _Entry:
-    """A program as a runner places it: its capabilities, lock, worker spec, numerics."""
+    """A program as a runner places it: its capabilities, lock and worker spec."""
 
-    __slots__ = ("program", "caps", "lock", "spec", "_numerics")
+    __slots__ = ("program", "caps", "lock", "spec")
 
     def __init__(self, program: Program, caps: Capabilities, spec: str) -> None:
         self.program = program
         self.caps = caps
         self.lock = None if caps.thread_safe else _program_lock(program)
         self.spec = spec
-        self._numerics: str | None = None
-
-    def numerics(self) -> str:
-        """The program's numerics identity, read once (a store needs it)."""
-        if self._numerics is None:
-            self._numerics = numerics_of(self.program)
-        return self._numerics
 
 
 _locks: dict[int, tuple[Program, threading.Lock]] = {}
@@ -402,6 +395,19 @@ def _as_failure(
     wrapped = ProgramError(error, output=out)
     wrapped.__cause__ = exc
     return out, wrapped
+
+
+def _put(
+    store: Store,
+    out: Output,
+    identities: Mapping[str, str],
+    tags: Sequence[str],
+    meta: Mapping[str, Any] | None,
+) -> None:
+    """Store a run, unless it was warm-started (its numbers depend on history)."""
+    if out.record.get("warm_start") is True:
+        return
+    store.put(out, identities, tags=tuple(tags), meta=meta)
 
 
 def _with_execution(out: Output, wall_time: float, threads: int | None) -> Output:
@@ -734,8 +740,10 @@ class Runner:
         """The numerics identity of the input's program and of every subprogram.
 
         ``{name: numerics}``, by name, recursively through the subprograms' own
-        subprograms, from the programs this runner would run now. A program that is
-        not installed is left out.
+        subprograms, from the programs this runner would run now, each asked with its
+        own spec (`qccompute.program.numerics_of`). A program named twice with
+        different identities gets them all, sorted and joined by ``" + "``. A program
+        that is not installed is left out.
 
         Args:
             inp: The input.
@@ -743,21 +751,18 @@ class Runner:
         Returns:
             The identities a store files a run of this input under.
         """
-        found: dict[str, str] = {}
         if not isinstance(inp, ProgramInput):
             entry = self._entry(inp)
-            if entry is not None:
-                found[FILES] = entry.numerics()
-            return found
+            return {} if entry is None else {FILES: numerics_of(entry.program, inp)}
+        found: dict[str, set[str]] = {}
         pending: list[ProgramSpec] = [inp]
         while pending:
             spec = pending.pop()
-            if spec.program not in found:
-                program = find_program(spec.program)
-                if program is not None:
-                    found[spec.program] = self._entry_of(program).numerics()
+            program = find_program(spec.program)
+            if program is not None:
+                found.setdefault(spec.program, set()).add(numerics_of(program, spec))
             pending.extend(spec.subprograms)
-        return dict(sorted(found.items()))
+        return {name: " + ".join(sorted(found[name])) for name in sorted(found)}
 
     def _lookup(
         self, store: Store, inp: Input, rerun: bool
@@ -799,7 +804,7 @@ class Runner:
             inp, self.threads, None, self._host_memory(), timeout
         )
         if store is not None:
-            store.put(out, identities, tags=tuple(tags), meta=meta)
+            _put(store, out, identities, tags, meta)
         return out, failure
 
     # ------------------------------------------------------------------ public API
@@ -1018,7 +1023,7 @@ class Runner:
                 out = _with_execution(out, 0.0, None)
                 failure.output = out
                 if store is not None:
-                    store.put(out, identities[i], tags=tuple(tags), meta=meta)
+                    _put(store, out, identities[i], tags, meta)
                 yield i, out, failure
                 continue
             assert entry is not None
@@ -1052,7 +1057,7 @@ class Runner:
         if len(tasks) == 1:  # nothing to run beside: no thread
             for item in run(0, tasks[0]):
                 if store is not None:
-                    store.put(item[1], identities[item[0]], tags=tuple(tags), meta=meta)
+                    _put(store, item[1], identities[item[0]], tags, meta)
                 yield item
             return
         pool = ThreadPoolExecutor(max_workers=min(len(tasks), budget.threads))
@@ -1061,9 +1066,7 @@ class Runner:
             for future in as_completed(futures):
                 for item in future.result():
                     if store is not None:
-                        store.put(
-                            item[1], identities[item[0]], tags=tuple(tags), meta=meta
-                        )
+                        _put(store, item[1], identities[item[0]], tags, meta)
                     yield item
         finally:
             pool.shutdown(wait=False, cancel_futures=True)

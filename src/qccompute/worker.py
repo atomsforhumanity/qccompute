@@ -51,7 +51,10 @@ from .program import (
     failed_frame,
 )
 
-__all__ = ["Worker", "WorkerSession", "THREAD_VARIABLES"]
+__all__ = ["Worker", "WorkerSession", "THREAD_VARIABLES", "PATH_VARIABLE"]
+
+#: The client's ``sys.path`` for the worker, which takes it out of its environment.
+PATH_VARIABLE = "QCCOMPUTE_WORKER_SYS_PATH"
 
 #: Thread counts of numerical libraries, set for a worker to its grant unless the
 #: environment already sets them.
@@ -98,8 +101,9 @@ class Worker:
     ) -> None:
         """Start the worker and read its hello."""
         env = dict(os.environ)
-        # The worker imports what this process can import.
-        env["PYTHONPATH"] = os.pathsep.join(p for p in sys.path if p)
+        # The worker imports what this process can import; not through PYTHONPATH,
+        # which programs the worker starts (Psi4, other Pythons) would inherit.
+        env[PATH_VARIABLE] = os.pathsep.join(p for p in sys.path if p)
         if threads is not None:
             for name in THREAD_VARIABLES:
                 env.setdefault(name, str(threads))

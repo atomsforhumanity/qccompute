@@ -557,6 +557,8 @@ def main(argv: list[str] | None = None) -> int:
         "--socket", help="serve a Unix socket at this path, one client at a time"
     )
     args = parser.parse_args(argv)
+    paths = os.environ.pop("QCCOMPUTE_WORKER_SYS_PATH", "")
+    sys.path.extend(p for p in paths.split(os.pathsep) if p and p not in sys.path)
     if args.socket is None:
         proto = _protocol_stdout()
         host = Host(load_program(args.program))

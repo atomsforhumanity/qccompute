@@ -379,7 +379,7 @@ whichever call started a pooled worker.
   spins for about 0.1 s after each call. On 8 threads, a qcopt optimizer's own steps
   woke 7 such threads between gradients that axtb computed on all 8: 15-16 runnable
   threads on 8 cores, and 38 submitted TS searches, IRCs and end minimizations took
-  79 s instead of 34 s.
+  80-140 s instead of 24-26 s.
 - A program may hold its own linear algebra at other counts while it works (up to its
   grant for heavy work of its own between its subprograms' calls), if it restores the
   counts around its subprograms' calls and before it returns.

@@ -1096,11 +1096,11 @@
 <p>qccompute runs programs on <a href="https://qcdata.docs.afh.org/next/">qcdata</a> inputs. Every program
 runs the same way, whether it implements qccompute's protocol in Python or is an
 external program that <a href="https://qccodec.docs.afh.org/next/">qccodec</a> brings in:</p>
-<div class="language-sh highlight"><pre><span></span><code>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>--prerelease<span class="o">=</span>allow<span class="w"> </span><span class="s2">&quot;qcdata&gt;=0.24.0a8&quot;</span><span class="w"> </span><span class="s2">&quot;qccompute[qccodec]&gt;=0.23.0a6&quot;</span><span class="w"> </span><span class="s2">&quot;qccodec&gt;=0.22.0a5&quot;</span><span class="w"> </span><span class="s2">&quot;qcstore&gt;=0.1.0a4&quot;</span>
+<div class="language-sh highlight"><pre><span></span><code>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>--prerelease<span class="o">=</span>allow<span class="w"> </span><span class="s2">&quot;qcdata&gt;=0.24.0a8&quot;</span><span class="w"> </span><span class="s2">&quot;qccompute[qccodec]&gt;=0.23.0a7&quot;</span><span class="w"> </span><span class="s2">&quot;qccodec&gt;=0.22.0a6&quot;</span><span class="w"> </span><span class="s2">&quot;qcstore&gt;=0.1.0a4&quot;</span>
 </code></pre></div>
 <p>This is the alpha line, with minimum versions of its matching packages (<code>--prerelease=allow</code> lets the
 resolver take pre-releases); a plain <code>pip install qccompute</code> resolves the previous stable
-release. <code>qccompute</code> alone is the runner (<code>"qcdata&gt;=0.24.0a8" "qccompute&gt;=0.23.0a6"</code>);
+release. <code>qccompute</code> alone is the runner (<code>"qcdata&gt;=0.24.0a8" "qccompute&gt;=0.23.0a7"</code>);
 the <code>qccodec</code> extra adds external programs (xtb, ORCA, Psi4, ...) and <code>qcstore</code> is the
 calculation store. These pages document the alpha, at
 <a href="https://qccompute.docs.afh.org/next/">qccompute.docs.afh.org/next</a>; the site root

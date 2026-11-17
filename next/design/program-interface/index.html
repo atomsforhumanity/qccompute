@@ -1238,8 +1238,8 @@ subprograms:</p>
   capped request is a <code>resource_capped</code> warning. The GPUs are as many as its plan asks
   for (<code>plan.resources.gpus</code>), of the runner's or the parent's: a program whose
   subprograms use GPUs plans theirs and passes them on. While the program runs, the
-  runner holds the process's BLAS and OpenMP pools at its threads (below, <strong>Thread
-  pools</strong>).</li>
+  runner holds the process's BLAS and OpenMP pools at its threads, or at one thread
+  when its input names subprograms, whose grant it is (below, <strong>Thread pools</strong>).</li>
 <li><code>device_ordinals()</code>: the granted GPUs as this process's CUDA device ordinals, so every
   program maps a grant alike. <code>gpus</code> names them as <code>CUDA_VISIBLE_DEVICES</code> does (indices
   or <code>GPU-</code>/<code>MIG-</code> UUIDs). When the process's <code>CUDA_VISIBLE_DEVICES</code> is set, a GPU's
@@ -1267,7 +1267,11 @@ subprograms:</p>
   before building an event.</li>
 <li><code>stop_requested()</code>: whether the caller asked the calculation to stop (below,
   <strong>Stopping</strong>). A program that works in steps checks it before each step.</li>
-<li><code>scratch</code>: a directory, made on first use and removed when the call returns.</li>
+<li><code>scratch</code>: a directory, made on first use and removed when the call returns. In a
+  worker it is made in a directory the worker's client gives it (<code>--scratch</code>) and
+  removes when it closes the worker, so a calculation whose worker is killed (a
+  timeout, a cancel) leaves no scratch behind. <code>QCCOMPUTE_KEEP_SCRATCH=1</code> keeps every
+  one, for debugging; a killed worker's failure then names where its scratch is.</li>
 <li><code>compute(inputs, raise_exc=True)</code> and <code>session(spec, structure, threads=, calctypes=)</code>:
   subprograms, within the grant. They run only programs the calculation's input names,
   its own and its subprograms' recursively, and every program a subprogram's input
@@ -1503,8 +1507,17 @@ whichever call started a pooled worker.</p>
   with different threads share these counts (the one started last holds them); for
   bitwise reproducibility across mixed thread counts, use <code>isolation="process"</code>. Once no
   calculation runs, every count is back where the caller had it.</li>
-<li>A program may hold its own small linear algebra lower (qcopt runs its steps on one
-  thread), if it restores the counts around its subprograms' calls and before it returns.</li>
+<li>A calculation that runs subprograms (its input names some) holds its own pools at one
+  thread, and its grant goes to its subprograms, which hold theirs while they run. So the
+  threads in use, children included, stay within the grant: a parent's pools at the
+  whole grant kept threads busy beside its children, because an idle OpenBLAS thread
+  spins for about 0.1 s after each call. On 8 threads, a qcopt optimizer's own steps
+  woke 7 such threads between gradients that axtb computed on all 8: 15-16 runnable
+  threads on 8 cores, and 38 submitted TS searches, IRCs and end minimizations took
+  80-140 s instead of 24-26 s.</li>
+<li>A program may hold its own linear algebra at other counts while it works (up to its
+  grant for heavy work of its own between its subprograms' calls), if it restores the
+  counts around its subprograms' calls and before it returns.</li>
 <li>A program's own session in this process (what <code>qccompute.session(inp)</code> hands back
   unwrapped: a thread-safe program's, opened by the caller) is called directly, not
   through the runner, so its requests run with the caller's counts: the program applies
@@ -1560,7 +1573,9 @@ between calls. <code>qccompute.worker.Worker</code> is its client.</p>
 </li>
 <li>
 <p><strong>Transport:</strong> stdin and stdout, one JSON message per line, one client per connection;
-  <code>--socket PATH</code> serves a Unix socket on the same framing.</p>
+  <code>--socket PATH</code> serves a Unix socket on the same framing. <code>--scratch DIR</code>: the
+  calculations' temporary scratch directories are made in <code>DIR</code>, which a <code>Worker</code>
+  makes for its worker and removes when it closes it, killed or not.</p>
 </li>
 <li><strong>Hello:</strong> the first line, <code>{"protocol": 1, "program", "version", "capabilities",
   "array_files": true, "calls": true}</code>.</li>

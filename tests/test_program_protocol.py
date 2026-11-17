@@ -22,6 +22,7 @@ from qccompute.program import (
     BatchProgram,
     Capabilities,
     ComputeSession,
+    FunctionProgram,
     Program,
     Resources,
     RunContext,
@@ -142,6 +143,20 @@ def test_unsupported_calctype():
     with pytest.raises(ProgramError) as e:
         program.plan(toy_input("optimization"))
     assert e.value.error.kind is ErrorKind.unsupported
+
+
+def test_a_calctype_left_a_plain_string_by_model_copy_is_read_as_one():
+    """model_copy(update=) does not validate; qccompute never reads ``.value`` (#71)."""
+    for refusing in (
+        program,
+        FunctionProgram("plain", lambda x: (0.0, 0 * x), version="1"),
+    ):
+        wrong = toy_input().model_copy(update={"calctype": "optimization"})
+        assert type(wrong.calctype) is str
+        with pytest.raises(ProgramError) as e:
+            refusing.plan(wrong)
+        assert e.value.error.kind is ErrorKind.unsupported
+        assert "not optimization" in e.value.error.message
 
 
 def test_check_program_reports_every_broken_contract():

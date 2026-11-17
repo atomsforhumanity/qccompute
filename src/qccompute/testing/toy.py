@@ -158,7 +158,7 @@ def _resolve(spec: ProgramInput | ProgramSpec) -> Plan:
     if spec.calctype not in CALCTYPES:
         raise ProgramError.of(
             "unsupported",
-            f"{NAME} computes {sorted(CALCTYPES)}, not {spec.calctype.value}.",
+            f"{NAME} computes {sorted(CALCTYPES)}, not {spec.calctype}.",
         )
     if spec.model is None or spec.model.method.lower() != "lj":
         raise ProgramError.of("input", f"{NAME} has one method, 'lj'.")

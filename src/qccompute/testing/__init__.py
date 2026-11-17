@@ -181,16 +181,16 @@ def _check_program(
             and isinstance(schema.get("properties"), dict)
             and isinstance(record, dict)
         )
-        check(f"schemas[{calctype.value}]", ok, "settings schema must be an object")
+        check(f"schemas[{calctype}]", ok, "settings schema must be an object")
         if ok:
             try:
                 validators[calctype] = _validator(schema)
                 _validator(record)
             except Exception as e:  # jsonschema.SchemaError
-                check(f"schemas[{calctype.value}] valid", False, str(e))
+                check(f"schemas[{calctype}] valid", False, str(e))
 
     for n, inp in enumerate(inputs):
-        tag = f"input {n} ({inp.calctype.value})"
+        tag = f"input {n} ({inp.calctype})"
         if not check(f"{tag}: program name", inp.program == program.name, inp.program):
             continue
         validate = validators.get(inp.calctype)

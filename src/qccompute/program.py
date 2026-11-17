@@ -1739,7 +1739,7 @@ class FunctionProgram:
             raise ProgramError.of(
                 "unsupported",
                 f"{self.name} computes {sorted(c.value for c in self._caps.calctypes)},"
-                f" not {inp.calctype.value}.",
+                f" not {inp.calctype}.",
             )
         if inp.structure is None:
             raise ProgramError.of("input", f"{self.name} needs a structure.")

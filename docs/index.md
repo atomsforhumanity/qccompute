@@ -102,7 +102,11 @@ directly. Any other program (most external programs, tblite, a `FunctionProgram`
 session over `compute`, which computes every request from scratch
 (`record["warm_start"]` is false): a convenience, not a speed-up. A failed request raises
 `ProgramError` and the session stays usable; `compute_many` runs every request, then
-raises `qcdata.ProgramErrors`, whose `results` holds every frame in request order.
+raises `qcdata.ProgramErrors`, whose `results` holds every frame in request order. A
+session's threads are set when it opens, `qccompute.session(inp, threads=8)`, else what
+its input asks for: a program's own session splits them across the lineages it runs at
+once, and a session over `compute` runs `compute_many`'s requests side by side, as a
+list.
 Lineages name separate histories in one session (both branches of an IRC), `seed`
 starts one from another, and `commit=False` reads a history without moving it; see
 [Sessions, lineages and seeds](examples/sessions.md).

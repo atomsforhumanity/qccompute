@@ -84,6 +84,16 @@ class PidSession(ToySession):
         return frame.model_copy(update={"record": {**frame.record, "pid": os.getpid()}})
 
 
+class Stateless(Isolated):
+    """The isolated toy without sessions or batches: a session runs its compute."""
+
+    name = "stateless"
+
+    def capabilities(self):
+        caps = super().capabilities()
+        return caps.model_copy(update={"sessions": False, "batches": False})
+
+
 class IsolatedGPU(Isolated):
     """The isolated toy, planning one GPU (a GPU program in a worker of its own)."""
 
@@ -151,4 +161,5 @@ stray = Stray()
 relay = Relay()
 noisy = Noisy()
 isolated = Isolated()
+stateless = Stateless()
 isolated_gpu = IsolatedGPU()

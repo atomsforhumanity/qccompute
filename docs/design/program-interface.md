@@ -173,16 +173,25 @@ with program.Session(inp) as s:            # every calctype the method supports
   `seed` lists lineages to start from when the request's own has no history; `commit`
   (default true) makes a success the lineage's history.
 - `compute_many` runs requests of one lineage in order, each reading its lineage's
-  history as it stands at its place; requests of different lineages may run concurrently.
+  history as it stands at its place; requests of different lineages may run
+  concurrently, within the session's grant, which is set when it opens
+  (`session(inp, threads=)`, else what its input or plan asks for): the program splits
+  it across lineages. A path method that evaluates 13 images at once opens its session
+  with `threads=13`.
 - A failed request raises `ProgramError` with its failed frame; the session and its other
   lineages go on, and the lineage's history is untouched.
 - Sessions may be called from several threads; the runner serializes those of programs
   that are not thread-safe.
 
 `qccompute.session(inp)` hands back the program's own session in process, so the numbers
-are exactly those of the program used directly. A program without sessions gets a
-`ComputeSession`: one stateless calculation per request (`warm_start` false). A program
-in a worker gets a `WorkerSession` over the pipe, with the same methods.
+are exactly those of the program used directly. A program in a worker gets a
+`WorkerSession` over the pipe, with the same methods. A program without sessions gets a
+`ComputeSession`: one stateless calculation per request (`warm_start` false), placed
+like any other calculation (in this process, or in the program's workers). Its
+`compute_many` runs as a list does: each request gets the threads it asks for, and they
+run side by side within the sum of their threads, at most the session's `threads=` or
+else the runner's (or the parent's grant). Thirteen one-thread path images on eight
+threads run eight at a time.
 
 ## The runner
 

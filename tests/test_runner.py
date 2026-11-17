@@ -941,6 +941,62 @@ def test_sessions_may_be_called_from_threads(thread_safe):
     assert program.most > 1 if thread_safe else program.most == 1
 
 
+def test_a_sessions_compute_many_runs_its_requests_side_by_side():
+    """The sum of their threads, capped as for a list (#54): 13 images at once."""
+    program = NoSessions("images")
+    register_program(program)
+    x = np.asarray(ARGON3.geometry)
+    images = [Request(positions=x * (1 + 0.01 * i)) for i in range(13)]
+    with Runner(threads=8) as runner:
+        with runner.session(toy_input(program="images")) as s:
+            frames = s.compute_many(images)
+        assert program.most == 8  # 13 one-thread requests on 8 threads
+        assert {c.threads for c in program.contexts} == {1}
+        assert all(f.success for f in frames)
+        program.most = 0
+        with runner.session(toy_input(program="images"), threads=3) as s:
+            s.compute_many(images)  # the session's own grant caps them
+        assert program.most == 3
+        program.most = 0
+        with runner.session(toy_input(program="images", threads=2)) as s:
+            s.compute_many(images)  # 2 threads each: 4 at once
+            s.compute()
+        assert program.most == 4 and program.contexts[-1].threads == 2
+        # A native session's grant is set at open, for the program to split.
+        opened = []
+
+        class Opening(ToyProgram):
+            name = "opening"
+
+            def open_session(self, inp, ctx=None, calctypes=None):
+                opened.append(ctx.threads)
+                own = inp.model_copy(update={"program": "toy"})
+                return super().open_session(own, ctx, calctypes)
+
+        register_program(Opening())
+        runner.session(toy_input(program="opening"), threads=13).close()
+        runner.session(toy_input(program="opening")).close()
+        runner.session(toy_input(program="opening", threads=4)).close()
+        assert opened == [8, 1, 4]
+    with pytest.raises(ValueError):
+        Runner(threads=2).session(toy_input(), threads=0)
+
+
+def test_a_session_of_a_worker_program_without_sessions_uses_its_pool():
+    """Its requests are calculations, placed in the program's workers (#54)."""
+    register_program(serve_programs.stateless)
+    x = np.asarray(ARGON3.geometry)
+    images = [Request(positions=x * (1 + 0.01 * i)) for i in range(4)]
+    with Runner(threads=2) as runner:
+        with runner.session(toy_input(program="stateless", sleep=0.2)) as s:
+            start = time.perf_counter()
+            frames = s.compute_many(images)
+            elapsed = time.perf_counter() - start
+    assert all(f.success for f in frames)
+    assert len({f.results.extras["pid"] for f in frames}) == 2  # two workers
+    assert elapsed < 4 * 0.2 + 0.4  # two at a time, after the workers start
+
+
 # ------------------------------------------------------------------- subprograms
 
 

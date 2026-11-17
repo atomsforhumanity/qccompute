@@ -762,8 +762,11 @@ class Session(Protocol):
 
         Requests of one lineage run in list order, each reading the lineage's history
         as it stands at its place (`qcdata.Request.commit`); requests of different
-        lineages may run concurrently within the grant. The results equal running the
-        requests one at a time, each with the thread count it got.
+        lineages may run concurrently within the grant. The grant is the session's,
+        set when it opens (``threads=``, else the threads its input or plan asks
+        for), and the program splits it across the lineages it runs at once. The
+        results equal running the requests one at a time, each with the thread count
+        it got.
 
         Every request runs, failed ones included; then, if any failed, the call
         raises one `qcdata.ProgramErrors` group holding each failure's
@@ -968,7 +971,8 @@ class ComputeSession:
     Each request becomes the session's input at the new positions and calctype,
     computed by ``compute``: a runner's ``compute`` (one input raises
     `qcdata.ProgramError` on failure; a list with ``raise_exc=False`` returns failed
-    outputs in place). It keeps no history: every request starts fresh
+    outputs in place). A runner computes `compute_many`'s requests as a list, side
+    by side within the session's grant. It keeps no history: every request starts fresh
     (``warm_start`` false), so ``lineage``, ``seed`` and ``commit`` change nothing. A
     request's ``accuracy`` becomes the ``accuracy`` keyword of the input it computes,
     replacing the session input's own; the program records it as it records the

@@ -1237,24 +1237,35 @@ class Runner:
         self,
         inp: ProgramInput,
         calctypes: Iterable[CalcType | str] | None = None,
+        *,
+        threads: int | None = None,
     ) -> Session:
         """Open a session: one program and molecule at many geometries.
 
         A program with sessions of its own (``capabilities().sessions``) opens one,
         pinned to the input's settings and warm-started between geometries: in this
         process it is the program's own session object (``mychem.Session``), exactly
-        what a direct user gets. For any other program the session runs each
-        geometry through ``compute``, from scratch (``record["warm_start"]`` is
-        false): it is a convenience, not a speed-up. Programs in worker processes give
-        a session over the worker's pipe, with the same methods; sessions of a program
-        on a GPU share its worker there. The session gets the threads its input asks
-        for (as in `compute`), at most the runner's, and the GPUs its plan asks for.
+        what a direct user gets. Its grant is set when it opens: ``threads``, else the
+        threads its input asks for (as in `compute`), at most the runner's; the
+        program splits it across the lineages it runs at once. Programs in worker
+        processes give a session over the worker's pipe, with the same methods;
+        sessions of a program on a GPU share its worker there.
+
+        For any other program the session runs each geometry through ``compute``,
+        from scratch (``record["warm_start"]`` is false): it is a convenience, not a
+        speed-up. Each request gets the threads its input asks for (``threads``, if
+        given); a ``compute_many`` of n requests runs as a list does, side by side,
+        with the sum of their threads, at most ``threads`` or else the runner's.
+
+        A session gets the GPUs its plan asks for, and all of the runner's memory.
 
         Args:
             inp: The program, model, keywords and structure; its calctype and
                 geometry are the defaults of a request.
             calctypes: The calctypes the session may run (default: everything the
                 method supports; declaring narrows it).
+            threads: The session's grant of threads (at most the runner's): 13 path
+                images evaluated at once want 13. None: what its input asks for.
 
         Returns:
             The session; use it as a context manager, or close it.
@@ -1262,8 +1273,12 @@ class Runner:
         Raises:
             ProgramError: The program is not installed or rejects the input.
         """
+        if threads is not None:
+            if isinstance(threads, bool) or threads < 1:
+                raise ValueError("threads must be a positive integer.")
+            threads = min(threads, self.threads)
         return self._open_session(
-            inp, calctypes, None, self.threads, None, self._host_memory(), None
+            inp, calctypes, threads, self.threads, None, self._host_memory(), None
         )
 
     # ------------------------------------------------------------------ lists
@@ -1478,27 +1493,24 @@ class Runner:
     ) -> Session:
         """Open a session with ``threads``, or (None) the threads its plan asks for.
 
-        ``parent`` is the grant of the calculation whose subprogram it is (its time
-        left is the session's), None for a session of the caller's own.
+        A session over compute caps its lists at ``threads`` when given, else at
+        ``cap``. ``parent`` is the grant of the calculation whose subprogram it is (its
+        time left is the session's), None for a session of the caller's own.
         """
         timeout = None if parent is None else parent.timeout
         entry, plan = self._plan(inp)
+        lists = cap if threads is None else threads
         if threads is None:
             threads = _threads(inp, plan, cap)
         allowed = session_calctypes(calctypes) if calctypes else None
         granted = self._devices(plan, devices)
-        ctx = self._context(threads, granted, memory, timeout, None, inp, parent)
         program = entry.program
         opened: Session
         lock = entry.lock
-        if self._in_worker(entry):
-            worker = self._worker(entry, granted, threads)
-            release = partial(self._release, worker, granted)
-            opened = worker.session(inp, allowed, ctx, on_close=release)
-            lock = None  # the worker is this session's own process
-        elif entry.caps.sessions and isinstance(program, SessionProgram):
-            opened = program.open_session(inp, ctx, allowed)
-        else:
+        native = entry.caps.sessions and (
+            self._in_worker(entry) or isinstance(program, SessionProgram)
+        )
+        if not native:  # each request is a calculation, placed as any other
             if allowed is None:
                 method = inp.model.method if inp.model is not None else None
                 supported = (entry.caps.methods or {}).get(
@@ -1506,12 +1518,23 @@ class Runner:
                 )
                 allowed = session_calctypes(None, supported & session_calctypes())
             compute = partial(
-                self._session_compute, threads, granted, memory, timeout, parent
+                self._session_compute,
+                (threads, lists, granted, memory, timeout),
+                parent,
             )
-            opened = ComputeSession(
+            over = ComputeSession(
                 compute, inp, allowed, program_version=program.version()
             )
-            lock = None  # each compute takes the program's lock itself
+            # Each compute takes the program's lock itself.
+            return over if parent is None else _Guarded(over, None, parent)
+        ctx = self._context(threads, granted, memory, timeout, None, inp, parent)
+        if self._in_worker(entry):
+            worker = self._worker(entry, granted, threads)
+            release = partial(self._release, worker, granted)
+            opened = worker.session(inp, allowed, ctx, on_close=release)
+            lock = None  # the worker is this session's own process
+        else:
+            opened = program.open_session(inp, ctx, allowed)  # type: ignore[attr-defined]
         try:
             weakref.finalize(opened, ctx.cleanup)
         except TypeError:  # not weak-referenceable
@@ -1522,15 +1545,19 @@ class Runner:
 
     def _session_compute(
         self,
-        threads: int,
-        devices: tuple[str, ...],
-        memory: float | None,
-        timeout: float | None,
+        grant: tuple[int, int, tuple[str, ...], float | None, float | None],
         parent: RunContext | None,
         inputs: Any,
         raise_exc: bool = True,
     ) -> Any:
-        """Compute for a session over compute, within the session's grant."""
+        """Compute for a session over compute, within the session's grant.
+
+        ``grant`` is the threads of one request, the threads a list of them may use
+        together, the GPUs, host memory (GiB) and the timeout. A list runs as
+        `compute` runs one: each request gets the threads it asks for, packed into
+        the list's (#54).
+        """
+        threads, lists, devices, memory, timeout = grant
         if isinstance(inputs, ProgramInput):
             out, failure = self._execute(
                 inputs, threads, devices, memory, timeout, parent=parent
@@ -1538,9 +1565,16 @@ class Runner:
             if failure is not None and raise_exc:
                 raise failure
             return out
-        grant = (threads, devices, memory, timeout)
         outputs: list[Output | None] = [None] * len(inputs)
-        listed = self._run_list(list(inputs), None, False, (), None, grant, parent)
+        listed = self._run_list(
+            list(inputs),
+            None,
+            False,
+            (),
+            None,
+            (lists, devices, memory, timeout),
+            parent,
+        )
         for i, out, _ in listed:
             outputs[i] = out
         return outputs
@@ -1751,15 +1785,19 @@ def compute(
 
 
 def session(
-    inp: ProgramInput, calctypes: Iterable[CalcType | str] | None = None
+    inp: ProgramInput,
+    calctypes: Iterable[CalcType | str] | None = None,
+    *,
+    threads: int | None = None,
 ) -> Session:
     """Open a session on this machine: `Runner.session` of the default runner.
 
     Args:
         inp: The program, model, keywords, structure, and the default calctype.
         calctypes: The calctypes the session may run.
+        threads: See `Runner.session`.
 
     Returns:
         The session.
     """
-    return default_runner().session(inp, calctypes)
+    return default_runner().session(inp, calctypes, threads=threads)

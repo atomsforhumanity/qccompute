@@ -42,7 +42,7 @@ theme:
     repo: fontawesome/brands/github-alt
 
 repo_url: https://github.com/atomsforhumanity/qccompute
-edit_uri: edit/master/docs/
+edit_uri: edit/next/docs/
 site_author: Colton Hicks
 plugins:
   - search
@@ -117,4 +117,4 @@ nav:
       - "Dynamic workflows: futures": examples/dynamic_workflows.md
       - Sessions, lineages and seeds: examples/sessions.md
       - A program from functions: examples/function_program.md
-  - Changelog: https://github.com/atomsforhumanity/qccompute/blob/master/CHANGELOG.md
+  - Changelog: https://github.com/atomsforhumanity/qccompute/blob/next/CHANGELOG.md

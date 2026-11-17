@@ -23,6 +23,7 @@ from qccompute.program import (
     Capabilities,
     ComputeSession,
     Program,
+    Resources,
     RunContext,
     Session,
     SessionProgram,
@@ -739,3 +740,9 @@ def test_capabilities_have_no_gpu_flag():
     """GPUs are a plan's, not a capability: nothing read Capabilities.gpu (alpha 4)."""
     with pytest.raises(ValidationError):
         Capabilities.model_validate({"calctypes": ["energy"], "gpu": True})
+
+
+def test_resources_have_no_exclusive_flag():
+    """Nothing read Resources.exclusive, and the runner never honoured it (alpha 4)."""
+    with pytest.raises(ValidationError):
+        Resources.model_validate({"exclusive": True})

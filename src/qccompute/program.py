@@ -177,15 +177,12 @@ class Resources(QCDataBaseModel):
         device_memory_gib: Memory per GPU the calculation expects to use (GiB), if
             known; informational, not scheduled (``per_gpu`` sets how many
             calculations share a GPU).
-        exclusive: Whether the calculation must have the machine (or its GPUs) to
-            itself, e.g. for clean timings.
     """
 
     threads: int | None = 1
     memory_gib: float | None = None
     gpus: int = 0
     device_memory_gib: float | None = None
-    exclusive: bool = False
 
 
 class Plan(QCDataBaseModel):

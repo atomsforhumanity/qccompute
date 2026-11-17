@@ -201,10 +201,11 @@ ran in 1.2 ms on one thread and 221 ms (10 CPU-seconds) with 46. A list's calcul
 are admitted in input order while their shares sum to at most one; a calculation's share is
 the larger of its share of the threads and its share of the GPUs, where each of k
 calculations on one GPU counts as 1/k of it. Host memory and GPU memory follow the share.
-There are no memory estimates and no memory scheduling. The inputs of a list that go to a
-program with batches are one calculation of the list: it asks for the sum of their
-threads, at most the runner's (or the parent's grant), and for the most GPUs any of them
-asks for; the program divides its grant among them.
+There are no memory estimates and no memory scheduling: a plan's `memory_gib` and
+`device_memory_gib` are informational, recorded and never scheduled. The inputs of a list
+that go to a program with batches are one calculation of the list: it asks for the sum of
+their threads, at most the runner's (or the parent's grant), and for the most GPUs any of
+them asks for; the program divides its grant among them.
 
 **Placement.** A program that may share the process runs in its threads; one that is not
 thread-safe takes turns on a lock per program. Worker processes are kept for the next

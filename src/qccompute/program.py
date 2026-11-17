@@ -155,7 +155,12 @@ class Capabilities(QCDataBaseModel):
 
 
 class Resources(QCDataBaseModel):
-    """What one calculation needs from the machine; the runner schedules by it.
+    """What one calculation asks of the machine.
+
+    The runner grants the threads and GPUs asked for and packs lists by them. Memory
+    is informational: the runner records it in the plan and never schedules,
+    packs or caps by it (qc* makes no memory estimates). A calculation's host and
+    device memory are its share of the runner's, in `RunContext`.
 
     Attributes:
         threads: CPU threads the calculation asks for when its input has no
@@ -164,12 +169,14 @@ class Resources(QCDataBaseModel):
             its parent's grant): for a program that scales with whatever it is given
             (a DFT code). In a list such a calculation is a full share, so it runs
             alone. A small molecule rarely gains from more than a few.
-        memory_gib: Host memory (GiB), if known.
+        memory_gib: Host memory the calculation expects to use (GiB), if known;
+            informational, not scheduled.
         gpus: GPUs the calculation uses: the runner grants this many, whatever the
             program's capabilities say (a program whose subprograms use GPUs plans
             theirs). A program in a worker sees only those granted.
-        device_memory_gib: Memory per GPU (GiB), if capped; several calculations may
-            then share one device.
+        device_memory_gib: Memory per GPU the calculation expects to use (GiB), if
+            known; informational, not scheduled (``per_gpu`` sets how many
+            calculations share a GPU).
         exclusive: Whether the calculation must have the machine (or its GPUs) to
             itself, e.g. for clean timings.
     """
@@ -188,8 +195,9 @@ class Plan(QCDataBaseModel):
         resolved: The settings with every ``"auto"`` replaced, and why; exactly what
             the run's `ProgramOutput.resolved` will hold.
         resources: What the calculation needs; the runner grants its threads (unless
-            the input's ``threads`` keyword asks) and packs lists by it. A program with
-            subprograms gives the largest over its subprograms' plans.
+            the input's ``threads`` keyword asks) and GPUs, and packs lists by them;
+            its memory is informational. A program with subprograms gives the largest
+            over its subprograms' plans.
         warnings: What the program would warn about.
         record: The program's own detail of the plan (a placement, arithmetic
             and memory plan), shaped like a run's record.

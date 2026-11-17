@@ -213,7 +213,8 @@ class Worker:
         """Send one message and return its result.
 
         While it is in flight, the worker's program may call back for subprograms;
-        each call is answered in a thread of its own, within ``grant``.
+        each call is answered in a thread of its own, within ``grant``. Its progress
+        events go to ``grant.progress``, in this thread.
 
         Raises:
             ProgramError: The worker refused the message (``ok: false``), died, or
@@ -246,6 +247,11 @@ class Worker:
                 reply = json.loads(line)
                 if "call" in reply and "id" not in reply:
                     self._answer(reply)
+                    continue
+                if "progress" in reply:  # an event of the message in flight
+                    if reply.get("id") == self._ids and grant is not None:
+                        if grant.progress is not None:
+                            grant.progress(reply["progress"])
                     continue
                 break
         if not reply.get("ok"):
@@ -286,6 +292,8 @@ class Worker:
         }
         if ctx.gpus:
             wire["gpus"] = list(ctx.gpus)
+        if ctx.progress is not None:
+            wire["progress"] = True
         return {k: v for k, v in wire.items() if v is not None}
 
     def compute(

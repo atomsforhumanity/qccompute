@@ -94,6 +94,45 @@ class Stateless(Isolated):
         return caps.model_copy(update={"sessions": False, "batches": False})
 
 
+class Stepper(ToyProgram):
+    """The toy, reporting three steps of each calculation and each session request."""
+
+    name = "stepper"
+
+    def compute(self, inp, ctx=None):
+        if ctx is not None and ctx.progress is not None:
+            for step in range(3):
+                ctx.progress({"event": "step", "step": step, "pid": os.getpid()})
+        own = inp.model_copy(update={"program": "toy"})
+        return super().compute(own, ctx).model_copy(update={"input_data": inp})
+
+    def compute_batch(self, inputs, ctx=None):
+        return [self.compute(i, ctx) for i in inputs]
+
+    def open_session(self, inp, ctx=None, calctypes=None):
+        own = inp.model_copy(update={"program": "toy"})
+        return StepperSession(own, calctypes=calctypes, ctx=ctx)
+
+
+class StepperSession(ToySession):
+    """The toy's session, reporting each request."""
+
+    def __init__(self, inp, *, calctypes=None, ctx=None):
+        super().__init__(inp, calctypes=calctypes, ctx=ctx)
+        self._progress = None if ctx is None else ctx.progress
+
+    def compute(self, *args, **kwargs):
+        if self._progress is not None:
+            self._progress({"event": "request", "pid": os.getpid()})
+        return super().compute(*args, **kwargs)
+
+    def compute_many(self, requests):
+        if self._progress is not None:
+            for _ in requests:
+                self._progress({"event": "request", "pid": os.getpid()})
+        return super().compute_many(requests)
+
+
 class IsolatedGPU(Isolated):
     """The isolated toy, planning one GPU (a GPU program in a worker of its own)."""
 
@@ -162,4 +201,5 @@ relay = Relay()
 noisy = Noisy()
 isolated = Isolated()
 stateless = Stateless()
+stepper = Stepper()
 isolated_gpu = IsolatedGPU()

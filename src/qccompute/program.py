@@ -64,6 +64,7 @@ import threading
 import time
 import traceback
 import types
+import warnings
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from importlib.metadata import EntryPoint, entry_points
 from pathlib import Path
@@ -367,6 +368,41 @@ def _program_names(spec: ProgramSpec | FileInput) -> set[str]:
     return names
 
 
+#: What receives progress events: a callable of one JSON object.
+ProgressCallback = Callable[[dict[str, Any]], None]
+
+
+class _Progress:
+    """A caller's progress callable as one calculation sees it: events get its path.
+
+    ``path`` is the program names from the top input down to this calculation; a
+    subprogram's context gets the path one name longer (`child`). An exception from
+    the caller's callable is reported as a warning and never fails the calculation.
+    """
+
+    __slots__ = ("callback", "path")
+
+    def __init__(self, callback: ProgressCallback, path: tuple[str, ...]) -> None:
+        self.callback = callback
+        self.path = path
+
+    def __call__(self, event: Mapping[str, Any]) -> None:
+        """Hand an event to the caller, with its path."""
+        try:
+            self.callback({**event, "path": list(self.path)})
+        except Exception as e:  # noqa: BLE001 - a display's bug must not fail a run
+            warnings.warn(
+                f"The progress callable raised {type(e).__name__}: {e}; the "
+                "calculation goes on.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+
+    def child(self, program: str) -> _Progress:
+        """The progress of a subprogram of this calculation."""
+        return _Progress(self.callback, (*self.path, program))
+
+
 class _Subprograms(Protocol):
     """What runs a calculation's subprograms: a `Runner`, or a worker's client."""
 
@@ -417,6 +453,13 @@ class RunContext:
         plan: The runner's plan of this input, when it made one, so the program need
             not plan again; exactly what ``program.plan(input)``
             returned.
+        progress: Where the program reports what it is doing while it runs, if the
+            caller listens; None when nobody does, so a program checks it before
+            building an event. Call it with a small JSON object, the program's own
+            (qcopt: one per step, ``{"event": "step", "step": 12, "energy": ...}``
+            in qcdata's units); the caller receives it with ``"path"`` added, the
+            program names from the caller's input down to this one. It may be called
+            from several threads. Nothing is stored.
     """
 
     __slots__ = (
@@ -425,6 +468,7 @@ class RunContext:
         "memory_gib",
         "device_memory_gib",
         "plan",
+        "progress",
         "_deadline",
         "_scratch",
         "_made",
@@ -444,6 +488,7 @@ class RunContext:
         plan: Plan | None = None,
         scratch: Path | None = None,
         runner: _Subprograms | None = None,
+        progress: ProgressCallback | None = None,
     ) -> None:
         """Create a context; runners do this, programs read it.
 
@@ -458,12 +503,14 @@ class RunContext:
                 a temporary one made on first use of `scratch`.
             runner: What runs subprograms (a runner, or in a worker its client); None:
                 the default runner.
+            progress: Where the program's progress events go; None: nowhere.
         """
         self.threads = threads
         self.gpus: tuple[str, ...] = tuple(gpus)
         self.memory_gib = memory_gib
         self.device_memory_gib = device_memory_gib
         self.plan = plan
+        self.progress = progress
         self._deadline = None if timeout is None else time.monotonic() + timeout
         self._scratch = scratch
         self._made = False

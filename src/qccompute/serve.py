@@ -26,9 +26,13 @@ Wire, one JSON message per line:
   ``{input}``; ``close {session}``; ``compute {input, ctx}`` (a one-off) ->
   ProgramOutput; ``compute_batch {inputs, ctx}`` -> [ProgramOutput]; ``lineages
   {session}`` where the session offers them; ``options {array_dir, calls}``.
-- ``ctx`` is ``{threads, memory_gib, device_memory_gib, timeout, scratch_dir, gpus}``.
-  The GPU is fixed when the worker is spawned, so ``gpus`` must be empty or match
-  ``CUDA_VISIBLE_DEVICES``.
+- ``ctx`` is ``{threads, memory_gib, device_memory_gib, timeout, scratch_dir, gpus,
+  progress}``. The GPU is fixed when the worker is spawned, so ``gpus`` must be empty or
+  match ``CUDA_VISIBLE_DEVICES``. With ``progress: true`` the program's progress events
+  (``ctx.progress``) stream to the client while a message is in flight, as lines
+  ``{"id", "progress": event}`` naming the message (for a session, each request's
+  message); an event that is not JSON is dropped, with a note on stderr. A plain
+  client never asks for them and never gets one.
 - Numbers are shortest round-trip decimals, so positions and results cross bit for bit.
   No NaN or Infinity: a message holding one is refused, and a non-finite result becomes a
   failed frame (kind ``numerical``, code ``non_finite``).
@@ -220,6 +224,7 @@ class Host:
         self._ids = itertools.count(1)
         self._subprograms = _ClientRunner(self)
         self.device_lost = False
+        self._message: Any = None  # the id of the message in flight
 
     def hello(self) -> dict[str, Any]:
         """The worker's first line: protocol, program, version, capabilities, options."""
@@ -249,6 +254,8 @@ class Host:
     def answer(self, msg: dict[str, Any], key: str = "id") -> str:
         """The reply line to one parsed message, under ``key`` (``id``, or ``call``)."""
         mid = msg.get(key)
+        if key == "id":
+            self._message = mid
         try:
             result = _wire.dump(self.handle(msg), self.array_dir)
             try:
@@ -454,7 +461,14 @@ class Host:
                 f"for {list(gpus)}",
                 ErrorKind.environment,
             )
-        known = {"threads", "memory_gib", "device_memory_gib", "timeout", "scratch_dir"}
+        known = {
+            "threads",
+            "memory_gib",
+            "device_memory_gib",
+            "timeout",
+            "scratch_dir",
+            "progress",
+        }
         unknown = sorted(set(fields) - known)
         if unknown:
             raise MessageError(
@@ -469,7 +483,23 @@ class Host:
             gpus=visible,
             scratch=Path(scratch) if scratch else None,
             runner=self._subprograms,
+            progress=self._progress if fields.get("progress") else None,
         )
+
+    def _progress(self, event: Any) -> None:
+        """Stream a progress event to the client, naming the message in flight."""
+        connection = self.connection
+        if connection is None:
+            return
+        try:
+            line = _wire.encode({"id": self._message, "progress": event})
+        except (TypeError, ValueError) as e:
+            print(f"qccompute.serve: a progress event dropped: {e}", file=sys.stderr)
+            return
+        try:
+            connection.write(line)
+        except (OSError, ValueError):  # the client is gone
+            pass
 
     def _watch(self, out: Frame | ProgramOutput[Any, Any]) -> None:
         if (

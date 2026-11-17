@@ -174,6 +174,25 @@ network or a report can cite the exact run and read it back with
 `store.get(key, run=...)`. A store implements `key`, `get`, `put` and `tag`
 (`qccompute.runner.Store`); qcstore is one.
 
+## Progress
+
+Programs can report what they are doing while they run (qcopt: one event per step).
+Pass a callable to see it:
+
+```python
+def show(event):  # {"event": "step", "step": 12, "energy": -76.4, "path": ["qcopt"]}
+    print(event["path"], event)
+
+qccompute.compute(inp, progress=show)
+```
+
+Each event is a small JSON object of the program's own, with `path` added: the program
+names from your input down to the one that emitted it, so a subprogram's events
+(`["mepd-neb", "qcopt"]`) arrive too. The callable may be called from several threads
+at once. Stored outputs emit nothing, and nothing is stored. A program in a worker
+process streams its events back. `submit`, `as_completed` and `session` take
+`progress=` too; to tell a list's inputs apart, submit each with its own callable.
+
 ## Programs
 
 A program is an object implementing `qccompute.program.Program`: its `name`, `version()`,

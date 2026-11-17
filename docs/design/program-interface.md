@@ -106,6 +106,9 @@ subprograms:
   `ctx.session` and its child sessions' requests fail with kind `timeout`), so a driver
   stops at its next step. For a hard limit on any program, `isolation="process"`.
 - `plan`: the runner's plan of the input, so the program need not plan again.
+- `progress`: where the program reports what it is doing while it runs, when the
+  caller listens (below, **Progress**); None when nobody does, so a program checks it
+  before building an event.
 - `scratch`: a directory, made on first use and removed when the call returns.
 - `compute(inputs, raise_exc=True)` and `session(spec, structure, threads=, calctypes=)`:
   subprograms, within the grant. They run only programs the calculation's input names,
@@ -124,6 +127,30 @@ programs by name: one that is neither installed nor registered fails with kind
 The runner never changes a number by itself. A grant may change a program's resolved
 choices (a storage scheme picked from the memory granted, a precision from the device);
 the program records each one in `resolved`.
+
+## Progress
+
+`submit`, `compute`, `as_completed` and `session` take `progress=`, a callable that
+receives small JSON events while calculations run. Programs choose what to emit (qcopt:
+one event per step); the runner only delivers them, and nothing is stored.
+
+- A program calls `ctx.progress(event)` with a JSON object of its own: plain values,
+  qcdata's units, small enough to send every step (a step number, an energy, the largest
+  gradient component; positions where a live view needs them). A shared key: `event`,
+  a snake_case name of what happened (`step`).
+- The caller receives the event with `path` added: the program names from the
+  caller's input down to the program that emitted it (`["mepd-neb", "qcopt"]`). A
+  subprogram's events reach the same callable through its parent's context, so a
+  workflow sees every level of a nested run.
+- The callable may be called from several threads at once (a list's calculations, a
+  program's own threads), and should return quickly. An exception it raises is a
+  warning; the calculation goes on.
+- Store hits emit nothing. A list's events do not say which input they are from:
+  `submit` each input with a callable of its own (`functools.partial(show, i)`) to
+  tell them apart.
+- A program in a worker streams its events to the client while a message is in flight
+  (`ctx.progress` on the wire, below); a program run without a listener has
+  `ctx.progress` None, so an unused progress channel costs nothing.
 
 ## Failures
 
@@ -197,7 +224,7 @@ threads run eight at a time.
 
 `Runner(threads=None, gpus="auto", backend="local", isolation="auto", per_gpu=1)` with
 `compute` (one input or a list), `as_completed` and `session`. Every call takes the same
-options: `store`, `timeout`, `rerun`, `tags`, `meta`, `raise_exc`. `qccompute.compute`
+options: `store`, `timeout`, `rerun`, `tags`, `meta`, `raise_exc` and `progress`. `qccompute.compute`
 and `qccompute.session` are the methods of the default runner: this machine (every core
 this process may use, every visible GPU), made on first use, never reconfigured.
 
@@ -338,7 +365,10 @@ between calls. `qccompute.worker.Worker` is its client.
   started by the client, never by a worker. Without it, subprograms run in the
   worker's own default runner.
 - **Context on the wire:** `{threads, memory_gib, device_memory_gib, timeout,
-  scratch_dir}`; the GPUs are fixed when the worker starts.
+  scratch_dir, progress}`; the GPUs are fixed when the worker starts. With
+  `progress: true` (the client's caller listens) the program's progress events stream
+  back as lines `{"id", "progress": event}` naming the message in flight (for a
+  session, its request's message); the client hands each to the caller's callable.
 - **Numbers:** shortest round-trip decimals, so positions and results cross bit for bit;
   no NaN or infinity on the wire.
 - **Hygiene:** stdout carries protocol lines only; the worker points file descriptor 1

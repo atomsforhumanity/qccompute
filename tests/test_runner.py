@@ -997,6 +997,136 @@ def test_a_session_of_a_worker_program_without_sessions_uses_its_pool():
     assert elapsed < 4 * 0.2 + 0.4  # two at a time, after the workers start
 
 
+# ---------------------------------------------------------------------- progress
+
+
+def test_progress_events_reach_the_caller_with_their_path():
+    """Programs emit; the runner adds the path; hits emit nothing (14a)."""
+    register_program(serve_programs.stepper)
+    events = []
+    out = qccompute.compute(toy_input(program="stepper"), progress=events.append)
+    assert out.success
+    assert [e["step"] for e in events] == [0, 1, 2]
+    assert all(e["event"] == "step" and e["path"] == ["stepper"] for e in events)
+    # Without a callable, programs see None and emit nothing.
+    seen = []
+
+    class Looking(ToyProgram):
+        name = "looking"
+
+        def compute(self, inp, ctx=None):
+            seen.append(ctx.progress)
+            own = inp.model_copy(update={"program": "toy"})
+            return super().compute(own, ctx).model_copy(update={"input_data": inp})
+
+    register_program(Looking())
+    qccompute.compute(toy_input(program="looking"))
+    assert seen == [None]
+    # A stored output emits nothing.
+    store = FakeStore()
+    qccompute.compute(toy_input(program="stepper"), store=store)
+    del events[:]
+    hit = qccompute.compute(
+        toy_input(program="stepper"), store=store, progress=events.append
+    )
+    assert events == [] and hit.success
+    # Lists and as_completed: every calculation's events, batches included.
+    inputs = [toy_input(program="stepper", epsilon=e) for e in (0.1, 0.2, 0.3)]
+    qccompute.compute(inputs, progress=events.append)
+    assert len(events) == 9
+    del events[:]
+    list(qccompute.default_runner().as_completed(inputs, progress=events.append))
+    assert len(events) == 9
+    # A session's requests, its own or over compute.
+    del events[:]
+    with qccompute.session(toy_input(program="stepper"), progress=events.append) as s:
+        s.compute()
+        s.compute_many([Request(), Request()])
+    assert [e["event"] for e in events] == ["request"] * 3
+    assert {tuple(e["path"]) for e in events} == {("stepper",)}
+    del events[:]
+    plain = NoSessions("plain-stepper")
+    plain.compute = serve_programs.stepper.compute  # type: ignore[method-assign]
+    register_program(plain)
+    with qccompute.session(
+        toy_input(program="plain-stepper"), progress=events.append
+    ) as s:
+        s.compute_many([Request(), Request()])
+    assert len(events) == 6
+
+
+def test_a_subprograms_progress_comes_through_its_parent():
+    register_program(serve_programs.stepper)
+
+    class Driver(FiniteDifference):  # reports its own step, then runs its child
+        name = "driver"
+
+        def compute(self, inp, ctx=None):
+            ctx.progress({"event": "start"})
+            ctx.compute(ProgramInput.from_spec(inp.subprograms[0], ARGON3))
+            with ctx.session(inp.subprograms[0], ARGON3) as s:
+                s.compute()
+            return super().compute(inp, ctx)
+
+    register_program(Driver())
+    events = []
+    inp = fd_input("stepper").model_copy(update={"program": "driver"})
+    qccompute.compute(inp, progress=events.append)
+    paths = [(e["event"], tuple(e["path"])) for e in events]
+    assert paths[0] == ("start", ("driver",))
+    assert ("step", ("driver", "stepper")) in paths
+    assert ("request", ("driver", "stepper")) in paths  # its sessions too
+
+
+def test_progress_streams_from_workers():
+    """A worker's program streams its events over the wire, sessions included."""
+    register_program(serve_programs.stepper)
+    events = []
+    with Runner(threads=2, isolation="process") as runner:
+        out = runner.compute(toy_input(program="stepper"), progress=events.append)
+        assert [e["step"] for e in events] == [0, 1, 2]
+        assert {e["pid"] for e in events} != {os.getpid()}  # emitted in the worker
+        assert all(e["path"] == ["stepper"] for e in events)
+        del events[:]
+        runner.compute(toy_input(program="stepper", epsilon=0.5))  # nobody listens
+        assert events == []
+        with runner.session(toy_input(program="stepper"), progress=events.append) as s:
+            s.compute()
+            s.compute()
+        assert [e["event"] for e in events] == ["request", "request"]
+    assert out.success
+    # A worker's subprogram runs here, and its events come through the parent.
+    register_program(serve_programs.relay)
+    del events[:]
+    relay = toy_input(program="relay").model_copy(
+        update={
+            "subprograms": [
+                ProgramSpec.model_validate(
+                    {
+                        "program": "stepper",
+                        "calctype": "gradient",
+                        "model": {"method": "lj"},
+                    }
+                )
+            ]
+        }
+    )
+    with Runner(threads=2) as runner:
+        runner.compute(relay, progress=events.append)
+    assert {tuple(e["path"]) for e in events} == {("relay", "stepper")}
+
+
+def test_a_failing_progress_callable_is_a_warning():
+    register_program(serve_programs.stepper)
+
+    def broken(event):
+        raise RuntimeError("display gone")
+
+    with pytest.warns(RuntimeWarning, match="display gone"):
+        out = qccompute.compute(toy_input(program="stepper"), progress=broken)
+    assert out.success
+
+
 # ------------------------------------------------------------------- subprograms
 
 

@@ -58,6 +58,7 @@ from .program import (
     ComputeSession,
     Plan,
     Program,
+    ProgressCallback,
     RunContext,
     Session,
     SessionProgram,
@@ -65,6 +66,7 @@ from .program import (
     _entry_points,
     _gpu_row,
     _nvidia_smi_gpus,
+    _Progress,
     capabilities_of,
     failed_frame,
     find_program,
@@ -318,6 +320,11 @@ def _failure(
         return ProgramOutput.failure(inp, error, results=results, traceback=trace)
     except ValidationError:
         return ProgramOutput.failure(inp, error, traceback=trace)
+
+
+def _name(inp: Input) -> str:
+    """The name of the program that runs an input."""
+    return inp.program if isinstance(inp, ProgramInput) else FILES
 
 
 def _not_found(inp: Input) -> ProgramError:
@@ -791,6 +798,7 @@ class Runner:
         inp: Input | None = None,
         parent: RunContext | None = None,
         batch: Sequence[Input] | None = None,
+        progress: ProgressCallback | None = None,
     ) -> RunContext:
         """A calculation's context: its grant, its memory, the programs it may run.
 
@@ -802,7 +810,9 @@ class Runner:
         grant: a parent's grant holds its children. Memory is never scheduled.
 
         Its subprograms may be the programs its input names (``inp``, or for a batch
-        each of ``batch``), as `RunContext.compute` checks.
+        each of ``batch``), as `RunContext.compute` checks. Its progress events go to
+        the caller's ``progress`` with the program's name as their path, or for a
+        subprogram to its parent's, the path one name longer.
         """
         host_limit, device_limit = self._limits(parent)
         device: float | None = None
@@ -826,6 +836,14 @@ class Runner:
             runner=self,
         )
         ctx._calling = (inp,) if inp is not None else batch
+        if parent is not None:
+            up = parent.progress
+            if up is not None:
+                name = _name(inp if inp is not None else batch[0])  # type: ignore[index]
+                ctx.progress = up.child(name) if isinstance(up, _Progress) else up
+        elif progress is not None:
+            name = _name(inp if inp is not None else batch[0])  # type: ignore[index]
+            ctx.progress = _Progress(progress, (name,))
         return ctx
 
     def _limits(self, parent: RunContext | None) -> tuple[float | None, float | None]:
@@ -940,10 +958,12 @@ class Runner:
         plan: Plan | None = None,
         entry: _Entry | None = None,
         parent: RunContext | None = None,
+        progress: ProgressCallback | None = None,
     ) -> tuple[Output, ProgramError | None]:
         """Run one input with its grant (``devices``: its GPUs) to its output.
 
-        ``parent`` is the grant of the calculation whose subprogram it is.
+        ``parent`` is the grant of the calculation whose subprogram it is; else
+        ``progress`` is the caller's progress callable, if any.
         Returns the output, failed or not, and the error of a failure.
         """
         identities = self.identities(inp)
@@ -955,7 +975,9 @@ class Runner:
                 out = _failure(inp, exc.error)
                 exc.output = out
                 return out, exc
-        ctx = self._context(threads, devices, memory, timeout, plan, inp, parent)
+        ctx = self._context(
+            threads, devices, memory, timeout, plan, inp, parent, None, progress
+        )
         worker = None
         try:
             if self._in_worker(entry):
@@ -990,12 +1012,13 @@ class Runner:
         memory: float | None,
         timeout: float | None,
         parent: RunContext | None = None,
+        progress: ProgressCallback | None = None,
     ) -> tuple[Output, ProgramError | None]:
         """Plan and run one input with the threads it asks for, at most ``cap``.
 
         It gets the GPUs its plan asks for, of ``devices`` (None: the runner's), and
         all of ``memory``; ``parent`` is the grant of the calculation whose subprogram
-        it is.
+        it is, else ``progress`` the caller's progress callable.
         """
         try:
             entry, plan = self._plan(inp)
@@ -1004,7 +1027,7 @@ class Runner:
         threads = _threads(inp, plan, cap)
         granted = self._devices(plan, devices)
         return self._execute(
-            inp, threads, granted, memory, timeout, plan, entry, parent
+            inp, threads, granted, memory, timeout, plan, entry, parent, progress
         )
 
     def identities(self, inp: Input) -> dict[str, str]:
@@ -1063,6 +1086,7 @@ class Runner:
         rerun: bool,
         tags: Sequence[str],
         meta: Mapping[str, Any] | None,
+        progress: ProgressCallback | None = None,
     ) -> tuple[Output, ProgramError | None]:
         if store is not None:
             key, hit = self._lookup(store, inp, rerun)
@@ -1070,7 +1094,9 @@ class Runner:
                 if tags:
                     store.tag(key, *tags)
                 return hit, None if hit.success else _error(hit)
-        out, failure = self._run(inp, self.threads, None, self._host_memory(), timeout)
+        out, failure = self._run(
+            inp, self.threads, None, self._host_memory(), timeout, None, progress
+        )
         if store is not None:
             _put(store, key, out, tags, meta)
         return out, failure
@@ -1088,6 +1114,7 @@ class Runner:
         tags: Sequence[str] = (),
         meta: Mapping[str, Any] | None = None,
         raise_exc: bool = True,
+        progress: ProgressCallback | None = None,
     ) -> Output: ...
 
     @overload
@@ -1101,6 +1128,7 @@ class Runner:
         tags: Sequence[str] = (),
         meta: Mapping[str, Any] | None = None,
         raise_exc: bool = True,
+        progress: ProgressCallback | None = None,
     ) -> list[Output]: ...
 
     def compute(
@@ -1113,6 +1141,7 @@ class Runner:
         tags: Sequence[str] = (),
         meta: Mapping[str, Any] | None = None,
         raise_exc: bool = True,
+        progress: ProgressCallback | None = None,
     ) -> Output | list[Output]:
         """Run one input, or a list of independent inputs side by side.
 
@@ -1145,6 +1174,14 @@ class Runner:
             meta: Metadata stored with each run (needs ``store``).
             raise_exc: Raise for failures (after every input of a list ran); False
                 returns failed outputs in place.
+            progress: Called with the events programs emit while they run (qcopt:
+                one per step): small JSON objects, each with ``"path"``, the program
+                names from the input down to the program that emitted it (a
+                subprogram's events come through its parent). It may be called from
+                several threads at once, and must be quick; an exception it raises
+                is a warning. Stored outputs emit nothing; nothing is stored. A
+                list's events do not say which input they are from: `submit` each
+                input with a callable of its own for that.
 
         Returns:
             The output, or the outputs in input order.
@@ -1160,7 +1197,9 @@ class Runner:
         if timeout is not None and not timeout > 0:
             raise ValueError("timeout must be a positive number of seconds.")
         if isinstance(inputs, ProgramInput | FileInput):
-            out, failure = self._one(inputs, store, timeout, rerun, tags, meta)
+            out, failure = self._one(
+                inputs, store, timeout, rerun, tags, meta, progress
+            )
             if failure is not None and raise_exc:
                 raise failure
             return out
@@ -1168,7 +1207,8 @@ class Runner:
         outputs: list[Output | None] = [None] * len(inputs)
         failures: dict[int, ProgramError] = {}
         grant = (self.threads, None, self._host_memory(), timeout)
-        for i, out, failure in self._run_list(inputs, store, rerun, tags, meta, grant):
+        listed = self._run_list(inputs, store, rerun, tags, meta, grant, None, progress)
+        for i, out, failure in listed:
             outputs[i] = out
             if failure is not None:
                 failures[i] = failure
@@ -1191,6 +1231,7 @@ class Runner:
         tags: Sequence[str] = (),
         meta: Mapping[str, Any] | None = None,
         raise_exc: bool = True,
+        progress: ProgressCallback | None = None,
     ) -> Iterator[Output]:
         """Run a list like `compute` and yield each output as it finishes.
 
@@ -1207,6 +1248,7 @@ class Runner:
             tags: See `compute`.
             meta: See `compute`.
             raise_exc: See above.
+            progress: See `compute`.
 
         Yields:
             Outputs in the order they finish.
@@ -1220,7 +1262,8 @@ class Runner:
         failures: list[ProgramError] = []
         finished: list[Output] = []
         grant = (self.threads, None, self._host_memory(), timeout)
-        for _, out, failure in self._run_list(inputs, store, rerun, tags, meta, grant):
+        listed = self._run_list(inputs, store, rerun, tags, meta, grant, None, progress)
+        for _, out, failure in listed:
             finished.append(out)
             if failure is not None and raise_exc:
                 failures.append(failure)
@@ -1239,6 +1282,7 @@ class Runner:
         calctypes: Iterable[CalcType | str] | None = None,
         *,
         threads: int | None = None,
+        progress: ProgressCallback | None = None,
     ) -> Session:
         """Open a session: one program and molecule at many geometries.
 
@@ -1266,6 +1310,8 @@ class Runner:
                 method supports; declaring narrows it).
             threads: The session's grant of threads (at most the runner's): 13 path
                 images evaluated at once want 13. None: what its input asks for.
+            progress: Called with the events the program emits while the session
+                runs requests; see `compute`.
 
         Returns:
             The session; use it as a context manager, or close it.
@@ -1278,7 +1324,14 @@ class Runner:
                 raise ValueError("threads must be a positive integer.")
             threads = min(threads, self.threads)
         return self._open_session(
-            inp, calctypes, threads, self.threads, None, self._host_memory(), None
+            inp,
+            calctypes,
+            threads,
+            self.threads,
+            None,
+            self._host_memory(),
+            None,
+            progress,
         )
 
     # ------------------------------------------------------------------ lists
@@ -1292,13 +1345,14 @@ class Runner:
         meta: Mapping[str, Any] | None,
         grant: tuple[int, Sequence[str] | None, float | None, float | None],
         parent: RunContext | None = None,
+        progress: ProgressCallback | None = None,
     ) -> Iterator[tuple[int, Output, ProgramError | None]]:
         """Yield (index, output, failure) for every input, as each finishes.
 
         ``grant`` is what the list may use: threads, GPUs (None: the runner's), host
         memory (GiB), which each calculation gets its share of, and the timeout of
         each calculation. ``parent`` is the grant of the calculation whose
-        subprograms they are.
+        subprograms they are; else ``progress`` the caller's progress callable.
         """
         threads, devices, memory, timeout = grant
         tasks: list[_Task] = []
@@ -1342,7 +1396,9 @@ class Runner:
             held, granted, share = budget.acquire(turn, task.threads, task.gpus)
             mine = None if memory is None else memory * share
             try:
-                return list(self._run_task(task, held, granted, mine, timeout, parent))
+                return list(
+                    self._run_task(task, held, granted, mine, timeout, parent, progress)
+                )
             finally:
                 budget.release(granted, share)
 
@@ -1371,6 +1427,7 @@ class Runner:
         memory: float | None,
         timeout: float | None,
         parent: RunContext | None = None,
+        progress: ProgressCallback | None = None,
     ) -> Iterator[tuple[int, Output, ProgramError | None]]:
         """Run one task of a list with its grant."""
         if len(task.inputs) == 1:
@@ -1383,12 +1440,13 @@ class Runner:
                 task.plan,
                 task.entry,
                 parent,
+                progress,
             )
             yield task.indices[0], out, failure
             return
         entry = task.entry
         ctx = self._context(
-            threads, devices, memory, timeout, None, None, parent, task.inputs
+            threads, devices, memory, timeout, None, None, parent, task.inputs, progress
         )
         start = time.perf_counter()
         worker = None
@@ -1490,6 +1548,7 @@ class Runner:
         devices: Sequence[str] | None,
         memory: float | None,
         parent: RunContext | None,
+        progress: ProgressCallback | None = None,
     ) -> Session:
         """Open a session with ``threads``, or (None) the threads its plan asks for.
 
@@ -1521,13 +1580,16 @@ class Runner:
                 self._session_compute,
                 (threads, lists, granted, memory, timeout),
                 parent,
+                progress,
             )
             over = ComputeSession(
                 compute, inp, allowed, program_version=program.version()
             )
             # Each compute takes the program's lock itself.
             return over if parent is None else _Guarded(over, None, parent)
-        ctx = self._context(threads, granted, memory, timeout, None, inp, parent)
+        ctx = self._context(
+            threads, granted, memory, timeout, None, inp, parent, None, progress
+        )
         if self._in_worker(entry):
             worker = self._worker(entry, granted, threads)
             release = partial(self._release, worker, granted)
@@ -1547,6 +1609,7 @@ class Runner:
         self,
         grant: tuple[int, int, tuple[str, ...], float | None, float | None],
         parent: RunContext | None,
+        progress: ProgressCallback | None,
         inputs: Any,
         raise_exc: bool = True,
     ) -> Any:
@@ -1560,7 +1623,13 @@ class Runner:
         threads, lists, devices, memory, timeout = grant
         if isinstance(inputs, ProgramInput):
             out, failure = self._execute(
-                inputs, threads, devices, memory, timeout, parent=parent
+                inputs,
+                threads,
+                devices,
+                memory,
+                timeout,
+                parent=parent,
+                progress=progress,
             )
             if failure is not None and raise_exc:
                 raise failure
@@ -1574,6 +1643,7 @@ class Runner:
             None,
             (lists, devices, memory, timeout),
             parent,
+            progress,
         )
         for i, out, _ in listed:
             outputs[i] = out
@@ -1729,6 +1799,7 @@ def compute(
     tags: Sequence[str] = (),
     meta: Mapping[str, Any] | None = None,
     raise_exc: bool = True,
+    progress: ProgressCallback | None = None,
 ) -> Output: ...
 
 
@@ -1742,6 +1813,7 @@ def compute(
     tags: Sequence[str] = (),
     meta: Mapping[str, Any] | None = None,
     raise_exc: bool = True,
+    progress: ProgressCallback | None = None,
 ) -> list[Output]: ...
 
 
@@ -1754,6 +1826,7 @@ def compute(
     tags: Sequence[str] = (),
     meta: Mapping[str, Any] | None = None,
     raise_exc: bool = True,
+    progress: ProgressCallback | None = None,
 ) -> Output | list[Output]:
     """Run one input or a list on this machine: `Runner.compute` of the default runner.
 
@@ -1765,6 +1838,7 @@ def compute(
         tags: See `Runner.compute`.
         meta: See `Runner.compute`.
         raise_exc: See `Runner.compute`.
+        progress: See `Runner.compute`.
 
     Returns:
         The output, or the outputs in input order.
@@ -1781,6 +1855,7 @@ def compute(
         tags=tags,
         meta=meta,
         raise_exc=raise_exc,
+        progress=progress,
     )
 
 
@@ -1789,6 +1864,7 @@ def session(
     calctypes: Iterable[CalcType | str] | None = None,
     *,
     threads: int | None = None,
+    progress: ProgressCallback | None = None,
 ) -> Session:
     """Open a session on this machine: `Runner.session` of the default runner.
 
@@ -1796,8 +1872,9 @@ def session(
         inp: The program, model, keywords, structure, and the default calctype.
         calctypes: The calctypes the session may run.
         threads: See `Runner.session`.
+        progress: See `Runner.session`.
 
     Returns:
         The session.
     """
-    return default_runner().session(inp, calctypes, threads=threads)
+    return default_runner().session(inp, calctypes, threads=threads, progress=progress)

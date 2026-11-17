@@ -203,12 +203,16 @@ it was made with exactly those identities: a success always, a failure only when
 input determines it (kind `input`, `unsupported` or `convergence`, or `program` with such
 a cause; never `resource`, `backend`, `environment`, `timeout`, `numerical` or
 `internal`). Misses run, and every run is stored with
-its identities. `rerun=True` always runs; `tags` go onto every key, cache hits included;
+its identities. Every output the runner returns carries the identities of the programs
+that made it in `execution.identities`, with or without a store, so an output read back
+says which code made it; a stored run keeps the ones it was made with. `rerun=True`
+always runs; `tags` go onto every key, cache hits included;
 `meta` goes with each run. An output whose record says `warm_start` true depends on
 history, not only on its input, and is never stored.
 
 The runner needs four methods of a store (`qccompute.runner.Store`): `key(inp)`,
-`get(key, identities)`, `put(output, identities, tags=, meta=)` and `tag(key, *tags)`.
+`get(key, identities)`, `put(output, tags=, meta=)` (which files the run under
+`output.execution.identities`) and `tag(key, *tags)`.
 
 ## Workers
 

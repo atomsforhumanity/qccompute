@@ -105,8 +105,9 @@ class Store(Protocol):
 
     A key names a calculation: ``qcdata.calculation_key(inp)``, the input as given.
     Which code produced a run's numbers is kept apart from the key, as the run's
-    ``identities``: ``{program: numerics}`` for the input's program and every
-    subprogram it names.
+    identities: ``{program: numerics}`` for the input's program and every subprogram it
+    names, which the runner sets on every output it returns
+    (``output.execution.identities``).
     """
 
     def key(self, inp: Input) -> str:
@@ -120,12 +121,11 @@ class Store(Protocol):
     def put(
         self,
         output: Output,
-        identities: Mapping[str, str],
         *,
         tags: Sequence[str] = (),
         meta: Mapping[str, Any] | None = None,
     ) -> str:
-        """Store a run under its input's key, with the identities that produced it."""
+        """Store a run under its input's key and ``output.execution.identities``."""
         ...
 
     def tag(self, key: str, *tags: str) -> None:
@@ -381,10 +381,12 @@ def _threads(inp: Input, plan: Plan, cap: int) -> int:
     return max(1, min(requested, cap))
 
 
-def _refused(inp: Input, exc: BaseException) -> tuple[Output, ProgramError]:
+def _refused(
+    inp: Input, exc: BaseException, identities: Mapping[str, str]
+) -> tuple[Output, ProgramError]:
     """The failed output of an input that failed before it ran (not found, refused)."""
     out, failure = _as_failure(inp, exc, inp.program)
-    out = _with_execution(out, 0.0, None)
+    out = _with_execution(out, 0.0, None, identities)
     failure.output = out
     return out, failure
 
@@ -427,24 +429,26 @@ def _subprogram_results(
 
 
 def _put(
-    store: Store,
-    out: Output,
-    identities: Mapping[str, str],
-    tags: Sequence[str],
-    meta: Mapping[str, Any] | None,
+    store: Store, out: Output, tags: Sequence[str], meta: Mapping[str, Any] | None
 ) -> None:
     """Store a run, unless it was warm-started (its numbers depend on history)."""
     if out.record.get("warm_start") is True:
         return
-    store.put(out, identities, tags=tuple(tags), meta=meta)
+    store.put(out, tags=tuple(tags), meta=meta)
 
 
-def _with_execution(out: Output, wall_time: float, threads: int | None) -> Output:
-    """The output with what the runner measured; the program's own timings stay.
+def _with_execution(
+    out: Output,
+    wall_time: float,
+    threads: int | None,
+    identities: Mapping[str, str],
+) -> Output:
+    """The output with what the runner measured and the code that made it.
 
-    The output is the caller's from here on, so it is updated in place; its
-    `ExecutionInfo` is copied (a program may share one between outputs) without
-    validating it again.
+    The program's own timings stay. ``identities`` are those of the programs that ran
+    (`Runner.identities`). The output is the caller's from here on, so it is updated
+    in place; its `ExecutionInfo` is copied (a program may share one between outputs)
+    without validating it again.
     """
     hostname, host_cpu, host_mem = _host(True)
     execution = out.execution
@@ -455,6 +459,7 @@ def _with_execution(out: Output, wall_time: float, threads: int | None) -> Outpu
             "host_cpu": host_cpu,
             "host_mem_gib": host_mem,
             "threads": execution.threads if execution.threads is not None else threads,
+            "identities": dict(identities),
         }
     )
     out.__dict__["execution"] = new
@@ -751,6 +756,7 @@ class Runner:
         entry: _Entry | None = None,
     ) -> tuple[Output, ProgramError | None]:
         """Run one input to its output, failed or not, and the error of a failure."""
+        identities = self.identities(inp)
         start = time.perf_counter()
         if entry is None:
             entry = self._entry(inp)
@@ -780,7 +786,7 @@ class Runner:
             ctx.cleanup()
             if worker is not None:
                 self._release(worker, granted, threads)
-        out = _with_execution(out, time.perf_counter() - start, threads)
+        out = _with_execution(out, time.perf_counter() - start, threads, identities)
         if failure is not None:
             failure.output = out
         return out, failure
@@ -797,7 +803,7 @@ class Runner:
         try:
             entry, plan = self._plan(inp)
         except Exception as e:  # noqa: BLE001 - refused before running
-            return _refused(inp, e)
+            return _refused(inp, e, self.identities(inp))
         threads = _threads(inp, plan, cap)
         return self._execute(inp, threads, devices, memory, timeout, plan, entry)
 
@@ -815,7 +821,8 @@ class Runner:
             inp: The input.
 
         Returns:
-            The identities a store files a run of this input under.
+            The identities the runner sets on the input's output
+            (``execution.identities``), and a store files its run under.
         """
         if not isinstance(inp, ProgramInput):
             entry = self._entry(inp)
@@ -832,8 +839,8 @@ class Runner:
 
     def _lookup(
         self, store: Store, inp: Input, rerun: bool
-    ) -> tuple[str, dict[str, str], Output | None]:
-        """The key and identities of an input, and its stored output if reusable.
+    ) -> tuple[str, Output | None]:
+        """The key of an input, and its stored output if reusable.
 
         A stored run is reused only when it was made with the identities of the
         programs this runner would run now: a success always, a failure only when the
@@ -841,13 +848,12 @@ class Runner:
         ``program`` with such a cause).
         """
         key = store.key(inp)
-        identities = self.identities(inp)
         if rerun:
-            return key, identities, None
-        hit = store.get(key, identities)
+            return key, None
+        hit = store.get(key, self.identities(inp))
         if hit is None or hit.success or _deterministic(hit.error):
-            return key, identities, hit
-        return key, identities, None
+            return key, hit
+        return key, None
 
     def _one(
         self,
@@ -859,14 +865,14 @@ class Runner:
         meta: Mapping[str, Any] | None,
     ) -> tuple[Output, ProgramError | None]:
         if store is not None:
-            key, identities, hit = self._lookup(store, inp, rerun)
+            key, hit = self._lookup(store, inp, rerun)
             if hit is not None:
                 if tags:
                     store.tag(key, *tags)
                 return hit, None if hit.success else _error(hit)
         out, failure = self._run(inp, self.threads, None, self._host_memory(), timeout)
         if store is not None:
-            _put(store, out, identities, tags, meta)
+            _put(store, out, tags, meta)
         return out, failure
 
     # ------------------------------------------------------------------ public API
@@ -1073,24 +1079,22 @@ class Runner:
         memory (GiB) and the timeout of each calculation.
         """
         threads, devices, memory, timeout = grant
-        keys: dict[int, str] = {}
-        identities: dict[int, dict[str, str]] = {}
         tasks: list[_Task] = []
         batches: dict[int, _Task] = {}
         for i, inp in enumerate(inputs):
             if store is not None:
-                keys[i], identities[i], hit = self._lookup(store, inp, rerun)
+                key, hit = self._lookup(store, inp, rerun)
                 if hit is not None:
                     if tags:
-                        store.tag(keys[i], *tags)
+                        store.tag(key, *tags)
                     yield i, hit, None if hit.success else _error(hit)
                     continue
             try:
                 entry, plan = self._plan(inp)
             except Exception as e:  # noqa: BLE001 - refused before running
-                out, failure = _refused(inp, e)
+                out, failure = _refused(inp, e, self.identities(inp))
                 if store is not None:
-                    _put(store, out, identities[i], tags, meta)
+                    _put(store, out, tags, meta)
                 yield i, out, failure
                 continue
             wanted = _threads(inp, plan, threads)
@@ -1123,7 +1127,7 @@ class Runner:
         if len(tasks) == 1:  # nothing to run beside: no thread
             for item in run(0, tasks[0]):
                 if store is not None:
-                    _put(store, item[1], identities[item[0]], tags, meta)
+                    _put(store, item[1], tags, meta)
                 yield item
             return
         pool = ThreadPoolExecutor(max_workers=min(len(tasks), budget.threads))
@@ -1132,7 +1136,7 @@ class Runner:
             for future in as_completed(futures):
                 for item in future.result():
                     if store is not None:
-                        _put(store, item[1], identities[item[0]], tags, meta)
+                        _put(store, item[1], tags, meta)
                     yield item
         finally:
             pool.shutdown(wait=False, cancel_futures=True)
@@ -1178,8 +1182,8 @@ class Runner:
             if worker is not None:
                 self._release(worker, granted, threads)
         wall = time.perf_counter() - start
-        for i, out in zip(task.indices, outs, strict=True):
-            out = _with_execution(out, wall, threads)
+        for i, inp, out in zip(task.indices, task.inputs, outs, strict=True):
+            out = _with_execution(out, wall, threads, self.identities(inp))
             yield i, out, None if out.success else _error(out)
 
     # ------------------------------------------------------------------ subprograms

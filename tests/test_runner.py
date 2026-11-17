@@ -191,8 +191,9 @@ class FakeStore:
     def get(self, key, identities):
         return self.runs.get((key, tuple(sorted(identities.items()))))
 
-    def put(self, output, identities, *, tags=(), meta=None):
+    def put(self, output, *, tags=(), meta=None):
         key = self.key(output.input_data)
+        identities = output.execution.identities
         self.runs[key, tuple(sorted(identities.items()))] = output
         self.meta[key] = meta
         self.puts += 1
@@ -610,6 +611,7 @@ def test_identities_name_every_program_a_calculation_runs():
     assert runner.identities(toy_input(program="no-such")) == {}
     store = FakeStore()
     out = runner.compute(fd_input("toy"), store=store)
+    assert out.execution.identities == runner.identities(fd_input("toy"))
     assert (
         store.get(store.key(fd_input("toy")), runner.identities(fd_input("toy"))) is out
     )
@@ -631,6 +633,44 @@ def test_identities_name_every_program_a_calculation_runs():
         }
     )
     assert runner.identities(two)["epochs"] == "lj-1;x-2"
+
+
+def test_every_output_says_which_code_made_it(isolated):
+    """execution.identities on outputs that ran, failed, were refused or batched (#38)."""
+    seen = []
+
+    class Parent(FiniteDifference):
+        def compute(self, inp, ctx=None):
+            seen.append(ctx.compute(ProgramInput.from_spec(inp.subprograms[0], ARGON3)))
+            return super().compute(inp, ctx)
+
+    register_program(Parent())
+    version = default_runner()._entry(toy_input()).program.version()
+    toy = {"toy": version}
+    with Runner(threads=2) as runner:
+        assert runner.compute(toy_input()).execution.identities == toy
+        failed = runner.compute(toy_input(fail="convergence"), raise_exc=False)
+        refused = runner.compute(toy_input(sigmaa=1.0), raise_exc=False)
+        assert failed.execution.identities == refused.execution.identities == toy
+        outs = runner.compute(
+            [toy_input(epsilon=0.02), toy_input(epsilon=0.03)]  # a batch
+            + [toy_input(program="isolated"), toy_input(program="no-such")],
+            raise_exc=False,
+        )
+        assert [o.execution.identities for o in outs] == [
+            toy,
+            toy,
+            {"isolated": version},  # in a worker
+            {},  # not installed
+        ]
+        out = runner.compute(fd_input("toy"))
+        assert out.execution.identities == {"fd": "0+fd", **toy}
+        assert seen[0].execution.identities == toy  # a subprogram's output
+    # A stored run keeps the identities it was made with.
+    store = FakeStore()
+    first = qccompute.compute(toy_input(), store=store)
+    assert qccompute.compute(toy_input(), store=store).execution.identities == toy
+    assert store.runs[store.key(toy_input()), (("toy", version),)] is first
 
 
 def test_warm_started_outputs_are_never_stored():

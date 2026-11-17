@@ -2,6 +2,10 @@
 
     python -m qccompute.serve mychem                  # stdin/stdout, one client
     python -m qccompute.serve mychem --socket PATH    # a Unix socket, one client at a time
+    python -m qccompute.serve mychem --scratch DIR    # temporary scratch made in DIR
+
+A `qccompute.worker.Worker` gives its worker a ``--scratch`` directory of its own and
+removes it when the worker ends, so a killed worker leaves no scratch behind.
 
 A worker keeps a program alive between calls (warm starts, a live GPU context) and
 isolates it: a crash ends the worker, not its caller. The program is found by name
@@ -240,10 +244,16 @@ class Host:
             run when it asked for ``calls``.
     """
 
-    def __init__(self, program: Program, array_dir: Path | None = None):
-        """Host a program."""
+    def __init__(
+        self,
+        program: Program,
+        array_dir: Path | None = None,
+        scratch: Path | None = None,
+    ):
+        """Host a program; its calculations' temporary scratch goes in ``scratch``."""
         self.program = program
         self.array_dir = array_dir
+        self.scratch = scratch
         self.connection: _Connection | None = None
         self.sessions: dict[str, Session] = {}
         self._threads: dict[str, int | None] = {}  # each session's grant
@@ -537,6 +547,7 @@ class Host:
             runner=self._subprograms,
             progress=_Progress(self._progress, ()) if fields.get("progress") else None,
         )
+        made._scratch_parent = self.scratch
         stop_file = fields.get("stop_file")
         if isinstance(stop_file, str):
             made._control = _Control(stop_file=stop_file)
@@ -916,17 +927,23 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--socket", help="serve a Unix socket at this path, one client at a time"
     )
+    parser.add_argument(
+        "--scratch",
+        help="make calculations' temporary scratch directories in this directory, "
+        "which the client removes when the worker ends or is killed",
+    )
     args = parser.parse_args(argv)
     paths = os.environ.pop("QCCOMPUTE_WORKER_SYS_PATH", "")
     sys.path.extend(p for p in paths.split(os.pathsep) if p and p not in sys.path)
+    scratch = Path(args.scratch) if args.scratch else None
     if args.socket is None:
         proto = _protocol_stdout()
-        host = Host(load_program(args.program))
+        host = Host(load_program(args.program), scratch=scratch)
         try:
             return serve(host, _lines(sys.stdin), _writer(proto))
         finally:
             host.close_all()
-    host = Host(load_program(args.program))
+    host = Host(load_program(args.program), scratch=scratch)
     sys.stdout = sys.stderr
     path = Path(args.socket)
     path.unlink(missing_ok=True)

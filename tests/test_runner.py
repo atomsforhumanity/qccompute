@@ -1,6 +1,7 @@
 """The Runner: one path for one input or many, failures that raise, ctx, the store hook."""
 
 import os
+import shutil
 import subprocess
 import sys
 import threading
@@ -1156,6 +1157,63 @@ def test_a_timeout_kills_the_workers_whole_tree(tmp_path):
             )
     assert e.value.error.kind is ErrorKind.timeout
     assert _gone(_pid(pidfile))
+
+
+def test_a_calculations_scratch_is_kept_for_debugging_when_asked(monkeypatch):
+    made: list[Path] = []
+
+    class Scratchy(ToyProgram):
+        name = "scratchy"
+
+        def compute(self, inp, ctx=None):
+            made.append(ctx.scratch)
+            (ctx.scratch / "work").write_text("partial")
+            own = inp.model_copy(update={"program": "toy"})
+            return super().compute(own, ctx).model_copy(update={"input_data": inp})
+
+    register_program(Scratchy())
+    with Runner(threads=1) as runner:
+        runner.compute(toy_input(program="scratchy"))
+        assert not made[-1].exists()
+        monkeypatch.setenv("QCCOMPUTE_KEEP_SCRATCH", "1")
+        runner.compute(toy_input(program="scratchy"))
+    kept = made[-1]
+    assert kept.name.startswith("qccompute-") and (kept / "work").exists()
+    shutil.rmtree(kept)
+
+
+@pytest.mark.skipif(not Path("/proc/self/stat").exists(), reason="needs /proc")
+@pytest.mark.parametrize("how", ["cancel", "timeout", "kept"])
+def test_a_killed_workers_scratch_is_removed_unless_kept(tmp_path, monkeypatch, how):
+    """Its calculation's scratch goes with it, at once; kept for debugging when asked."""
+    if how == "kept":
+        monkeypatch.setenv("QCCOMPUTE_KEEP_SCRATCH", "1")
+    register_program(serve_programs.spawner)
+    pidfile = tmp_path / "child.pid"
+    inp = toy_input(program="spawner", sleep=60, pidfile=str(pidfile))
+    with Runner(threads=1) as runner:
+        future = runner.submit(inp, timeout=3 if how == "timeout" else None)
+        child = _pid(pidfile)
+        scratch = Path(pidfile.with_suffix(".scratch").read_text())
+        root = scratch.parent  # the worker's own, never the system's temporary one
+        assert root.name.startswith("qccompute-worker-"), root
+        assert (scratch / "work").exists()
+        if how != "timeout":
+            assert future.cancel()
+        assert _gone(child)
+        deadline = time.monotonic() + 10
+        while scratch.exists() and how != "kept":  # when the runner lets it go
+            assert time.monotonic() < deadline, "the killed worker's scratch stayed"
+            time.sleep(0.02)
+        if how == "timeout":
+            with pytest.raises(ProgramError) as e:
+                future.result(timeout=10)
+            assert e.value.error.kind is ErrorKind.timeout
+    if how == "kept":
+        assert (scratch / "work").read_text() == "partial"
+        shutil.rmtree(root)
+    else:
+        assert not root.exists()
 
 
 class Patient(ToyProgram):

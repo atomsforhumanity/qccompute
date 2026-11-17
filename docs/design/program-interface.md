@@ -114,7 +114,11 @@ subprograms:
   before building an event.
 - `stop_requested()`: whether the caller asked the calculation to stop (below,
   **Stopping**). A program that works in steps checks it before each step.
-- `scratch`: a directory, made on first use and removed when the call returns.
+- `scratch`: a directory, made on first use and removed when the call returns. In a
+  worker it is made in a directory the worker's client gives it (`--scratch`) and
+  removes when it closes the worker, so a calculation whose worker is killed (a
+  timeout, a cancel) leaves no scratch behind. `QCCOMPUTE_KEEP_SCRATCH=1` keeps every
+  one, for debugging; a killed worker's failure then names where its scratch is.
 - `compute(inputs, raise_exc=True)` and `session(spec, structure, threads=, calctypes=)`:
   subprograms, within the grant. They run only programs the calculation's input names,
   its own and its subprograms' recursively, and every program a subprogram's input
@@ -436,7 +440,9 @@ between calls. `qccompute.worker.Worker` is its client.
   a worker fails with kind `environment`, saying so.
 
 - **Transport:** stdin and stdout, one JSON message per line, one client per connection;
-  `--socket PATH` serves a Unix socket on the same framing.
+  `--socket PATH` serves a Unix socket on the same framing. `--scratch DIR`: the
+  calculations' temporary scratch directories are made in `DIR`, which a `Worker`
+  makes for its worker and removes when it closes it, killed or not.
 - **Hello:** the first line, `{"protocol": 1, "program", "version", "capabilities",
   "array_files": true, "calls": true}`.
 - **Envelope:** every message has an `id`; replies are `{"id", "ok": true, "result"}` or

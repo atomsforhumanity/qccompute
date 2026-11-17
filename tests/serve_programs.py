@@ -175,7 +175,9 @@ class IsolatedGPU(Isolated):
 
 class Spawner(Isolated):
     """The isolated toy, starting first a process in a session of its own (as qccodec
-    runs an external program) that sleeps for minutes; its pid goes to ``pidfile``."""
+    runs an external program) that sleeps for minutes; its pid goes to ``pidfile``,
+    after a file written in its scratch directory, whose path goes to
+    ``pidfile.scratch``."""
 
     name = "spawner"
 
@@ -189,7 +191,10 @@ class Spawner(Isolated):
             [sys.executable, "-c", "import time; time.sleep(300)"],
             start_new_session=True,
         )
-        Path(inp.keywords["pidfile"]).write_text(str(child.pid))
+        pidfile = Path(inp.keywords["pidfile"])
+        (ctx.scratch / "work").write_text("partial")
+        pidfile.with_suffix(".scratch").write_text(str(ctx.scratch))
+        pidfile.write_text(str(child.pid))
         return super().compute(inp, ctx)
 
 

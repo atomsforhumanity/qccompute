@@ -20,7 +20,10 @@ The runner keeps workers alive between calls and closes them with itself.
 
 A worker whose calculation runs out of time, or is cancelled, is killed with every
 process it started, however deep and in whatever session (an external program and the
-processes it starts in turn): the tree is frozen, then killed.
+processes it starts in turn): the tree is frozen, then killed. Its calculations make
+their temporary scratch directories in a directory this process gives it and removes
+when the worker is closed, killed or not, so a killed calculation leaves none behind
+(unless ``QCCOMPUTE_KEEP_SCRATCH`` is set, for debugging).
 """
 
 from __future__ import annotations
@@ -68,6 +71,7 @@ from .program import (
     RunContext,
     Session,
     _Control,
+    _keep_scratch,
     _Progress,
     failed_frame,
     find_program,
@@ -184,8 +188,15 @@ class Worker:
             env["CUDA_VISIBLE_DEVICES"] = ",".join(gpus)
         env.update(environment or {})
         self.spec = program
+        # The worker's calculations make their temporary scratch in it, so a worker
+        # killed mid-calculation leaves none behind once this is removed (`close`).
+        self._scratch = Path(tempfile.mkdtemp(prefix="qccompute-worker-"))
         self._proc = subprocess.Popen(
-            [sys.executable, "-m", "qccompute.serve", program],
+            [
+                sys.executable,
+                *("-m", "qccompute.serve", program),
+                *("--scratch", str(self._scratch)),
+            ],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -278,6 +289,8 @@ class Worker:
             self._kill()
             status = self._proc.wait()
         tail = "".join(self._stderr).strip()
+        if _keep_scratch():
+            what += f"; its scratch is kept in {self._scratch}"
         self._dead = ProgramError(
             ErrorInfo(
                 kind=ErrorKind.environment,
@@ -581,6 +594,8 @@ class Worker:
         for directory in (self._dir, self._stops):
             if directory is not None:
                 shutil.rmtree(directory, ignore_errors=True)
+        if not _keep_scratch():  # what a killed worker's calculations left
+            shutil.rmtree(self._scratch, ignore_errors=True)
 
     def __enter__(self) -> Worker:
         """Use the worker as a context manager that stops it."""
@@ -598,9 +613,10 @@ class Worker:
                 _kill_tree(proc.pid)
             except Exception:  # noqa: BLE001 - at interpreter exit: at least the worker
                 proc.kill()
-        directory = getattr(self, "_dir", None)
-        if directory is not None:
-            shutil.rmtree(directory, ignore_errors=True)
+        for name in ("_dir", "_stops", "_scratch"):
+            directory = getattr(self, name, None)
+            if directory is not None and (name != "_scratch" or not _keep_scratch()):
+                shutil.rmtree(directory, ignore_errors=True)
 
 
 class _Parent:

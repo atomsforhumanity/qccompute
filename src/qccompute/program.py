@@ -99,6 +99,7 @@ from qcdata.models.base_models import QCDataBaseModel
 
 __all__ = [
     "ENTRY_POINT_GROUP",
+    "KEEP_SCRATCH",
     "FunctionProgram",
     "Capabilities",
     "Resources",
@@ -128,6 +129,16 @@ ENTRY_POINT_GROUP = "qccompute.programs"
 #: `qcdata.ProgramInput`): the one program name the protocol reserves; qccodec registers
 #: it. Its numerics identity is a FileInput run's identity.
 FILES = "files"
+
+#: Set this environment variable (to anything but ``""`` or ``"0"``) to keep
+#: calculations' temporary scratch directories, for debugging: those a runner removes
+#: when a calculation ends, and a worker's when it ends or is killed.
+KEEP_SCRATCH = "QCCOMPUTE_KEEP_SCRATCH"
+
+
+def _keep_scratch() -> bool:
+    """Whether temporary scratch directories are kept (`KEEP_SCRATCH` is set)."""
+    return os.environ.get(KEEP_SCRATCH, "") not in ("", "0")
 
 
 class Capabilities(QCDataBaseModel):
@@ -567,6 +578,7 @@ class RunContext:
         "progress",
         "_deadline",
         "_scratch",
+        "_scratch_parent",
         "_made",
         "_runner",
         "_calling",
@@ -612,6 +624,9 @@ class RunContext:
         self.progress = progress
         self._deadline = None if timeout is None else time.monotonic() + timeout
         self._scratch = scratch
+        # Where a temporary scratch directory is made; None: the system's temporary
+        # directory. A worker's client gives it one it removes if the worker is killed.
+        self._scratch_parent: Path | None = None
         self._made = False
         self._runner = runner
         # The input whose subprogram tree names the programs ctx may run, set by a
@@ -716,19 +731,27 @@ class RunContext:
     def scratch(self) -> Path:
         """A directory the calculation may write to, made on first use.
 
-        A temporary directory made here is removed when the runner's call returns; a
-        program called directly with ``RunContext()`` removes it itself (or uses its
-        own temporary directory).
+        A temporary directory made here is removed when the runner's call returns, or
+        in a worker process that is killed (a timeout, a cancel) when its client lets
+        it go; a program called directly with ``RunContext()`` removes it itself (or
+        uses its own temporary directory). With ``QCCOMPUTE_KEEP_SCRATCH`` set
+        (`KEEP_SCRATCH`), every one is kept, for debugging.
         """
         if self._scratch is None:
-            self._scratch = Path(tempfile.mkdtemp(prefix="qccompute-"))
+            self._scratch = Path(
+                tempfile.mkdtemp(prefix="qccompute-", dir=self._scratch_parent)
+            )
             self._made = True
         return self._scratch
 
     def cleanup(self) -> None:
-        """Remove the scratch directory if this context made it (runners call this)."""
+        """Remove the scratch directory if this context made it (runners call this).
+
+        Kept when ``QCCOMPUTE_KEEP_SCRATCH`` is set (`KEEP_SCRATCH`).
+        """
         if self._made and self._scratch is not None:
-            shutil.rmtree(self._scratch, ignore_errors=True)
+            if not _keep_scratch():
+                shutil.rmtree(self._scratch, ignore_errors=True)
             self._scratch = None
             self._made = False
 

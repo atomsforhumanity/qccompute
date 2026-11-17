@@ -49,6 +49,7 @@ from qcdata import (
     ProgramOutput,
     ProgramSpec,
     Request,
+    Structure,
 )
 
 from .program import (
@@ -62,6 +63,7 @@ from .program import (
     SessionProgram,
     _entry_points,
     capabilities_of,
+    failed_frame,
     find_program,
     numerics_of,
     plan_of,
@@ -83,7 +85,9 @@ __all__ = [
 Input = ProgramInput | FileInput
 Output = ProgramOutput[Any, Any]
 
-#: The program that runs a `qcdata.FileInput` (a command with its files): qccodec's.
+#: The program that runs a `qcdata.FileInput` (a command with its files, not a
+#: `qcdata.ProgramInput`): the one program name the protocol reserves; qccodec registers
+#: it. Its numerics identity is a FileInput run's identity.
 FILES = "files"
 
 # Kinds a stored failure is reused for: determined by the input, so the same code fails
@@ -389,6 +393,14 @@ def _refused(
     out = _with_execution(out, 0.0, None, identities)
     failure.output = out
     return out, failure
+
+
+def _out_of_time(program: str) -> ProgramError:
+    """The failure of a subprogram its parent started after its time ran out."""
+    return ProgramError.of(
+        "timeout",
+        f"The calculation's time ran out before its subprogram {program} started.",
+    )
 
 
 def _subprogram_results(
@@ -1004,9 +1016,12 @@ class Runner:
                 a failure only when the input determines it (kind ``input``,
                 ``unsupported`` or ``convergence``, or ``program`` with such a cause);
                 ``rerun=True`` runs past it.
-            timeout: Seconds each calculation may run. Programs that start processes
-                enforce it, and so does the runner for programs in worker processes;
-                it fails with kind ``timeout``.
+            timeout: Seconds each calculation may run; past it, the calculation
+                fails with kind ``timeout``. Programs that start processes enforce it,
+                and the runner kills programs in worker processes. In this process it
+                is the program's to honour (``ctx.timeout``): the runner cannot stop a
+                thread, and only starts none of its subprograms after it. For a hard
+                limit on any program, use ``isolation="process"``.
             rerun: Run even when the store has a reusable output.
             tags: Tags for every key computed or reused (needs ``store``).
             meta: Metadata stored with each run (needs ``store``).
@@ -1130,7 +1145,7 @@ class Runner:
             ProgramError: The program is not installed or rejects the input.
         """
         return self._open_session(
-            inp, calctypes, None, self.threads, None, self._host_memory(), None, False
+            inp, calctypes, None, self.threads, None, self._host_memory(), None
         )
 
     # ------------------------------------------------------------------ lists
@@ -1260,13 +1275,22 @@ class Runner:
     def _subcompute(self, inputs: Any, ctx: RunContext, raise_exc: bool) -> Any:
         """``RunContext.compute``: subprograms within a calculation's grant.
 
-        Each gets the threads it asks for (`_threads`), at most the grant's.
+        Each gets the threads it asks for (`_threads`), at most the grant's, and the
+        time the calculation has left; once it has none, they fail with kind
+        ``timeout`` without running.
         """
         threads = ctx.threads or self.threads
         devices = ctx.gpus if ctx.threads is not None else None
         memory = ctx.memory_gib if ctx.threads is not None else self._host_memory()
         timeout = ctx.timeout
-        if isinstance(inputs, ProgramInput | FileInput):
+        one = isinstance(inputs, ProgramInput | FileInput)
+        if timeout == 0:  # the calculation's time ran out: none starts
+            listed = [inputs] if one else list(inputs)
+            failed = [
+                _refused(i, _out_of_time(i.program), self.identities(i)) for i in listed
+            ]
+            return _subprogram_results(inputs if one else listed, failed, raise_exc)
+        if one:
             ran = [self._run(inputs, threads, devices, memory, timeout)]
             return _subprogram_results(inputs, ran, raise_exc)
         inputs = list(inputs)
@@ -1286,8 +1310,14 @@ class Runner:
         """``RunContext.session``: a subprogram's session within a grant.
 
         ``threads`` is the parent's own split of its grant, and host memory follows
-        it; None: the threads the subprogram asks for, at most the grant.
+        it; None: the threads the subprogram asks for, at most the grant. Once the
+        calculation's time has run out, the session neither opens nor computes (kind
+        ``timeout``).
         """
+        if ctx.timeout == 0:
+            error = _out_of_time(inp.program)
+            error._subprogram = inp.program  # type: ignore[attr-defined]
+            raise error
         cap = ctx.threads or self.threads
         devices = ctx.gpus if ctx.threads is not None else None
         memory = ctx.memory_gib if ctx.threads is not None else self._host_memory()
@@ -1295,9 +1325,7 @@ class Runner:
             threads = max(1, min(threads, cap))
             if memory is not None and ctx.threads:
                 memory = memory * min(1.0, threads / ctx.threads)
-        return self._open_session(
-            inp, calctypes, threads, cap, devices, memory, ctx.timeout, True
-        )
+        return self._open_session(inp, calctypes, threads, cap, devices, memory, ctx)
 
     def _open_session(
         self,
@@ -1307,10 +1335,14 @@ class Runner:
         cap: int,
         devices: Sequence[str] | None,
         memory: float | None,
-        timeout: float | None,
-        subprogram: bool,
+        parent: RunContext | None,
     ) -> Session:
-        """Open a session with ``threads``, or (None) the threads its plan asks for."""
+        """Open a session with ``threads``, or (None) the threads its plan asks for.
+
+        ``parent`` is the grant of the calculation whose subprogram it is (its time
+        left is the session's), None for a session of the caller's own.
+        """
+        timeout = None if parent is None else parent.timeout
         entry, plan = self._plan(inp)
         if threads is None:
             threads = _threads(inp, plan, cap)
@@ -1343,9 +1375,9 @@ class Runner:
             weakref.finalize(opened, ctx.cleanup)
         except TypeError:  # not weak-referenceable
             pass
-        if lock is None and not subprogram:
+        if lock is None and parent is None:
             return opened
-        return _Guarded(opened, lock, inp.program if subprogram else None)
+        return _Guarded(opened, lock, parent)
 
     def _session_compute(
         self,
@@ -1370,20 +1402,31 @@ class Runner:
 
 
 class _Guarded:
-    """A session that takes turns on its program's lock and marks subprogram failures.
+    """A session that takes turns on its program's lock; a subprogram's, within its time.
 
     Sessions of a program that is not thread-safe may be called from several threads
     (ten TS searches side by side): they take turns on one lock per program. A
-    subprogram's session marks its failures, so a program that lets one escape fails
-    with kind ``program``.
+    subprogram's session (``parent``: the grant of the calculation it serves) marks its
+    failures, so a program that lets one escape fails with kind ``program``, and
+    computes nothing once the calculation's time has run out (kind ``timeout``).
     """
 
     def __init__(
-        self, session: Session, lock: threading.Lock | None, subprogram: str | None
+        self,
+        session: Session,
+        lock: threading.Lock | None,
+        parent: RunContext | None = None,
     ) -> None:
         self._session = session
         self._lock = lock if lock is not None else _NoLock()
-        self._subprogram = subprogram
+        self._parent = parent
+        self._subprogram = None if parent is None else session.program
+
+    def _out_of_time(self) -> ProgramError | None:
+        """The failure of a request made after the calculation's time ran out."""
+        if self._parent is None or self._parent.timeout != 0:
+            return None
+        return _out_of_time(self._subprogram or self.program)
 
     @property
     def program(self) -> str:
@@ -1403,6 +1446,9 @@ class _Guarded:
     def compute(self, *args: Any, **kwargs: Any) -> Frame:
         """See `qccompute.program.Session.compute`."""
         try:
+            late = self._out_of_time()
+            if late is not None:
+                raise late
             with self._lock:
                 return self._session.compute(*args, **kwargs)
         except ProgramError as e:
@@ -1413,6 +1459,14 @@ class _Guarded:
     def compute_many(self, requests: Sequence[Request]) -> list[Frame]:
         """See `qccompute.program.Session.compute_many`."""
         try:
+            late = self._out_of_time()
+            if late is not None:  # every request fails, as a group
+                return ProgramErrors.check(
+                    [
+                        failed_frame(self._structure(r), late, self.program)
+                        for r in requests
+                    ]
+                )
             with self._lock:
                 return self._session.compute_many(requests)
         except ExceptionGroup as group:
@@ -1420,6 +1474,13 @@ class _Guarded:
                 for e in group.exceptions:
                     setattr(e, "_subprogram", self._subprogram)  # noqa: B010
             raise
+
+    def _structure(self, request: Request) -> Structure:
+        """The structure a request is for."""
+        structure = self._session.input_data.require_structure()
+        if request.positions is None:
+            return structure
+        return structure.model_copy(update={"geometry": request.positions})
 
     def reset(self, lineage: Any = ...) -> None:
         """See `qccompute.program.Session.reset`."""

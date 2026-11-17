@@ -642,7 +642,7 @@ class _ClientRunner:
         session = WorkerSession(
             peer, reply["session"], inp, str(reply.get("program_version") or "")
         )
-        return _Guarded(session, None, inp.program)
+        return _Guarded(session, None, ctx)
 
     def _dump(self, inp: ProgramInput | FileInput) -> Any:
         return _wire.dump(inp, self._host.array_dir)

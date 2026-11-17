@@ -359,8 +359,12 @@ class RunContext:
         """Seconds the calculation has left, if the caller set a limit.
 
         A program that starts processes kills them when it runs out and fails with
-        kind ``timeout``. The runner enforces it itself only for programs in worker
-        processes. Subprograms get what is left.
+        kind ``timeout``; one that loops (SCF cycles, optimizer steps) checks it. The
+        runner kills a program in a worker process when it runs out, but cannot stop
+        one in its own process: there the limit is the program's to honour, and the
+        runner only refuses to start its subprograms afterwards (``ctx.compute``,
+        ``ctx.session`` and the session's requests fail with kind ``timeout``).
+        Subprograms get what is left.
         """
         if self._deadline is None:
             return None

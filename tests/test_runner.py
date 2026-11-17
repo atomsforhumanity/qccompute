@@ -1249,3 +1249,44 @@ def test_workers_with_gpus_are_shared_by_sessions_and_calls():
         assert out.results.extras["devices"] == ""  # it sees no GPU: none granted
         for s in sessions:
             s.close()
+
+
+def test_subprograms_start_only_within_the_calculations_time():
+    """In process a timeout is the program's to honour; after it, no subprogram (#19)."""
+    kinds = []
+
+    class Slow(FiniteDifference):
+        name = "slow"
+
+        def compute(self, inp, ctx=None):
+            child = ProgramInput.from_spec(inp.subprograms[0], inp.structure)
+            session = ctx.session(child)  # opened in time
+            session.compute()
+            time.sleep(0.3)  # past its time: the runner cannot stop it
+            for call in (
+                lambda: ctx.compute(child),
+                lambda: ctx.compute([child, child]),
+                session.compute,
+                lambda: session.compute_many([Request(), Request()]),
+                lambda: ctx.session(child),
+            ):
+                try:
+                    call()
+                except ProgramErrors as group:
+                    kinds.append([e.error.kind for e in group.exceptions])
+                except ProgramError as e:
+                    kinds.append(e.error.kind)
+            return super().compute(inp, ctx)  # its subprograms fail, so it does
+
+    register_program(Slow())
+    register_program(FiniteDifference())
+    timeout = ErrorKind.timeout
+    with Runner(threads=2) as runner:
+        with pytest.raises(ProgramError) as e:
+            runner.compute(
+                fd_input().model_copy(update={"program": "slow"}), timeout=0.2
+            )
+        assert e.value.error.kind is ErrorKind.program
+        assert e.value.error.cause.kind is timeout
+        assert kinds == [timeout, [timeout] * 2, timeout, [timeout] * 2, timeout]
+        assert runner.compute(fd_input(), timeout=5).success  # within its time

@@ -51,6 +51,11 @@ The object implements `qccompute.program.Program`, structurally:
 | `open_session(inp, ctx=None, calctypes=None)` (optional) | a session, usually the program's own session class |
 | `compute_batch(inputs, ctx=None)` (optional) | many inputs at once; one output per input, in order, failures in place |
 
+A `qcdata.FileInput` that is not a `ProgramInput` (a command with its files, whose
+`program` is the command) runs under the program registered as `files`, the one name the
+protocol reserves; qccodec registers it, and its numerics identity is the run's identity
+(`{"files": ...}`).
+
 What a program returns for `capabilities` and `plan` may be a plain mapping, which
 qccompute validates (`capabilities_of`, `plan_of`): it is the same document a program's
 command line prints and its worker sends. `numerics` takes the spec it would run (the
@@ -78,7 +83,12 @@ subprograms:
 - `memory_gib`, `device_memory_gib`: host and GPU memory, following the calculation's
   share (below).
 - `timeout`: the seconds left. A program that starts processes kills them when it runs
-  out and fails with kind `timeout`.
+  out and fails with kind `timeout`; one that loops checks it. The runner kills a
+  program in a worker process that runs out, but cannot stop one in its own process
+  (Python cannot stop a thread): there the limit is the program's to honour, and the
+  runner starts none of its subprograms once it has run out (`ctx.compute`,
+  `ctx.session` and its child sessions' requests fail with kind `timeout`), so a driver
+  stops at its next step. For a hard limit on any program, `isolation="process"`.
 - `plan`: the runner's plan of the input, so the program need not plan again.
 - `scratch`: a directory, made on first use and removed when the call returns.
 - `compute(inputs, raise_exc=True)` and `session(spec, structure, threads=, calctypes=)`:

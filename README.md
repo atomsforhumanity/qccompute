@@ -11,13 +11,13 @@ Runs quantum chemistry programs on [qcdata](https://github.com/atomsforhumanity/
 
 ## Install
 
-The new runner is in alpha. Install the alpha line with its matching packages pinned (`--prerelease=allow` lets the resolver take pre-releases; a plain `pip install qccompute` resolves the previous stable release):
+The new runner is in alpha. Install the alpha line with minimum versions of its matching packages (`--prerelease=allow` lets the resolver take pre-releases; a plain `pip install qccompute` resolves the previous stable release):
 
 ```sh
-uv pip install --prerelease=allow "qcdata==0.24.0a6" "qccompute[qccodec]==0.23.0a5" "qccodec==0.22.0a4" "qcstore==0.1.0a4"
+uv pip install --prerelease=allow "qcdata>=0.24.0a8" "qccompute[qccodec]>=0.23.0a6" "qccodec>=0.22.0a5" "qcstore>=0.1.0a4"
 ```
 
-`qccompute` alone is the runner, for programs that implement its protocol (`uv pip install --prerelease=allow "qcdata==0.24.0a6" "qccompute==0.23.0a5"`); the `qccodec` extra adds external programs (xtb, ORCA, Psi4, CREST, ...) and `qcstore` is the calculation store. Coming from 0.22? See [the migration guide](https://qccompute.docs.afh.org/next/migration/).
+`qccompute` alone is the runner, for programs that implement its protocol (`uv pip install --prerelease=allow "qcdata>=0.24.0a8" "qccompute>=0.23.0a6"`); the `qccodec` extra adds external programs (xtb, ORCA, Psi4, CREST, ...) and `qcstore` is the calculation store. Coming from 0.22? See [the migration guide](https://qccompute.docs.afh.org/next/migration/).
 
 ## One way to run things
 

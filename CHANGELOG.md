@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [unreleased]
 
+## [0.23.0a6] - 2026-11-17
+
+### Added
+
+- A calculation's BLAS and OpenMP thread counts are held at its threads around every program call, in process and in workers, and the caller's are restored afterwards (+2.4 µs per in-process call). A calculation now gives the same bits in process and in a worker: qcopt on taxol went from 15 of 43 frames bitwise to 43 of 43, and 16 caffeine optimizations in one list from 3.9 s to 2.2 s. New dependency: `threadpoolctl`.
+- `submit(..., priority=)`: waiting work runs highest priority first, first in first out within a priority. `Future.cancel()` ends a running calculation: in a worker its whole process tree is killed; in process it stops cooperatively. A cancelled output is never stored.
+- `runner.stop(future)` and `qccompute.stop(future)` ask a running program to stop at its next step (`ctx.stop_requested()`); it returns its partial output under kind `stopped`, which is never stored.
+- A worker runs a subprogram itself when every program the call names is there with the same identities, may run in process and plans no GPU. Otherwise the call goes to the client. qcopt over axtb in workers: 12.8–15.0 → 10.9 ms per gradient, and 16 submitted optimizations 1.5–2.0 → 1.0–1.2 s, with every frame bitwise identical.
+
+### Changed
+
+- **Breaking:** an `unnamed_subprogram` refusal fails the calculation whatever the program does afterwards, in process, in workers and in batches.
+- **Breaking:** an explicit `execution.devices=[]` is kept (it ran on no device); the runner fills `devices` only when the program left it unset.
+- **Breaking:** memory grants are no longer rounded.
+- **Breaking:** `submit` returns a `Future` subclass; `Runner.close()` cancels waiting submissions and kills workers still running. Timeouts also kill a calculation's whole process tree.
+- qccompute no longer reads `.calctype.value`, so inputs copied with `model_copy(update=)` work.
+- The guide says that a rerun is all cache hits only when the workflow asks for the same inputs; a timing-dependent workflow keeps its own decision state.
+- Requires qcdata 0.24.0a8.
+
+### Fixed
+
+- A worker's output pipes are closed when it ends.
+
+
 ## [0.23.0a5] - 2026-11-17
 
 ### Added

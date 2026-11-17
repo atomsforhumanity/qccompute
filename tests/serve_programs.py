@@ -3,6 +3,7 @@
 import os
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -279,6 +280,95 @@ class PoolsSession(ToySession):
         return frame.model_copy(update={"record": record})
 
 
+def runnable_threads(seconds: float) -> int:
+    """The most threads of this process, the caller aside, runnable at once (Linux).
+
+    Sampled from ``/proc/self/task`` for ``seconds``: a thread spinning while it waits
+    for work (an idle OpenBLAS thread does, for about 0.1 s after each call) is
+    runnable, as is one at work.
+    """
+    me = threading.get_native_id()
+    most = 0
+    end = time.monotonic() + seconds
+    while time.monotonic() < end:
+        n = 0
+        for tid in os.listdir("/proc/self/task"):
+            if int(tid) == me:
+                continue
+            try:
+                with open(f"/proc/self/task/{tid}/stat") as f:
+                    state = f.read().rsplit(")", 1)[1].split()[0]
+            except OSError:  # it ended
+                continue
+            n += state == "R"
+        most = max(most, n)
+    return most
+
+
+class Census(ToyProgram):
+    """The toy, asking for the whole grant (as a Hessian may) and counting while it runs
+    the other runnable threads of its process: none should be its caller's."""
+
+    name = "census"
+
+    def plan(self, inp):
+        own = inp.model_copy(update={"program": "toy"})
+        return (
+            super().plan(own).model_copy(update={"resources": Resources(threads=None)})
+        )
+
+    def compute(self, inp, ctx=None):
+        extras = {
+            "busy": runnable_threads(0.02),  # first: its own work wakes nothing yet
+            "blas": blas_threads(),
+            "threads": ctx.threads,
+            "pid": os.getpid(),
+        }
+        own = inp.model_copy(update={"program": "toy"})
+        out = super().compute(own, ctx)
+        results = out.results.model_copy(update={"extras": extras})
+        return out.model_copy(update={"input_data": inp, "results": results})
+
+
+class OtherCensus(Census):
+    """The census of another version: registered in a client only, it runs there."""
+
+    def version(self):
+        return "other"
+
+
+class Orchestrator(ToyProgram):
+    """Like qcopt: asks for its child's threads (all of them), and between its child's
+    calls does linear algebra of its own, as an optimizer's step does."""
+
+    name = "orchestrator"
+
+    def plan(self, inp):
+        own = inp.model_copy(update={"program": "toy", "subprograms": []})
+        return (
+            super().plan(own).model_copy(update={"resources": Resources(threads=None)})
+        )
+
+    def compute(self, inp, ctx=None):
+        start = time.monotonic()
+        a = np.random.default_rng(0).random((400, 400))
+        child = ProgramInput.from_spec(inp.subprograms[0], inp.structure)
+        children = []
+        for _ in range(3):
+            a = a @ a.T / 400  # the step: large enough for a threaded BLAS call
+            children.append(ctx.compute(child).results.extras)
+        extras = {
+            "blas": blas_threads(),
+            "pid": os.getpid(),
+            "children": children,
+            "span": [start, time.monotonic()],
+        }
+        own = inp.model_copy(update={"program": "toy", "subprograms": []})
+        out = super().compute(own, ctx)
+        results = out.results.model_copy(update={"extras": extras})
+        return out.model_copy(update={"input_data": inp, "results": results})
+
+
 class Relay(ToyProgram):
     """In a worker of its own, runs its subprogram through ctx: one, a list, a session.
 
@@ -396,8 +486,11 @@ stepper = Stepper()
 serial = Serial()
 isolated_gpu = IsolatedGPU()
 nest = Nest()
+census = Census()
+other_census = OtherCensus()
+orchestrator = Orchestrator()
 
 # Found by name in a worker too (importing this module registers them there), so a
 # worker's program may run them itself.
-for _program in (pools, stepper, stepping):
+for _program in (pools, stepper, stepping, census):
     qccompute.register_program(_program)

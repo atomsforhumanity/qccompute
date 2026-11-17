@@ -33,7 +33,8 @@ Wire, one JSON message per line:
   be empty or match ``CUDA_VISIBLE_DEVICES``. ``stop_file`` names a file whose
   existence asks the calculation to stop at its next step (``ctx.stop_requested()``):
   the client creates it while the message is in flight, and removes it after. While
-  the message runs, the worker holds its BLAS and OpenMP pools at ``threads``. With
+  the message runs, the worker holds its BLAS and OpenMP pools at ``threads`` (at one
+  thread for an input that names subprograms, whose grant it is). With
   ``progress: true`` the program's progress events (``ctx.progress``), each with its
   ``path`` from the worker's program down (``[]`` for its own; a subprogram's name for
   one the worker ran itself), stream to the client while a message is in flight, as lines
@@ -102,7 +103,7 @@ from qcdata import (
 )
 
 from . import _wire
-from ._pools import hold_threads
+from ._pools import hold_threads, own_threads
 from .program import (
     BatchProgram,
     Program,
@@ -325,8 +326,9 @@ class Host:
         calctypes = msg.get("calctypes")
         ctx = self._ctx(msg.get("ctx"))
         ctx._calling = inp
+        held = own_threads(ctx.threads, (inp,))
         try:
-            with hold_threads(ctx.threads):
+            with hold_threads(held):
                 session = self.program.open_session(
                     inp,
                     ctx,
@@ -336,7 +338,7 @@ class Host:
             raise MessageError.of(e) from None
         key = f"s{next(self._ids)}"
         self.sessions[key] = session
-        self._threads[key] = ctx.threads
+        self._threads[key] = held
         return {"session": key, "program_version": session.program_version}
 
     def op_compute(self, msg: dict[str, Any]) -> Any:
@@ -373,7 +375,7 @@ class Host:
         ctx._calling = inputs
         if isinstance(self.program, BatchProgram):
             try:
-                with hold_threads(ctx.threads):
+                with hold_threads(own_threads(ctx.threads, inputs)):
                     outs = list(self.program.compute_batch(inputs, ctx))  # type: ignore[arg-type]
             except MessageError:  # the message refused (a client's subprogram call)
                 raise
@@ -400,7 +402,7 @@ class Host:
         if ctx._calling is None:
             ctx._calling = inp
         try:
-            with hold_threads(ctx.threads):
+            with hold_threads(own_threads(ctx.threads, (inp,))):
                 out = self.program.compute(inp, ctx)  # type: ignore[arg-type]
         except MessageError:  # the message refused (a client's subprogram call)
             raise

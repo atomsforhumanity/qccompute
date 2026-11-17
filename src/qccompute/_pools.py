@@ -16,8 +16,14 @@ reproducible across thread counts.
   Calculations with different threads running at once in one process share them: the
   one started last holds them. Once none runs, every count is back where it was.
 
-A program may hold its own small linear algebra lower while it works, if it restores
-the counts around its subprograms' calls (qcopt pins its steps to one thread).
+A calculation that runs subprograms (its input names some) holds its own pools at one
+thread (`own_threads`): its grant is its subprograms', which hold theirs at their own
+threads while they run. Its pools at the whole grant would add threads beside them: an
+idle OpenBLAS thread spins for a while after each call (about 0.1 s), so a parent's
+linear algebra between its children's calls kept up to the grant's threads busy beside
+children that use the whole grant themselves. A program that does heavy linear algebra
+of its own between its subprograms' calls may raise its pools while it does, if it
+restores them around those calls.
 
 The libraries are found once, and again after the process imported modules (finding
 them takes about 0.4 ms). Each library's own functions are called directly: a call
@@ -30,10 +36,10 @@ import itertools
 import sys
 import threading
 import warnings
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from typing import Any
 
-__all__ = ["hold_threads"]
+__all__ = ["hold_threads", "own_threads"]
 
 Get = Callable[[], int]
 Set = Callable[[int], Any]
@@ -108,6 +114,23 @@ class _Pools:
 
 
 _POOLS = _Pools()
+
+
+def own_threads(threads: int | None, inputs: Iterable[object]) -> int | None:
+    """The threads a calculation's own pools are held at while its program runs.
+
+    Its grant, or one thread when any of its inputs names subprograms: the grant is
+    theirs, and they hold their own pools while they run.
+
+    Args:
+        threads: The calculation's threads (its grant); None: no grant.
+        inputs: Its input, or a batch's inputs.
+    """
+    if threads is None or threads == 1:
+        return threads
+    if any(getattr(inp, "subprograms", None) for inp in inputs):
+        return 1
+    return threads
 
 
 class hold_threads:  # noqa: N801 - used as a function: ``with hold_threads(n):``

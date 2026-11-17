@@ -85,8 +85,8 @@ subprograms:
   capped request is a `resource_capped` warning. The GPUs are as many as its plan asks
   for (`plan.resources.gpus`), of the runner's or the parent's: a program whose
   subprograms use GPUs plans theirs and passes them on. While the program runs, the
-  runner holds the process's BLAS and OpenMP pools at its threads (below, **Thread
-  pools**).
+  runner holds the process's BLAS and OpenMP pools at its threads, or at one thread
+  when its input names subprograms, whose grant it is (below, **Thread pools**).
 - `device_ordinals()`: the granted GPUs as this process's CUDA device ordinals, so every
   program maps a grant alike. `gpus` names them as `CUDA_VISIBLE_DEVICES` does (indices
   or `GPU-`/`MIG-` UUIDs). When the process's `CUDA_VISIBLE_DEVICES` is set, a GPU's
@@ -368,8 +368,17 @@ whichever call started a pooled worker.
   with different threads share these counts (the one started last holds them); for
   bitwise reproducibility across mixed thread counts, use `isolation="process"`. Once no
   calculation runs, every count is back where the caller had it.
-- A program may hold its own small linear algebra lower (qcopt runs its steps on one
-  thread), if it restores the counts around its subprograms' calls and before it returns.
+- A calculation that runs subprograms (its input names some) holds its own pools at one
+  thread, and its grant goes to its subprograms, which hold theirs while they run. So the
+  threads in use, children included, stay within the grant: a parent's pools at the
+  whole grant kept threads busy beside its children, because an idle OpenBLAS thread
+  spins for about 0.1 s after each call. On 8 threads, a qcopt optimizer's own steps
+  woke 7 such threads between gradients that axtb computed on all 8: 15-16 runnable
+  threads on 8 cores, and 38 submitted TS searches, IRCs and end minimizations took
+  79 s instead of 34 s.
+- A program may hold its own linear algebra at other counts while it works (up to its
+  grant for heavy work of its own between its subprograms' calls), if it restores the
+  counts around its subprograms' calls and before it returns.
 - A program's own session in this process (what `qccompute.session(inp)` hands back
   unwrapped: a thread-safe program's, opened by the caller) is called directly, not
   through the runner, so its requests run with the caller's counts: the program applies

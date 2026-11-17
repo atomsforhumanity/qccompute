@@ -2019,7 +2019,7 @@ def test_a_pooled_worker_holds_each_calls_threads(pools):
 
 
 class Pinning(ToyProgram):
-    """Like qcopt: its own work on one BLAS thread, its children's at what it found."""
+    """A program with subprograms that raises its own pools while it works."""
 
     name = "pinning"
 
@@ -2030,8 +2030,8 @@ class Pinning(ToyProgram):
     def compute(self, inp, ctx=None):
         from threadpoolctl import threadpool_limits
 
-        seen = {"granted": blas_threads()}
-        with threadpool_limits(limits=1, user_api="blas"):
+        seen = {"granted": ctx.threads, "held": blas_threads()}
+        with threadpool_limits(limits=ctx.threads, user_api="blas"):
             seen["own"] = blas_threads()
         spec = inp.subprograms[0]
         child = ProgramInput.from_spec(spec, inp.structure)
@@ -2047,7 +2047,8 @@ class Pinning(ToyProgram):
 
 
 def test_a_subprogram_holds_its_own_threads_and_gives_its_parent_its_back(pools):
-    """Nesting: the child's grant inside, the parent's after; a program's own pin."""
+    """A parent's own pools hold one thread: its grant is its children's, each of which
+    holds its own and gives the parent's back; a program may raise its own between."""
     register_program(Pinning())
     outside = blas_threads()
     child = {"program": "pools", "calctype": "gradient", "model": {"method": "lj"}}
@@ -2059,11 +2060,12 @@ def test_a_subprogram_holds_its_own_threads_and_gives_its_parent_its_back(pools)
         seen = runner.compute(inp).results.extras
     assert seen == {
         "granted": 4,
-        "own": 1,
+        "held": 1,
+        "own": 4,
         "child": 3,
-        "after child": 4,
+        "after child": 1,
         "session": 2,
-        "after session": 4,
+        "after session": 1,
     }
     assert blas_threads() == outside
 
@@ -2091,6 +2093,49 @@ def test_overlapping_holds_restore_the_counts_from_before():
         first.__exit__()
         second.__exit__()
         assert blas_threads() == outside
+
+
+def _openblas_spins() -> bool:
+    """Whether numpy's BLAS is OpenBLAS on its own threads, which spin when idle."""
+    from threadpoolctl import threadpool_info
+
+    return sys.platform == "linux" and any(
+        i["internal_api"] == "openblas" and i.get("threading_layer") == "pthreads"
+        for i in threadpool_info()
+    )
+
+
+@pytest.mark.parametrize("route", ["in process", "worker", "worker, child in client"])
+def test_threads_in_use_never_exceed_the_grant_children_included(pools, route):
+    """A calculation whose child takes its whole grant keeps no threads of its own
+    beside it, on every route; submitted ones that each take it never overlap."""
+    for program in (serve_programs.orchestrator, serve_programs.census):
+        register_program(program)
+    if route == "worker, child in client":  # not the worker's: the client runs it
+        register_program(serve_programs.other_census)
+    child = {"program": "census", "calctype": "gradient", "model": {"method": "lj"}}
+    inp = ProgramInput.model_validate(
+        toy_input(program="orchestrator").model_dump() | {"subprograms": [child]}
+    )
+    isolation = "auto" if route == "in process" else "process"
+    with Runner(threads=4, isolation=isolation) as runner:
+        futures = [runner.submit(inp) for _ in range(3)]
+        outs = [f.result(timeout=60) for f in futures]
+    spins = _openblas_spins()
+    for out in outs:
+        extras = out.results.extras
+        assert out.execution.threads == 4  # it asked for all of them
+        assert extras["blas"] == 1  # its own pools: one thread, the grant its child's
+        for seen in extras["children"]:
+            assert seen["threads"] == seen["blas"] == 4
+            if route == "worker, child in client":
+                assert seen["pid"] != extras["pid"]
+                continue
+            assert seen["pid"] == extras["pid"]
+            if spins:  # its parent's last step left no BLAS thread spinning
+                assert seen["busy"] == 0
+    spans = sorted(out.results.extras["span"] for out in outs)
+    assert all(a[1] <= b[0] for a, b in zip(spans, spans[1:], strict=False))
 
 
 def test_overlapping_calculations_in_threads_leave_the_counts_as_they_were(pools):

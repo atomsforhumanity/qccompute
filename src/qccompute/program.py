@@ -142,8 +142,8 @@ class Capabilities(QCDataBaseModel):
         in_process: Whether it may run in the runner's own process (it neither writes
             to the process's stdout/stderr file descriptors nor changes process-global
             state); otherwise the runner uses a worker process. Holding the BLAS and
-            OpenMP thread counts lower for its own work is allowed, when it restores
-            them around its subprograms' calls and before it returns.
+            OpenMP thread counts at other values for its own work is allowed, when it
+            restores them around its subprograms' calls and before it returns.
         thread_safe: Whether separate calculations and sessions may run concurrently
             in threads of one process (the program releases the GIL and shares no
             mutable state); the runner then runs them side by side in threads instead
@@ -530,7 +530,8 @@ class RunContext:
             granted (a direct call). While the program runs, the runner holds the
             process's BLAS and OpenMP pools at this count (in this process, BLAS
             counts are process-wide: calculations running at once with different
-            threads share them).
+            threads share them), or at one thread when the input names subprograms:
+            the grant is theirs, and they hold their own while they run.
         gpus: Identifiers of the GPUs granted (as for ``CUDA_VISIBLE_DEVICES``:
             indices or UUIDs); `device_ordinals` gives this process's CUDA ordinals.
         memory_gib: Host memory granted (GiB). A calculation run alone (one input, a

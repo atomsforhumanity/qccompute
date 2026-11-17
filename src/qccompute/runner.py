@@ -64,7 +64,7 @@ from qcdata import (
     Structure,
 )
 
-from ._pools import hold_threads
+from ._pools import hold_threads, own_threads
 from .program import (
     FILES,
     BatchProgram,
@@ -1297,10 +1297,10 @@ class Runner:
                 worker = self._worker(entry, devices, threads)
                 out = worker.compute(inp, ctx)
             elif entry.lock is not None:
-                with entry.lock, hold_threads(threads):
+                with entry.lock, hold_threads(own_threads(threads, (inp,))):
                     out = entry.program.compute(inp, ctx)  # type: ignore[arg-type]
             else:
-                with hold_threads(threads):
+                with hold_threads(own_threads(threads, (inp,))):
                     out = entry.program.compute(inp, ctx)  # type: ignore[arg-type]
             failure = None
             if not out.success:  # a program that returned its failure
@@ -1929,10 +1929,10 @@ class Runner:
                 worker = self._worker(entry, devices, threads)
                 outs = worker.compute_batch(task.inputs, ctx)
             elif entry.lock is not None:
-                with entry.lock, hold_threads(threads):
+                with entry.lock, hold_threads(own_threads(threads, task.inputs)):
                     outs = entry.program.compute_batch(task.inputs, ctx)  # type: ignore[attr-defined]
             else:
-                with hold_threads(threads):
+                with hold_threads(own_threads(threads, task.inputs)):
                     outs = entry.program.compute_batch(task.inputs, ctx)  # type: ignore[attr-defined]
             if len(outs) != len(task.inputs):
                 raise RuntimeError(
@@ -2079,9 +2079,9 @@ class Runner:
             opened = worker.session(inp, allowed, ctx, on_close=release)
             lock = None  # the worker is this session's own process
         else:
-            with hold_threads(threads):
+            held = own_threads(threads, (inp,))
+            with hold_threads(held):
                 opened = program.open_session(inp, ctx, allowed)  # type: ignore[attr-defined]
-            held = threads
         try:
             weakref.finalize(opened, ctx.cleanup)
         except TypeError:  # not weak-referenceable

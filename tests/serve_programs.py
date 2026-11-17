@@ -16,7 +16,7 @@ from qcdata import (
 
 import qccompute
 from qccompute.program import Plan, Resources
-from qccompute.testing.toy import ToyProgram
+from qccompute.testing.toy import ToyProgram, ToySession
 
 
 class DeviceLost(ToyProgram):
@@ -64,11 +64,30 @@ class Isolated(ToyProgram):
             os._exit(9)
         time.sleep(inp.keywords.get("sleep", 0))
         out = super().compute(self._own(inp), ctx)
-        results = out.results.model_copy(update={"extras": {"pid": os.getpid()}})
+        extras = {"pid": os.getpid(), "devices": os.environ["CUDA_VISIBLE_DEVICES"]}
+        results = out.results.model_copy(update={"extras": extras})
         return out.model_copy(update={"input_data": inp, "results": results})
 
     def open_session(self, inp, ctx=None, calctypes=None):
-        return super().open_session(self._own(inp), ctx, calctypes)
+        return PidSession(self._own(inp), calctypes=calctypes, ctx=ctx)
+
+
+class PidSession(ToySession):
+    """The toy's session, with its process in each frame's record."""
+
+    def compute(self, *args, **kwargs):
+        frame = super().compute(*args, **kwargs)
+        return frame.model_copy(update={"record": {**frame.record, "pid": os.getpid()}})
+
+
+class IsolatedGPU(Isolated):
+    """The isolated toy, planning one GPU (a GPU program in a worker of its own)."""
+
+    name = "isolated-gpu"
+
+    def plan(self, inp):
+        plan = super().plan(inp)
+        return plan.model_copy(update={"resources": Resources(gpus=1)})
 
 
 class Relay(ToyProgram):
@@ -117,3 +136,4 @@ device_lost = DeviceLost()
 relay = Relay()
 noisy = Noisy()
 isolated = Isolated()
+isolated_gpu = IsolatedGPU()

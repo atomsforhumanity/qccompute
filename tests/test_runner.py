@@ -1165,3 +1165,87 @@ def test_shares_pack_threads_and_gpus_and_memory_follows():
         by_threads = {c.threads: c.memory_gib for c in recording.contexts}
         assert by_threads[1] == pytest.approx(memory / 4, rel=1e-3)
         assert by_threads[3] == pytest.approx(3 * memory / 4, rel=1e-3)
+
+
+def test_gpus_come_from_the_plan_whatever_the_capabilities_say():
+    """A calculation gets the GPUs its plan asks for; caps.gpu decides nothing (#40)."""
+
+    class Planned(NoSessions):  # its sessions run through compute
+        def __init__(self, name, gpus, gpu):
+            super().__init__(name, gpu=gpu)
+            self._wanted = gpus
+
+        def plan(self, inp):
+            plan = super().plan(inp.model_copy(update={"program": "toy"}))
+            return plan.model_copy(update={"resources": Resources(gpus=self._wanted)})
+
+    one = Planned("one-gpu", 1, gpu=False)  # a parent of GPU children, say
+    none = Planned("no-gpu", 0, gpu=True)  # a GPU program on the CPU this time
+    register_program(one)
+    register_program(none)
+
+    class Parent(FiniteDifference):
+        name = "gpu-parent"
+
+        def plan(self, inp):  # its child's GPU, as qcopt plans its children's
+            return Plan(resolved=Resolved(), resources=Resources(gpus=1))
+
+    register_program(Parent())
+    register_program(FiniteDifference())
+    with Runner(threads=4, gpus=["0", "1"]) as runner:
+        runner.compute(toy_input(program="one-gpu"))
+        runner.compute(toy_input(program="no-gpu"))
+        with runner.session(toy_input(program="one-gpu")) as s:
+            s.compute()
+        assert [c.gpus for c in one.contexts] == [("0",), ("0",)]
+        assert [c.gpus for c in none.contexts] == [()]
+        # A list packs by them: two one-GPU calculations side by side, a GPU each
+        del one.contexts[:]
+        runner.compute([toy_input(program="one-gpu", epsilon=e) for e in (0.1, 0.2)])
+        assert sorted(c.gpus for c in one.contexts) == [("0",), ("1",)]
+        assert one.most == 2
+        # A parent passes its grant on to its children
+        del one.contexts[:]
+        runner.compute(fd_input("one-gpu").model_copy(update={"program": "gpu-parent"}))
+        assert {c.gpus for c in one.contexts} == {("0",)}
+        del one.contexts[:]
+        runner.compute(fd_input("one-gpu"))  # a parent that plans none has none
+        assert {c.gpus for c in one.contexts} == {()}
+
+
+def test_workers_with_gpus_are_shared_by_sessions_and_calls():
+    """per_gpu workers per program and GPUs, whatever the threads; others per grant."""
+    register_program(serve_programs.isolated_gpu)
+    register_program(serve_programs.isolated)
+    gpu = "isolated-gpu"
+
+    def pids(runner, program, n):
+        sessions = [runner.session(toy_input(program=program)) for _ in range(n)]
+        seen = [s.compute().record["pid"] for s in sessions]
+        return sessions, seen
+
+    with Runner(threads=4, gpus=["7"]) as runner:
+        sessions, seen = pids(runner, gpu, 3)
+        assert len(set(seen)) == 1  # one worker hosts all three sessions
+        out = runner.compute(toy_input(program=gpu))  # a call beside them
+        batch = runner.compute(  # a batch with 3 threads: the same worker
+            [toy_input(program=gpu, epsilon=0.01 * (i + 1)) for i in range(3)]
+        )
+        assert {o.results.extras["pid"] for o in [out, *batch]} == set(seen)
+        assert out.results.extras["devices"] == "7"  # it sees its grant
+        assert [s.compute().success for s in sessions] == [True] * 3
+        for s in sessions:
+            s.close()
+    with Runner(threads=4, gpus=["7"], per_gpu=2) as runner:
+        sessions, seen = pids(runner, gpu, 3)
+        assert len(set(seen)) == 2  # two calculations may share the GPU
+        for s in sessions:
+            s.close()
+    # Without GPUs: a worker per session, as many as fit side by side, then shared.
+    with Runner(threads=2, gpus=["7"]) as runner:
+        sessions, seen = pids(runner, "isolated", 3)
+        assert len(set(seen[:2])) == 2 and seen[2] in seen[:2]
+        out = runner.compute(toy_input(program="isolated"))
+        assert out.results.extras["devices"] == ""  # it sees no GPU: none granted
+        for s in sessions:
+            s.close()

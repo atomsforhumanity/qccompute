@@ -138,7 +138,9 @@ class Capabilities(QCDataBaseModel):
             in threads of one process (the program releases the GIL and shares no
             mutable state); the runner then runs them side by side in threads instead
             of one at a time.
-        gpu: Whether it can use GPUs; the runner then grants it GPUs.
+        gpu: Whether it can use GPUs, for people and tools that list programs. The
+            runner grants a calculation the GPUs its plan asks for
+            (`Resources.gpus`), whatever this says.
     """
 
     calctypes: frozenset[CalcType]
@@ -161,7 +163,9 @@ class Resources(QCDataBaseModel):
             (a DFT code). In a list such a calculation is a full share, so it runs
             alone. A small molecule rarely gains from more than a few.
         memory_gib: Host memory (GiB), if known.
-        gpus: Number of GPUs.
+        gpus: GPUs the calculation uses: the runner grants this many, whatever the
+            program's capabilities say (a program whose subprograms use GPUs plans
+            theirs). A program in a worker sees only those granted.
         device_memory_gib: Memory per GPU (GiB), if capped; several calculations may
             then share one device.
         exclusive: Whether the calculation must have the machine (or its GPUs) to

@@ -569,7 +569,8 @@ class Runner:
             it (``in_process=False``), which run in worker processes; ``"process"``
             runs every program in a worker process, so a crash ends only the worker.
         per_gpu: Calculations that may share one GPU at once; each gets 1/per_gpu of
-            its memory.
+            its memory. A program in worker processes keeps this many workers per
+            GPU, which its calculations and sessions there share.
 
     A runner never changes a number: it hands each calculation its share of the
     machine (`qccompute.program.RunContext`) and the program decides. Close a runner
@@ -605,8 +606,11 @@ class Runner:
         self._memory: float | None | Literal[False] = False
         self._entries: dict[int, _Entry] = {}
         self._entries_lock = threading.Lock()
-        self._workers: dict[tuple[str, tuple[str, ...], int], list[Worker]] = {}
-        self._workers_lock = threading.Lock()
+        # Workers by pool (`_pool`), each with its users: calls in flight and open
+        # sessions; workers being started, by pool.
+        self._pools: dict[tuple[Any, ...], dict[Worker, int]] = {}
+        self._starting: dict[tuple[Any, ...], int] = {}
+        self._pools_changed = threading.Condition()
         self._all_workers: weakref.WeakSet[Worker] = weakref.WeakSet()
         self._closed = False
 
@@ -675,11 +679,17 @@ class Runner:
     def _in_worker(self, entry: _Entry) -> bool:
         return self.isolation == "process" or not entry.caps.in_process
 
-    def _devices(self, entry: _Entry, devices: Sequence[str] | None) -> tuple[str, ...]:
-        """The GPUs of a calculation: those granted, else all of the runner's."""
-        if not entry.caps.gpu:
+    def _devices(self, plan: Plan, devices: Sequence[str] | None) -> tuple[str, ...]:
+        """The GPUs of a calculation: as many as its plan asks for, of ``devices``.
+
+        ``devices`` are those it may use (a parent's grant); None: the runner's. The
+        plan decides, whatever the program's capabilities say: a program whose
+        subprograms use GPUs plans theirs.
+        """
+        wanted = plan.resources.gpus
+        if not wanted:
             return ()
-        return tuple(devices) if devices is not None else self.gpus
+        return (tuple(devices) if devices is not None else self.gpus)[:wanted]
 
     def _context(
         self,
@@ -701,37 +711,91 @@ class Runner:
 
     # ------------------------------------------------------------------ workers
 
+    def _pool(
+        self, spec: str, devices: tuple[str, ...], threads: int
+    ) -> tuple[tuple[Any, ...], int]:
+        """The pool of workers a calculation uses, and how many workers it may hold.
+
+        A worker with GPUs is pooled by its program and GPUs: a GPU program's state (a
+        model on the device, its context) is costly to repeat, and its work queues on
+        the device, so ``per_gpu`` workers serve every calculation and session of
+        that program on those GPUs, whatever their threads (a batch's threads vary
+        with its size). A worker without GPUs is pooled by its program and threads,
+        which its numerical libraries fix when it starts; as many as fit side by side
+        in the runner's threads.
+        """
+        if devices:
+            return (spec, devices), self.per_gpu
+        return (spec, threads), max(1, self.threads // threads)
+
     def _worker(self, entry: _Entry, devices: tuple[str, ...], threads: int) -> Worker:
-        """An idle worker for this program, GPUs and threads; started if none is."""
+        """A worker for this program and grant: idle, newly started, else shared.
+
+        An idle worker of the pool is used first; else a new one starts while the
+        pool has room; else the calculation shares the worker with the fewest users,
+        taking turns with them. Release it with `_release`.
+        """
         from .worker import Worker
 
-        if self._closed:
-            raise RuntimeError("This runner is closed.")
-        key = (entry.spec, devices, threads)
-        with self._workers_lock:
-            idle = self._workers.setdefault(key, [])
-            while idle:
-                worker = idle.pop()
-                if worker.alive:
-                    return worker
-        worker = Worker(
-            entry.spec, threads=threads, gpus=devices if entry.caps.gpu else None
-        )
-        self._all_workers.add(worker)
-        return worker
+        key, room = self._pool(entry.spec, devices, threads)
+        dead: list[Worker] = []
+        worker: Worker | None
+        with self._pools_changed:
+            while True:
+                if self._closed:
+                    raise RuntimeError("This runner is closed.")
+                pool = self._pools.setdefault(key, {})
+                dead += [w for w in pool if not w.alive]
+                for w in dead:
+                    pool.pop(w, None)
+                starting = self._starting.get(key, 0)
+                if pool:
+                    worker = min(pool, key=pool.__getitem__)
+                    if pool[worker] == 0 or len(pool) + starting >= room:
+                        pool[worker] += 1
+                        break
+                if len(pool) + starting < room:
+                    self._starting[key] = starting + 1
+                    worker = None
+                    break
+                self._pools_changed.wait()  # every worker of the pool is starting
+        for w in dead:
+            w.close()
+        if worker is not None:
+            return worker
+        try:
+            worker = Worker(entry.spec, threads=threads, gpus=devices)
+        finally:
+            with self._pools_changed:
+                self._starting[key] -= 1
+                self._pools_changed.notify_all()
+        with self._pools_changed:
+            self._all_workers.add(worker)
+            if not self._closed:
+                self._pools.setdefault(key, {})[worker] = 1
+                return worker
+        worker.close()
+        raise RuntimeError("This runner is closed.")
 
     def _release(self, worker: Worker, devices: tuple[str, ...], threads: int) -> None:
-        if not worker.alive or self._closed:
-            worker.close()
-            return
-        with self._workers_lock:
-            self._workers.setdefault((worker.spec, devices, threads), []).append(worker)
+        """A call or session is done with its worker; a dead worker leaves its pool."""
+        key, _ = self._pool(worker.spec, devices, threads)
+        with self._pools_changed:
+            pool = self._pools.get(key, {})
+            if worker in pool:
+                pool[worker] -= 1
+                if worker.alive:
+                    return
+                del pool[worker]
+            self._pools_changed.notify_all()
+        worker.close()
 
     def close(self) -> None:
         """Stop this runner's worker processes; it cannot run in workers afterwards."""
-        self._closed = True
-        with self._workers_lock:
-            self._workers.clear()
+        with self._pools_changed:
+            self._closed = True
+            self._pools.clear()
+            self._pools_changed.notify_all()
         for worker in list(self._all_workers):
             worker.close()
 
@@ -749,13 +813,16 @@ class Runner:
         self,
         inp: Input,
         threads: int,
-        devices: Sequence[str] | None,
+        devices: tuple[str, ...],
         memory: float | None,
         timeout: float | None,
         plan: Plan | None = None,
         entry: _Entry | None = None,
     ) -> tuple[Output, ProgramError | None]:
-        """Run one input to its output, failed or not, and the error of a failure."""
+        """Run one input with its grant (``devices``: its GPUs) to its output.
+
+        Returns the output, failed or not, and the error of a failure.
+        """
         identities = self.identities(inp)
         start = time.perf_counter()
         if entry is None:
@@ -765,12 +832,11 @@ class Runner:
                 out = _failure(inp, exc.error)
                 exc.output = out
                 return out, exc
-        granted = self._devices(entry, devices)
-        ctx = self._context(threads, granted, memory, timeout, plan)
+        ctx = self._context(threads, devices, memory, timeout, plan)
         worker = None
         try:
             if self._in_worker(entry):
-                worker = self._worker(entry, granted, threads)
+                worker = self._worker(entry, devices, threads)
                 out = worker.compute(inp, ctx)
             elif entry.lock is not None:
                 with entry.lock:
@@ -785,7 +851,7 @@ class Runner:
         finally:
             ctx.cleanup()
             if worker is not None:
-                self._release(worker, granted, threads)
+                self._release(worker, devices, threads)
         out = _with_execution(out, time.perf_counter() - start, threads, identities)
         if failure is not None:
             failure.output = out
@@ -799,13 +865,17 @@ class Runner:
         memory: float | None,
         timeout: float | None,
     ) -> tuple[Output, ProgramError | None]:
-        """Plan and run one input with the threads it asks for, at most ``cap``."""
+        """Plan and run one input with the threads it asks for, at most ``cap``.
+
+        It gets the GPUs its plan asks for, of ``devices`` (None: the runner's).
+        """
         try:
             entry, plan = self._plan(inp)
         except Exception as e:  # noqa: BLE001 - refused before running
             return _refused(inp, e, self.identities(inp))
         threads = _threads(inp, plan, cap)
-        return self._execute(inp, threads, devices, memory, timeout, plan, entry)
+        granted = self._devices(plan, devices)
+        return self._execute(inp, threads, granted, memory, timeout, plan, entry)
 
     def identities(self, inp: Input) -> dict[str, str]:
         """The numerics identity of the input's program and of every subprogram.
@@ -1043,8 +1113,9 @@ class Runner:
         what a direct user gets. For any other program the session runs each
         geometry through ``compute``, from scratch (``record["warm_start"]`` is
         false): it is a convenience, not a speed-up. Programs in worker processes give
-        a session over the worker's pipe, with the same methods. The session gets the
-        threads its input asks for (as in `compute`), at most the runner's.
+        a session over the worker's pipe, with the same methods; sessions of a program
+        on a GPU share its worker there. The session gets the threads its input asks
+        for (as in `compute`), at most the runner's, and the GPUs its plan asks for.
 
         Args:
             inp: The program, model, keywords and structure; its calctype and
@@ -1110,8 +1181,7 @@ class Runner:
         if not tasks:
             return
         if devices is None:
-            needs_gpus = any(t.entry.caps.gpu and t.gpus for t in tasks)
-            devices = self.gpus if needs_gpus else ()
+            devices = self.gpus if any(t.gpus for t in tasks) else ()
         budget = _Grant(threads, devices, self.per_gpu)
 
         def run(
@@ -1157,13 +1227,12 @@ class Runner:
             yield task.indices[0], out, failure
             return
         entry = task.entry
-        granted = self._devices(entry, devices)
-        ctx = self._context(threads, granted, memory, timeout, None)
+        ctx = self._context(threads, devices, memory, timeout, None)
         start = time.perf_counter()
         worker = None
         try:
             if self._in_worker(entry):
-                worker = self._worker(entry, granted, threads)
+                worker = self._worker(entry, devices, threads)
                 outs = worker.compute_batch(task.inputs, ctx)
             elif entry.lock is not None:
                 with entry.lock:
@@ -1180,7 +1249,7 @@ class Runner:
         finally:
             ctx.cleanup()
             if worker is not None:
-                self._release(worker, granted, threads)
+                self._release(worker, devices, threads)
         wall = time.perf_counter() - start
         for i, inp, out in zip(task.indices, task.inputs, outs, strict=True):
             out = _with_execution(out, wall, threads, self.identities(inp))
@@ -1246,7 +1315,7 @@ class Runner:
         if threads is None:
             threads = _threads(inp, plan, cap)
         allowed = session_calctypes(calctypes) if calctypes else None
-        granted = self._devices(entry, devices)
+        granted = self._devices(plan, devices)
         ctx = self._context(threads, granted, memory, timeout, None)
         program = entry.program
         opened: Session
@@ -1281,7 +1350,7 @@ class Runner:
     def _session_compute(
         self,
         threads: int,
-        devices: Sequence[str],
+        devices: tuple[str, ...],
         memory: float | None,
         timeout: float | None,
         inputs: Any,

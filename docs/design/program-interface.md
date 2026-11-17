@@ -72,7 +72,9 @@ subprograms:
   keyword, else `plan.resources.threads`: 1 unless the program says more, and None for
   all there is), at most the runner's (or, for a subprogram, the parent's grant). A program uses the
   smaller of its own request and the grant, or the grant when it requested nothing; a
-  capped request is a `resource_capped` warning.
+  capped request is a `resource_capped` warning. The GPUs are as many as its plan asks
+  for (`plan.resources.gpus`), of the runner's or the parent's, whatever its capabilities
+  say: a program whose subprograms use GPUs plans theirs and passes them on.
 - `memory_gib`, `device_memory_gib`: host and GPU memory, following the calculation's
   share (below).
 - `timeout`: the seconds left. A program that starts processes kills them when it runs
@@ -183,8 +185,17 @@ threads, at most the runner's (or the parent's grant), and for the most GPUs any
 asks for; the program divides its grant among them.
 
 **Placement.** A program that may share the process runs in its threads; one that is not
-thread-safe takes turns on a lock per program. Worker processes are started for a
-program, its GPUs and its threads, and kept for the next call until the runner closes.
+thread-safe takes turns on a lock per program. Worker processes are kept for the next
+call until the runner closes, in pools. A worker sees exactly the GPUs granted to it
+(`CUDA_VISIBLE_DEVICES`, empty for none). Workers with GPUs are pooled by program and
+GPUs: at most `per_gpu` of them serve every calculation and session of that program on
+those GPUs, whatever their threads, because a GPU program's state (a model on the
+device, its context) is costly to repeat and its work queues on the device anyway.
+Workers without GPUs are pooled by program and threads, which a worker's numerical
+libraries fix when it starts, at most as many as fit side by side in the runner's
+threads. A call or session takes an idle worker of its pool, else starts one while the
+pool has room, else shares the worker with the fewest users, taking turns on it. A
+worker that dies or is killed for a timeout ends the sessions it hosts.
 
 ## The store
 

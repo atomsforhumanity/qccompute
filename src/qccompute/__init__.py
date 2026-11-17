@@ -14,13 +14,12 @@ except _metadata.PackageNotFoundError:
     __version__ = "0.0.0+local"
 
 from .program import RunContext, register_program
-from .runner import ComputeErrors, Runner, compute, session
+from .runner import Runner, compute, session
 
 __all__ = [
     "compute",
     "session",
     "Runner",
-    "ComputeErrors",
     "RunContext",
     "register_program",
     "__version__",

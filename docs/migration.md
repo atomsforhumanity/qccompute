@@ -53,7 +53,7 @@ and the kind of failure in `error.kind`:
 | `ProgramTimeoutError` | `timeout` |
 | `ExternalProgramError` | `internal`, or the program's own kind |
 | `e.prog_output` | `e.output` |
-| `ComputeErrors` from `qccompute.exceptions`, `e.input_index` | `qccompute.ComputeErrors`; `.outputs` in input order |
+| `ComputeErrors` from `qccompute.exceptions`, `e.input_index`, `e.outputs` | `qcdata.ProgramErrors`; `.results` in input order |
 
 ```python
 # 0.22
@@ -82,7 +82,7 @@ as they finish.
 `qccompute.session(spec, structure, threads=..., **compute_options)` is
 `qccompute.session(inp, calctypes=None)`: build the input with
 `ProgramInput.from_spec(spec, structure)`. `compute_many` now runs every request and then
-raises `qccompute.program.SessionErrors` when any failed, with every frame in `frames`.
+raises `qcdata.ProgramErrors` when any failed, with every frame in `results`.
 
 ## Programs
 

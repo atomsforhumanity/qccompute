@@ -101,10 +101,10 @@ runner reports it as kind `internal`, caused by the original exception.
 
 The runner turns failures into failed outputs only where it needs data:
 
-- a list runs every calculation, then raises `ComputeErrors`, an `ExceptionGroup` of the
-  `ProgramError`s whose `outputs` holds every output in input order;
-- a session's `compute_many` runs every request, then raises `SessionErrors`, whose
-  `frames` holds every frame in request order;
+- a list runs every calculation, then raises `qcdata.ProgramErrors`, an `ExceptionGroup`
+  of the `ProgramError`s whose `results` holds every output in input order;
+- a session's `compute_many` runs every request, then raises the same group, whose
+  `results` holds every frame in request order (`ProgramErrors.check(frames)`);
 - `compute_batch` returns failures in place, a refused input included;
 - `raise_exc=False` returns failed outputs in place; the store and workers carry failed
   outputs as data.

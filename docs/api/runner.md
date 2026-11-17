@@ -9,8 +9,6 @@
 
 ::: qccompute.runner.Runner
 
-::: qccompute.runner.ComputeErrors
-
 ::: qccompute.runner.Store
 
 ::: qccompute.runner.default_runner

@@ -65,6 +65,7 @@ from qcdata import (
     FileInput,
     Frame,
     ProgramError,
+    ProgramErrors,
     ProgramInput,
     ProgramOutput,
     Request,
@@ -327,10 +328,8 @@ class Host:
             frames = session.compute_many(
                 [_request(r) for r in msg.get("requests") or []]
             )
-        except ExceptionGroup as group:  # SessionErrors: every frame, in order
-            if not hasattr(group, "frames"):
-                raise
-            frames = group.frames
+        except ProgramErrors as group:  # every frame, in order
+            frames = group.results
         for frame in frames:
             self._watch(frame)
         return _dump(list(frames))

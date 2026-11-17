@@ -12,7 +12,7 @@ Every input goes one path: find the program by name, plan it (lists only, to pac
 place it (this process, or a worker process for programs that cannot share one), call
 ``compute`` or ``compute_batch`` with a `qccompute.program.RunContext`, and record the
 execution. A failed calculation raises `qcdata.ProgramError` with the failed output as
-its ``output``; a list runs everything first and raises `ComputeErrors`.
+its ``output``; a list runs everything first and raises `qcdata.ProgramErrors`.
 """
 
 from __future__ import annotations
@@ -41,6 +41,7 @@ from qcdata import (
     FileInput,
     Frame,
     ProgramError,
+    ProgramErrors,
     ProgramInput,
     ProgramOutput,
     ProgramSpec,
@@ -70,7 +71,6 @@ if TYPE_CHECKING:
 __all__ = [
     "Runner",
     "Store",
-    "ComputeErrors",
     "FILES",
     "compute",
     "session",
@@ -118,50 +118,6 @@ class Store(Protocol):
     def tag(self, key: str, *tags: str) -> None:
         """Add tags to a key."""
         ...
-
-
-class ComputeErrors(ExceptionGroup):  # type: ignore[type-arg]
-    """The failures of a list of calculations, raised after every calculation ran.
-
-    Each sub-exception is the `qcdata.ProgramError` of one failed calculation, with
-    its failed output as ``output``. ``outputs`` holds every output in input order,
-    successful or not, so no result is lost. Handle failures with ``except*`` or
-    catch the group.
-
-    Attributes:
-        outputs: Every output, in input order (for ``as_completed``, in the order
-            they finished).
-    """
-
-    outputs: list[Output]
-
-    def __new__(
-        cls,
-        message: str,
-        exceptions: Sequence[Exception],
-        outputs: Sequence[Output] = (),
-    ) -> ComputeErrors:
-        """Build the group and attach every output."""
-        self = super().__new__(cls, message, exceptions)
-        self.outputs = list(outputs)
-        return self
-
-    def __init__(
-        self,
-        message: str,
-        exceptions: Sequence[Exception],
-        outputs: Sequence[Output] = (),
-    ) -> None:
-        """Initialize the group; ``__new__`` attaches the outputs."""
-        super().__init__(message, exceptions)
-
-    def derive(self, excs: Sequence[Exception]) -> ComputeErrors:  # type: ignore[override]
-        """Keep ``outputs`` on the groups ``except*`` and ``split`` create."""
-        return ComputeErrors(self.message, excs, self.outputs)
-
-    def __reduce__(self) -> tuple[Any, ...]:
-        """Pickle with the outputs."""
-        return ComputeErrors, (self.message, list(self.exceptions), self.outputs)
 
 
 # ----------------------------------------------------------------------- the machine
@@ -875,7 +831,8 @@ class Runner:
         Raises:
             ProgramError: The calculation failed; its ``output`` is the failed
                 output, with partial results and logs.
-            ComputeErrors: Some calculations of a list failed.
+            ProgramErrors: Some calculations of a list failed; ``results`` holds
+                every output in input order.
         """
         if (tags or meta) and store is None:
             raise ValueError("tags and meta are stored with runs: pass a store.")
@@ -896,7 +853,7 @@ class Runner:
                 failures[i] = failure
         done = [o for o in outputs if o is not None]
         if failures and raise_exc:
-            raise ComputeErrors(
+            raise ProgramErrors(
                 f"{len(failures)} of {len(inputs)} calculations failed",
                 [failures[i] for i in sorted(failures)],
                 done,
@@ -918,7 +875,8 @@ class Runner:
 
         Stored outputs come first. Each output's ``input_data`` says which input it
         is. With ``raise_exc``, failures are held back and raised together as
-        `ComputeErrors` once everything ran; otherwise they are yielded in place.
+        `qcdata.ProgramErrors` once everything ran (``results`` in the order they
+        finished); otherwise they are yielded in place.
 
         Args:
             inputs: The inputs.
@@ -933,7 +891,7 @@ class Runner:
             Outputs in the order they finish.
 
         Raises:
-            ComputeErrors: Some calculations failed, after the last output.
+            ProgramErrors: Some calculations failed, after the last output.
         """
         if (tags or meta) and store is None:
             raise ValueError("tags and meta are stored with runs: pass a store.")
@@ -948,7 +906,7 @@ class Runner:
                 continue
             yield out
         if failures:
-            raise ComputeErrors(
+            raise ProgramErrors(
                 f"{len(failures)} of {len(inputs)} calculations failed",
                 failures,
                 finished,
@@ -1141,7 +1099,7 @@ class Runner:
                 failures[i] = failure
         done = [o for o in outputs if o is not None]
         if failures and raise_exc:
-            raise ComputeErrors(
+            raise ProgramErrors(
                 f"{len(failures)} of {len(inputs)} subprogram calculations failed",
                 [failures[i] for i in sorted(failures)],
                 done,
@@ -1392,7 +1350,7 @@ def compute(
 
     Raises:
         ProgramError: The calculation failed; ``output`` is the failed output.
-        ComputeErrors: Some calculations of a list failed.
+        ProgramErrors: Some calculations of a list failed.
     """
     return default_runner().compute(
         inputs,

@@ -9,6 +9,7 @@ from qcdata import (
     CalcType,
     ErrorKind,
     ProgramError,
+    ProgramErrors,
     ProgramInput,
     ProgramOutput,
     ProgramSpec,
@@ -22,7 +23,6 @@ from qccompute.program import (
     Program,
     RunContext,
     Session,
-    SessionErrors,
     SessionProgram,
     available_programs,
     find_program,
@@ -184,11 +184,11 @@ def test_compute_session_over_a_program():
         assert s.compute(x).results.energy == r.energy  # still usable
         assert frame.record["warm_start"] is False  # stateless: always fresh
         assert np.allclose(s.compute().structure.geometry, x)  # the input's own
-        with pytest.raises(SessionErrors) as group:
+        with pytest.raises(ProgramErrors) as group:
             s.compute_many(
                 [Request(positions=x), Request(positions=np.full_like(x, np.nan))]
             )
-        many = group.value.frames  # every frame, in request order
+        many = group.value.results  # every frame, in request order
         assert len(group.value.exceptions) == 1
         assert many[0].success and not many[1].success
         assert many[1].error.kind is ErrorKind.numerical
@@ -457,9 +457,9 @@ def test_toy_sessions_fail_on_request():
         with pytest.raises(ProgramError) as e:
             s.compute(np.asarray(ARGON3.geometry))
         assert e.value.error.kind is ErrorKind.convergence
-        with pytest.raises(SessionErrors) as group:
+        with pytest.raises(ProgramErrors) as group:
             s.compute_many([Request()])
-        frame = group.value.frames[0]
+        frame = group.value.results[0]
         assert not frame.success and frame.error.kind is ErrorKind.convergence
         assert group.value.exceptions[0].frame is frame
 
@@ -482,9 +482,9 @@ def test_sessions_run_only_the_calctypes_they_were_opened_for(toy_registered):
             s.compute(x, "hessian")
         assert e.value.error.kind is ErrorKind.input
         assert e.value.error.code == "not_applicable"
-        with pytest.raises(SessionErrors) as group:
+        with pytest.raises(ProgramErrors) as group:
             s.compute_many([Request(positions=x, calctype=CalcType.hessian)])
-        frame = group.value.frames[0]
+        frame = group.value.results[0]
         assert not frame.success and frame.error.code == "not_applicable"
     with program.open_session(
         inp, RunContext(), frozenset({CalcType.gradient, CalcType.hessian})
@@ -607,9 +607,9 @@ def test_program_errors_keep_the_failed_frame_through_compute_sessions():
         s.compute()
     assert e.value.frame is not None and not e.value.frame.success
     assert e.value.frame.record["scf"]["iterations"] == 128
-    with pytest.raises(SessionErrors) as group:
+    with pytest.raises(ProgramErrors) as group:
         s.compute_many([Request()])
-    assert group.value.frames[0].record["scf"]["iterations"] == 128
+    assert group.value.results[0].record["scf"]["iterations"] == 128
 
 
 def test_plans_may_defer_what_the_run_decides():

@@ -37,6 +37,7 @@ from qcdata import (
     Frame,
     Lineage,
     ProgramError,
+    ProgramErrors,
     ProgramInput,
     ProgramOutput,
     Request,
@@ -47,7 +48,6 @@ from .program import (
     ComputeSession,
     Plan,
     RunContext,
-    SessionErrors,
     failed_frame,
 )
 
@@ -489,7 +489,7 @@ class WorkerSession:
         others run in the worker.
 
         Raises:
-            SessionErrors: Some requests failed; ``frames`` holds every frame.
+            ProgramErrors: Some requests failed; ``results`` holds every frame.
         """
         frames: list[Frame | None] = [None] * len(requests)
         sent: list[int] = []
@@ -512,7 +512,7 @@ class WorkerSession:
             )
             for i, f in zip(sent, result, strict=True):
                 frames[i] = self._frame(f, requests[i])
-        return SessionErrors.check([f for f in frames if f is not None])
+        return ProgramErrors.check([f for f in frames if f is not None])
 
     def reset(self, lineage: Lineage = ...) -> None:
         """Forget one lineage's history (None: the default one); omitted: all."""

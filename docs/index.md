@@ -64,15 +64,17 @@ outputs = qccompute.compute([inp1, inp2, inp3])
 - Calculations are packed into the runner's share of the machine by what their plans ask
   for (threads, GPUs); a program that evaluates many inputs at once (a machine-learned
   potential) gets its inputs together.
-- Everything runs, then the failures are raised together as `qccompute.ComputeErrors` (an
-  `ExceptionGroup` of `ProgramError`s). Its `outputs` holds every output in input order,
+- Everything runs, then the failures are raised together as `qcdata.ProgramErrors` (an
+  `ExceptionGroup` of `ProgramError`s). Its `results` holds every output in input order,
   so no result is lost:
 
 ```python
+import qcdata
+
 try:
     outputs = qccompute.compute(inputs)
-except qccompute.ComputeErrors as errors:
-    outputs = errors.outputs
+except qcdata.ProgramErrors as errors:
+    outputs = errors.results
 ```
 
 `Runner.as_completed(inputs)` yields outputs as they finish.
@@ -93,8 +95,8 @@ with qccompute.session(inp) as s:
 A program with sessions of its own hands back its own session object, so the numbers are
 exactly those of the program used directly; any other program gets a session over
 `compute`. A failed request raises `ProgramError` and the session stays usable;
-`compute_many` runs every request, then raises `qccompute.program.SessionErrors`, whose
-`frames` holds every frame in request order.
+`compute_many` runs every request, then raises `qcdata.ProgramErrors`, whose `results`
+holds every frame in request order.
 
 ## A share of the machine: the Runner
 

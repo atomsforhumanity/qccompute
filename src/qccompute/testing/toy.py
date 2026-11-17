@@ -32,6 +32,7 @@ from qcdata import (
     Frame,
     Lineage,
     ProgramError,
+    ProgramErrors,
     ProgramInput,
     ProgramOutput,
     ProgramSpec,
@@ -49,7 +50,6 @@ from ..program import (
     Plan,
     Resources,
     RunContext,
-    SessionErrors,
     check_session_calctype,
     failed_frame,
     session_calctypes,
@@ -437,7 +437,7 @@ class ToySession:
             One frame per request, in order.
 
         Raises:
-            SessionErrors: Some requests failed; ``frames`` holds every frame.
+            ProgramErrors: Some requests failed; ``results`` holds every frame.
         """
         frames: list[Frame] = []
         for r in requests:
@@ -455,7 +455,7 @@ class ToySession:
                     }
                 )
                 frames.append(failed_frame(structure, e, NAME))
-        return SessionErrors.check(frames)
+        return ProgramErrors.check(frames)
 
     def reset(self, lineage: Lineage = ...) -> None:
         """Forget the history of one lineage, or of all.

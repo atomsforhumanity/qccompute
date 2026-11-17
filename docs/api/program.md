@@ -20,8 +20,6 @@ interface](../design/program-interface.md).
 
 ::: qccompute.program.Session
 
-::: qccompute.program.SessionErrors
-
 ::: qccompute.program.RunContext
 
 ::: qccompute.program.Capabilities

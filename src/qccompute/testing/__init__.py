@@ -36,6 +36,7 @@ from qcdata import (
     ErrorKind,
     Frame,
     ProgramError,
+    ProgramErrors,
     ProgramInput,
     ProgramOutput,
     Request,
@@ -457,9 +458,9 @@ def _check_session(
                     Request(positions=positions, calctype=inp.calctype, lineage="b"),
                 ]
             )
-            failures.append("session: compute_many must raise SessionErrors")
-        except ExceptionGroup as group:
-            many = getattr(group, "frames", None)
+            failures.append("session: compute_many must raise qcdata.ProgramErrors")
+        except ProgramErrors as group:
+            many = group.results
             if len(group.exceptions) != 1 or not isinstance(
                 group.exceptions[0], ProgramError
             ):

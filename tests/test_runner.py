@@ -14,6 +14,7 @@ from qcdata import (
     FileInput,
     Model,
     ProgramError,
+    ProgramErrors,
     ProgramInput,
     ProgramOutput,
     Provenance,
@@ -24,13 +25,12 @@ from qcdata import (
 )
 
 import qccompute
-from qccompute import ComputeErrors, RunContext, Runner
+from qccompute import RunContext, Runner
 from qccompute.program import (
     Capabilities,
     ComputeSession,
     Plan,
     Resources,
-    SessionErrors,
     available_programs,
     register_program,
     unregister_program,
@@ -319,23 +319,23 @@ def test_lists_plan_first_and_refuse_without_running():
 
 
 def test_list_failures_are_one_group_holding_every_output():
-    with pytest.raises(ComputeErrors) as e:
+    with pytest.raises(ProgramErrors) as e:
         qccompute.compute([toy_input(), toy_input(fail="numerical"), toy_input()])
     assert len(e.value.exceptions) == 1
     assert isinstance(e.value.exceptions[0], ProgramError)
     assert e.value.exceptions[0].output.error.kind is ErrorKind.numerical
-    assert [o.success for o in e.value.outputs] == [True, False, True]
+    assert [o.success for o in e.value.results] == [True, False, True]
     outs = qccompute.compute(
         [toy_input(), toy_input(fail="numerical")], raise_exc=False
     )
     assert [o.success for o in outs] == [True, False]
-    with pytest.raises(ComputeErrors) as e:
+    with pytest.raises(ProgramErrors) as e:
         qccompute.compute([toy_input(fail="numerical")])
     try:
         qccompute.compute([toy_input(), toy_input(fail="numerical")])
     except* ProgramError as group:
         assert len(group.exceptions) == 1
-        assert len(group.outputs) == 2  # type: ignore[attr-defined]
+        assert len(group.results) == 2  # type: ignore[attr-defined]
 
 
 def test_as_completed_yields_successes_then_raises_the_group():
@@ -344,11 +344,11 @@ def test_as_completed_yields_successes_then_raises_the_group():
     seen = sorted(o.input_data.keywords["epsilon"] for o in runner.as_completed(inputs))
     assert seen == [0.01, 0.02, 0.03, 0.04]
     yielded = []
-    with pytest.raises(ComputeErrors) as e:
+    with pytest.raises(ProgramErrors) as e:
         for out in runner.as_completed([toy_input(), toy_input(fail="input")]):
             yielded.append(out)
     assert len(yielded) == 1 and yielded[0].success
-    assert len(e.value.outputs) == 2
+    assert len(e.value.results) == 2
     every = list(
         runner.as_completed([toy_input(), toy_input(fail="input")], raise_exc=False)
     )
@@ -487,9 +487,9 @@ def test_sessions_are_the_programs_own_in_process():
             s.compute(np.full((3, 3), np.nan))
         assert e.value.error.kind is ErrorKind.numerical
         assert s.compute(np.asarray(ARGON3.geometry)).results.energy == r2.energy
-        with pytest.raises(SessionErrors) as group:
+        with pytest.raises(ProgramErrors) as group:
             s.compute_many([Request(), Request(positions=np.full((3, 3), np.nan))])
-        assert [f.success for f in group.value.frames] == [True, False]
+        assert [f.success for f in group.value.results] == [True, False]
     with pytest.raises(ProgramError) as e:
         qccompute.session(toy_input(program="no-such-program"))
     assert e.value.error.kind is ErrorKind.environment
@@ -616,9 +616,9 @@ def test_programs_that_cannot_share_a_process_run_in_workers(isolated):
             assert s.compute(np.asarray(ARGON3.geometry) + 0.01).record["warm_start"]
             with pytest.raises(ProgramError):
                 s.compute(np.full((3, 3), np.nan))
-            with pytest.raises(SessionErrors) as group:
+            with pytest.raises(ProgramErrors) as group:
                 s.compute_many([Request(), Request(positions=np.full((3, 3), np.nan))])
-            assert [f.success for f in group.value.frames] == [True, False]
+            assert [f.success for f in group.value.results] == [True, False]
             s.reset()
             assert s.plan().resolved.settings["sigma"] == 6.0
 

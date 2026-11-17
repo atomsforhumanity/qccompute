@@ -5,6 +5,7 @@ mix programs, methods and calculation types.
 
 ```python
 import qccompute
+import qcdata
 from qcdata import CalcType, Model, ProgramInput, Structure
 
 inputs = [
@@ -39,15 +40,15 @@ outputs = qccompute.compute(inputs)
 
 ## Failures
 
-Every calculation runs; then, if any failed, `qccompute.ComputeErrors` is raised. It is an
+Every calculation runs; then, if any failed, `qcdata.ProgramErrors` is raised. It is an
 `ExceptionGroup` of `qcdata.ProgramError`s, each with its failed `output`, and its
-`outputs` holds every output in input order:
+`results` holds every output in input order:
 
 ```python
 try:
     outputs = qccompute.compute(inputs)
-except qccompute.ComputeErrors as errors:
-    outputs = errors.outputs
+except qcdata.ProgramErrors as errors:
+    outputs = errors.results
     failed = [o for o in outputs if not o.success]
 
 # or handle failures by kind

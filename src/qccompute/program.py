@@ -78,6 +78,7 @@ from qcdata import (
     Frame,
     Lineage,
     ProgramError,
+    ProgramErrors,
     ProgramInput,
     ProgramOutput,
     ProgramSpec,
@@ -96,7 +97,6 @@ if TYPE_CHECKING:
 __all__ = [
     "ENTRY_POINT_GROUP",
     "FunctionProgram",
-    "SessionErrors",
     "Capabilities",
     "Resources",
     "Plan",
@@ -384,7 +384,7 @@ class RunContext:
         """Run subprograms within this calculation's grant, as ``Runner.compute`` does.
 
         A list runs side by side within the grant. Failures raise as from
-        ``qccompute.compute``: `qcdata.ProgramError` for one input, ``ComputeErrors``
+        ``qccompute.compute``: `qcdata.ProgramError` for one input, `qcdata.ProgramErrors`
         for a list; ``raise_exc=False`` returns them in place. A subprogram's failure
         that the program lets escape fails it with kind ``program`` and the
         subprogram's error as ``cause``.
@@ -452,8 +452,8 @@ class Session(Protocol):
     - Lineages are any JSON value, keyed by `qcdata.lineage_key`; None is the default
       lineage. A lineage's history is its last committed success.
     - A failed request raises `ProgramError` (with its failed frame) from `compute`;
-      `compute_many` runs every request and then raises `SessionErrors` holding the
-      failures and every frame in order. The session stays usable and the lineage's
+      `compute_many` runs every request and then raises `qcdata.ProgramErrors` holding
+      the failures and every frame in order. The session stays usable and the lineage's
       history is untouched: a caller may retry a smaller step.
     - A ``hessian`` request returns the energy and gradient too.
 
@@ -519,7 +519,7 @@ class Session(Protocol):
             requests: The evaluations.
 
         Every request runs, failed ones included; then, if any failed, the call
-        raises one `SessionErrors` group holding each failure's `qcdata.ProgramError`
+        raises one `qcdata.ProgramErrors` group holding each failure's `qcdata.ProgramError`
         and every frame in request order (failed frames in place).
 
         Args:
@@ -529,7 +529,7 @@ class Session(Protocol):
             One frame per request, in order, all successful.
 
         Raises:
-            SessionErrors: Some requests failed; ``frames`` holds all of them.
+            ProgramErrors: Some requests failed; ``results`` holds every frame.
         """
         ...
 
@@ -589,73 +589,6 @@ def failed_frame(structure: Structure, error: ProgramError, program: str) -> Fra
         traceback=error.error.message,
         error=error.error,
     )
-
-
-class SessionErrors(ExceptionGroup):  # type: ignore[type-arg]
-    """The failed requests of `Session.compute_many`, raised after every request ran.
-
-    Each sub-exception is one failed request's `qcdata.ProgramError`, with its failed
-    frame. ``frames`` holds every request's frame in request order, the successful
-    ones included, so a finite-difference caller keeps every displaced gradient that
-    succeeded.
-
-    Attributes:
-        frames: One frame per request, in order; failed requests as failed frames.
-    """
-
-    frames: list[Frame]
-
-    def __new__(
-        cls, message: str, exceptions: Sequence[Exception], frames: Sequence[Frame] = ()
-    ) -> SessionErrors:
-        """Build the group and attach every frame."""
-        self = super().__new__(cls, message, exceptions)
-        self.frames = list(frames)
-        return self
-
-    def __init__(
-        self,
-        message: str,
-        exceptions: Sequence[Exception],
-        frames: Sequence[Frame] = (),
-    ) -> None:
-        """Initialize the group; ``__new__`` attaches the frames."""
-        super().__init__(message, exceptions)
-
-    def derive(self, excs: Sequence[Exception]) -> SessionErrors:  # type: ignore[override]
-        """Keep ``frames`` on the groups ``except*`` and ``split`` create."""
-        return SessionErrors(self.message, excs, self.frames)
-
-    def __reduce__(self) -> tuple[Any, ...]:
-        """Pickle with the frames."""
-        return SessionErrors, (self.message, list(self.exceptions), self.frames)
-
-    @classmethod
-    def check(cls, frames: Sequence[Frame]) -> list[Frame]:
-        """The frames of `Session.compute_many`, or the group if any failed.
-
-        A session's ``compute_many`` ends with ``return SessionErrors.check(frames)``.
-
-        Args:
-            frames: One frame per request, in order.
-
-        Returns:
-            The frames, when all succeeded.
-
-        Raises:
-            SessionErrors: Some frames failed.
-        """
-        failed = [
-            ProgramError(
-                f.error or ErrorInfo(kind=ErrorKind.internal, message="failed"),
-                frame=f,
-            )
-            for f in frames
-            if not f.success
-        ]
-        if failed:
-            raise cls(f"{len(failed)} of {len(frames)} requests failed", failed, frames)
-        return list(frames)
 
 
 @runtime_checkable
@@ -909,7 +842,7 @@ class ComputeSession:
             One frame per request, in order.
 
         Raises:
-            SessionErrors: Some requests failed; ``frames`` holds every frame.
+            ProgramErrors: Some requests failed; ``results`` holds every frame.
         """
         if self._closed:
             raise RuntimeError("The session is closed.")
@@ -947,7 +880,7 @@ class ComputeSession:
             except ProgramError as e:
                 assert inp.structure is not None
                 frames[i] = failed_frame(inp.structure, e, self.program)
-        return SessionErrors.check([f for f in frames if f is not None])
+        return ProgramErrors.check([f for f in frames if f is not None])
 
     def reset(self, lineage: Lineage = ...) -> None:
         """Nothing to reset: a stateless session keeps no history."""

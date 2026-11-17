@@ -36,7 +36,7 @@ with qccompute.session(inp) as s:            # one molecule at many geometries
     frame = s.compute(water.geometry * 1.01)
 ```
 
-- **Failures raise.** A failed calculation raises `qcdata.ProgramError`; its `output` is the failed `ProgramOutput`, with partial results and logs. A list runs everything first, then raises one `ComputeErrors` group holding every output. `raise_exc=False` returns failures in place.
+- **Failures raise.** A failed calculation raises `qcdata.ProgramError`; its `output` is the failed `ProgramOutput`, with partial results and logs. A list runs everything first, then raises one `qcdata.ProgramErrors` group whose `results` holds every output in order. `raise_exc=False` returns failures in place.
 - **A store, if you want one.** `compute(inputs, store=store, tags=[...])` looks each input up first and stores what it ran, with the identities of the programs that made it; a run is reused only when those are the programs that would run now.
 - **A share of the machine.** `qccompute.compute` and `qccompute.session` belong to the default runner: every core and GPU this process may use. A `Runner` of your own takes a share and closes its worker processes when done:
 

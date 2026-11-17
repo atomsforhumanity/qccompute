@@ -12,11 +12,13 @@ one place a program imports qccompute, as a test dependency)::
         ])
 
 It checks the contract of ``docs/design/program-interface.md`` and qcdata's
-conventions: schemas, plans that reproduce themselves, typed errors for
-unknown settings, standard fields filled in atomic-unit shapes, energy components that add
-up, and, for programs with sessions or batches, that those agree with plain computes and
-that a session survives a failed request. Schemas and keywords are validated with
-``jsonschema`` when it is installed.
+conventions: schemas, plans that reproduce themselves, typed errors (raised) for
+unknown settings, the thread grant honoured, standard fields filled in atomic-unit
+shapes, energy components that add up, and, for programs with sessions or batches, that
+those agree with plain computes and that a session survives a failed request. Schemas
+and keywords are validated with ``jsonschema`` when it is installed. A program with
+subprograms runs them on the default runner, so register the programs they name (or
+install them) first.
 
 `qccompute.testing.toy` is a complete example program.
 """
@@ -46,9 +48,11 @@ from ..program import (
     Program,
     RunContext,
     SessionProgram,
+    _registered,
     capabilities_of,
-    local_context,
     plan_of,
+    register_program,
+    unregister_program,
 )
 
 __all__ = ["check_program", "ConformanceError"]
@@ -104,18 +108,18 @@ def check_program(
     program: Program,
     inputs: Sequence[ProgramInput],
     *,
-    children: Mapping[str, Program] | None = None,
     energy_tol: float = 1e-8,
 ) -> list[str]:
     """Check that a program meets the AFH program contract.
 
+    The program is registered while the checks run, so a program with subprograms
+    called directly (``ctx=None``) reaches itself through ``qccompute.compute``.
+
     Args:
         program: The program object (what its ``qccompute.programs`` entry point loads).
         inputs: Small inputs the program can compute quickly, covering the calctypes
-            to check; the first one also exercises sessions and batches.
-        children: Programs a driver's inputs name as subprograms, ahead of the
-            installed ones; drivers (``capabilities().driver``) run under
-            `qccompute.program.local_context` with them.
+            to check; the first one also exercises the thread grant, sessions and
+            batches.
         energy_tol: Tolerance (Eh) for energy components adding up and for sessions
             and batches agreeing with plain computes.
 
@@ -125,6 +129,21 @@ def check_program(
     Raises:
         ConformanceError: One or more checks failed; the message lists all of them.
     """
+    previous = _registered.get(program.name) if isinstance(program, Program) else None
+    if isinstance(program, Program) and not isinstance(program, type):
+        register_program(program)
+    try:
+        return _check_program(program, inputs, energy_tol)
+    finally:
+        if previous is not None:
+            register_program(previous)
+        elif isinstance(program, Program) and not isinstance(program, type):
+            unregister_program(program.name)
+
+
+def _check_program(
+    program: Program, inputs: Sequence[ProgramInput], energy_tol: float
+) -> list[str]:
     failures: list[str] = []
     ran: list[str] = []
 
@@ -150,9 +169,6 @@ def check_program(
         check("capabilities", False, str(e))
         raise ConformanceError("\n".join(failures)) from None
     check("capabilities", bool(caps.calctypes), repr(caps))
-
-    def ctx() -> RunContext:
-        return local_context(children) if caps.driver else RunContext()
 
     validators: dict[CalcType, Callable[[Any], list[str]] | None] = {}
     for calctype in sorted(caps.calctypes):
@@ -221,17 +237,22 @@ def check_program(
                 e.error.kind == ErrorKind.input,
                 f"kind {e.error.kind}",
             )
-        bad_out = program.compute(bad, ctx())
-        check(
-            f"{tag}: unknown key fails compute with kind input",
-            not bad_out.success
-            and bad_out.error is not None
-            and bad_out.error.kind == ErrorKind.input,
-            repr(bad_out.error),
-        )
+        try:
+            program.compute(bad)
+            check(f"{tag}: unknown key fails compute", False, "compute accepted it")
+        except ProgramError as e:
+            check(
+                f"{tag}: unknown key fails compute",
+                e.error.kind == ErrorKind.input,
+                f"kind {e.error.kind}",
+            )
 
         # The calculation and its standard fields.
-        out = program.compute(inp, ctx())
+        try:
+            out = program.compute(inp)
+        except ProgramError as e:
+            check(f"{tag}: compute succeeds", False, repr(e.error))
+            continue
         if not check(
             f"{tag}: compute succeeds",
             isinstance(out, ProgramOutput) and out.success,
@@ -258,17 +279,43 @@ def check_program(
             failures.extend(_check_single_point(tag, inp, results, energy_tol, ran))
 
     first = inputs[0]
-    reference = program.compute(first, ctx())
+    try:
+        reference = program.compute(first)
+    except ProgramError as e:
+        raise ConformanceError(
+            f"{program.name} fails its first input: {e.error!r}\n- "
+            + "\n- ".join(failures)
+        ) from e
+
+    # The thread grant: never more threads than granted, even when asked for more.
+    ran.append("honours ctx.threads")
+    for keywords in (first.keywords, {**first.keywords, "threads": 2}):
+        try:
+            granted = program.compute(
+                first.model_copy(update={"keywords": keywords}), RunContext(threads=1)
+            )
+        except ProgramError as e:
+            if keywords is first.keywords:
+                failures.append(f"honours ctx.threads: compute failed: {e.error!r}")
+            continue  # a program without a threads keyword refuses it
+        used = granted.execution.threads
+        if used is None or used > 1:
+            failures.append(
+                "honours ctx.threads: granted 1 thread, the output's "
+                f"execution.threads is {used} (record the threads used)"
+            )
+            break
+
     if caps.sessions:
         failures.extend(
-            _check_session(program, first, reference, caps, energy_tol, ran, ctx())
+            _check_session(program, first, reference, caps, energy_tol, ran)
         )
     if caps.batches:
         name = "batch agrees with compute"
         if not isinstance(program, BatchProgram):
             failures.append(f"{name}: batches claimed but no compute_batch")
         else:
-            outs = program.compute_batch([first, first], ctx())
+            outs = program.compute_batch([first, first])
             ran.append(name)
             if len(outs) != 2 or not all(o.success for o in outs):
                 failures.append(f"{name}: {outs!r}")
@@ -328,7 +375,6 @@ def _check_session(
     caps: Capabilities,
     tol: float,
     ran: list[str],
-    context: RunContext,
 ) -> list[str]:
     failures: list[str] = []
     if not isinstance(program, SessionProgram):
@@ -341,7 +387,7 @@ def _check_session(
         {CalcType.hessian} if CalcType.hessian in caps.calctypes else set()
     )
     ran.append("session refuses calctypes it was not opened for")
-    narrow = program.open_session(inp, context, frozenset({CalcType.energy}))
+    narrow = program.open_session(inp, None, frozenset({CalcType.energy}))
     try:
         if CalcType.gradient in caps.calctypes:
             try:
@@ -355,7 +401,7 @@ def _check_session(
                     )
     finally:
         narrow.close()
-    with program.open_session(inp, context, frozenset(declared)) as session:
+    with program.open_session(inp, None, frozenset(declared)) as session:
         if session.program != program.name or not session.program_version:
             failures.append("session: program and program_version must be set")
         try:
@@ -402,14 +448,28 @@ def _check_session(
         except ProgramError as e:
             failures.append(f"session: unusable after a failed request: {e}")
         ran.append("session compute_many")
-        many = session.compute_many(
-            [
-                Request(positions=positions, calctype=inp.calctype, lineage="a"),
-                Request(positions=nan, calctype=inp.calctype, lineage="b"),
-                Request(positions=positions, calctype=inp.calctype, lineage="b"),
-            ]
-        )
-        if len(many) != 3 or not all(isinstance(m, Frame) for m in many):
+        many: Any = None
+        try:
+            session.compute_many(
+                [
+                    Request(positions=positions, calctype=inp.calctype, lineage="a"),
+                    Request(positions=nan, calctype=inp.calctype, lineage="b"),
+                    Request(positions=positions, calctype=inp.calctype, lineage="b"),
+                ]
+            )
+            failures.append("session: compute_many must raise SessionErrors")
+        except ExceptionGroup as group:
+            many = getattr(group, "frames", None)
+            if len(group.exceptions) != 1 or not isinstance(
+                group.exceptions[0], ProgramError
+            ):
+                failures.append(
+                    "session: compute_many's group must hold one ProgramError per "
+                    f"failed request: {group.exceptions!r}"
+                )
+        if many is None:
+            pass
+        elif len(many) != 3 or not all(isinstance(m, Frame) for m in many):
             failures.append(
                 f"session: compute_many must return one Frame per request: {many!r}"
             )

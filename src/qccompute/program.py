@@ -9,22 +9,45 @@ A program package registers one object (an instance, not its class) under the
 The object implements `Program`: it says what it can do (`capabilities`), publishes the
 JSON Schema of its settings (`settings_schema`) and of its run record (`record_schema`),
 plans a calculation without running it (`plan`: validated, every ``"auto"`` resolved, the
-resources it needs), and computes it (`compute`) under a `RunContext` the runner fills.
-Programs that keep state between geometries (warm starts, a pinned grid) also implement
-`SessionProgram.open_session`; programs that evaluate many inputs at once implement
-`BatchProgram.compute_batch`.
+resources it needs), and computes it (`compute`). A failed calculation raises
+`qcdata.ProgramError` with its partial results (``ProgramError(error, output=...)``
+for a whole failed output). Programs that keep state between
+geometries (warm starts, a pinned grid) also implement `SessionProgram.open_session`;
+programs that evaluate many inputs at once implement `BatchProgram.compute_batch`.
 
-**Programs never import qccompute.** The protocols are structural (`typing.Protocol`), and
-what a program returns for `capabilities` and `plan` may be a plain mapping (the document
-its command line prints and its worker sends), which qccompute validates
-(`capabilities_of`, `plan_of`). What programs and drivers share as data is in qcdata:
-inputs and outputs, `Frame`, `qcdata.Request`, `qcdata.Accuracy` and
+``compute`` takes an optional second argument, a `RunContext`, which only a runner
+passes, and a runner always passes one: the calculation's share of the machine
+(threads, GPUs, memory, time) and the way to run subprograms (`RunContext.compute`,
+`RunContext.session`). ``ctx is None`` means a direct call: the program uses its own
+settings, and a program with subprograms hands itself to the default runner::
+
+    def compute(self, inp, ctx=None):
+        if ctx is None:
+            import qccompute
+
+            return qccompute.compute(inp)  # the default runner passes a ctx
+        ...
+
+The runner finds it by name, so it must be installed or registered
+(`register_program`); otherwise the call fails with kind ``environment`` and says how.
+
+The runner never changes a number by itself. A grant may change a program's resolved
+choices (DF storage from the memory granted, a precision from the device); the program
+records each one in its output's ``resolved``.
+
+`FunctionProgram` makes a program of plain Python functions (a model surface, an ML
+potential in a script): the smallest complete example of the protocol.
+
+**A program without subprograms never imports qccompute.** The protocols are structural
+(`typing.Protocol`), and what a program returns for `capabilities` and `plan` may be a
+plain mapping (the document its command line prints and its worker sends), which
+qccompute validates (`capabilities_of`, `plan_of`). What programs share as data is in
+qcdata: inputs and outputs, `Frame`, `qcdata.Request`, `qcdata.Accuracy` and
 `qcdata.ProgramError`. So ``linus.Session(inp)`` and ``linus.compute(inp)`` work without
 qccompute, and qccompute runs the same objects.
 
-Everything here finds programs by name through `find_program`: qccompute, a driver
-planning its children, `local_context`. A program that is not an installed package (in a
-test, a notebook or a script) is added with `register_program`.
+Programs are found by name through `find_program`. A program that is not an installed
+package (in a test, a notebook or a script) is added with `register_program`.
 
 Design: ``docs/design/program-interface.md``; names and units: qcdata's conventions.
 """
@@ -32,13 +55,16 @@ Design: ``docs/design/program-interface.md``; names and units: qcdata's conventi
 from __future__ import annotations
 
 import functools
+import shutil
+import tempfile
 import threading
+import time
+import traceback
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass
 from importlib.metadata import EntryPoint, entry_points
 from pathlib import Path
 from types import TracebackType
-from typing import Any, Protocol, overload, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, overload, runtime_checkable
 
 import numpy as np
 from qcdata import (
@@ -47,6 +73,8 @@ from qcdata import (
     Data,
     ErrorInfo,
     ErrorKind,
+    ExecutionInfo,
+    FileInput,
     Frame,
     Lineage,
     ProgramError,
@@ -59,16 +87,19 @@ from qcdata import (
     Resolved,
     SinglePointData,
     Structure,
-    get_data_type,
 )
 from qcdata.models.base_models import QCDataBaseModel
 
+if TYPE_CHECKING:
+    from .runner import Runner
+
 __all__ = [
     "ENTRY_POINT_GROUP",
+    "FunctionProgram",
+    "SessionErrors",
     "Capabilities",
     "Resources",
     "Plan",
-    "Compute",
     "RunContext",
     "Program",
     "SessionProgram",
@@ -81,7 +112,6 @@ __all__ = [
     "find_program",
     "register_program",
     "unregister_program",
-    "local_context",
     "available_programs",
     "capabilities_of",
     "plan_of",
@@ -107,9 +137,7 @@ class Capabilities(QCDataBaseModel):
             in threads of one process (the program releases the GIL and shares no
             mutable state); the runner then runs them side by side in threads instead
             of one at a time.
-        gpu: Whether it can use GPUs.
-        driver: Whether it computes child calculations (its input's subprograms)
-            through `RunContext.compute` or `RunContext.session`.
+        gpu: Whether it can use GPUs; the runner then grants it GPUs.
     """
 
     calctypes: frozenset[CalcType]
@@ -119,7 +147,6 @@ class Capabilities(QCDataBaseModel):
     in_process: bool = True
     thread_safe: bool = False
     gpu: bool = False
-    driver: bool = False
 
 
 class Resources(QCDataBaseModel):
@@ -148,8 +175,8 @@ class Plan(QCDataBaseModel):
     Attributes:
         resolved: The settings with every ``"auto"`` replaced, and why; exactly what
             the run's `ProgramOutput.resolved` will hold.
-        resources: What the calculation needs. A driver's is the largest over its
-            children's plans.
+        resources: What the calculation needs. A program with subprograms gives the
+            largest over its subprograms' plans.
         warnings: What the program would warn about.
         record: The program's own detail of the plan (linus: placement, arithmetic
             and memory plan), shaped like a run's record.
@@ -160,39 +187,6 @@ class Plan(QCDataBaseModel):
     warnings: list[ProgramWarning] = []
     record: dict[str, Any] = {}
 
-
-class Compute(Protocol):
-    """Computes child calculations; the runner provides it in `RunContext.compute`.
-
-    It takes what ``qccompute.compute`` takes: one input, or a list of independent
-    inputs that the runner may batch or run side by side. It returns outputs, failed or
-    not, and never raises for a failed calculation. ``previous`` holds outputs whose
-    wavefunctions start the children.
-    """
-
-    @overload
-    def __call__(
-        self,
-        inputs: ProgramInput,
-        /,
-        *,
-        previous: ProgramOutput[ProgramInput, Data] | None = None,
-    ) -> ProgramOutput[ProgramInput, Data]: ...
-
-    @overload
-    def __call__(
-        self,
-        inputs: Sequence[ProgramInput],
-        /,
-        *,
-        previous: Sequence[ProgramOutput[ProgramInput, Data] | None] | None = None,
-    ) -> list[ProgramOutput[ProgramInput, Data]]: ...
-
-
-#: Opens a child session: (input, threads, calctypes) -> Session.
-OpenSession = Callable[
-    [ProgramInput, int | None, "frozenset[CalcType] | None"], "Session"
-]
 
 _LOWER = {
     CalcType.energy: (CalcType.energy,),
@@ -253,50 +247,155 @@ def check_session_calctype(
         )
 
 
-@dataclass
 class RunContext:
-    """What the runner gives a calculation: its resource grant and its callbacks.
+    """What a runner gives one calculation: its share of the machine and its subprograms.
 
-    `RunContext()` is the context of a direct call: nothing granted (the program uses
-    its resolved settings) and no runner for children.
+    Runners make it and always pass one to `Program.compute`; a program reads its
+    fields. A calculation's share of its runner is the larger of its share of the
+    threads and its share of the GPUs (with k calculations per GPU, each counts 1/k of
+    a GPU); host and device memory follow the share.
+
+    A program uses the smaller of its own request (its ``threads`` or ``memory_gib``
+    keyword) and the grant, or the grant when it requested nothing; a request capped by
+    the grant is a ``resource_capped`` warning, not an error.
 
     Attributes:
-        threads: CPU threads granted; use these, not the machine's count. None: not
-            managed by a runner.
+        threads: CPU threads granted. None: not granted (a direct call).
         gpus: Identifiers of the GPUs granted (as for ``CUDA_VISIBLE_DEVICES``).
-        memory_gib: Host memory granted (GiB), if managed.
-        scratch_dir: A directory the calculation may write to, if one was given.
-        make_scratch: Makes a scratch directory on first use of `scratch`, so a run
-            that never writes files never pays for one.
-        plan: The plan the runner already made for this input (to schedule it or to
-            key it in a store), if any. A program may use it instead of planning
-            again; it is exactly what ``program.plan(input)`` returned.
-        compute: Computes child calculations (drivers only).
-        open_session: Opens child sessions; use `session`.
-        progress: Receives streaming updates (any JSON-serializable value), if the
-            caller wants them.
+        memory_gib: Host memory granted (GiB): the calculation's share of the
+            runner's memory. None: not known.
+        device_memory_gib: Memory granted on each GPU (GiB): 1/k of it when k
+            calculations share a GPU. None: not known or not granted.
+        plan: The runner's plan of this input, when it made one (for a list), so the
+            program need not plan again; exactly what ``program.plan(input)``
+            returned.
     """
 
-    threads: int | None = None
-    gpus: tuple[str, ...] = ()
-    memory_gib: float | None = None
-    scratch_dir: Path | None = None
-    make_scratch: Callable[[], Path] | None = None
-    plan: Plan | None = None
-    compute: Compute | None = None
-    open_session: OpenSession | None = None
-    progress: Callable[[Any], None] | None = None
+    __slots__ = (
+        "threads",
+        "gpus",
+        "memory_gib",
+        "device_memory_gib",
+        "plan",
+        "_deadline",
+        "_scratch",
+        "_made",
+        "_runner",
+    )
+
+    def __init__(
+        self,
+        *,
+        threads: int | None = None,
+        gpus: Sequence[str] = (),
+        memory_gib: float | None = None,
+        device_memory_gib: float | None = None,
+        timeout: float | None = None,
+        plan: Plan | None = None,
+        scratch: Path | None = None,
+        runner: Runner | None = None,
+    ) -> None:
+        """Create a context; runners do this, programs read it.
+
+        Args:
+            threads: CPU threads granted.
+            gpus: GPU identifiers granted.
+            memory_gib: Host memory granted (GiB).
+            device_memory_gib: Memory granted on each GPU (GiB).
+            timeout: Seconds the calculation may run, from now.
+            plan: The runner's plan of the input.
+            scratch: A directory the calculation may write to, kept afterwards; None:
+                a temporary one made on first use of `scratch`.
+            runner: The runner of subprograms; None: the default runner.
+        """
+        self.threads = threads
+        self.gpus: tuple[str, ...] = tuple(gpus)
+        self.memory_gib = memory_gib
+        self.device_memory_gib = device_memory_gib
+        self.plan = plan
+        self._deadline = None if timeout is None else time.monotonic() + timeout
+        self._scratch = scratch
+        self._made = False
+        self._runner = runner
+
+    def __repr__(self) -> str:
+        """Show the grant."""
+        return (
+            f"RunContext(threads={self.threads}, gpus={self.gpus}, "
+            f"memory_gib={self.memory_gib}, timeout={self.timeout})"
+        )
 
     @property
-    def scratch(self) -> Path | None:
-        """A directory the calculation may write to, made on first use; None if none.
+    def timeout(self) -> float | None:
+        """Seconds the calculation has left, if the caller set a limit.
+
+        A program that starts processes kills them when it runs out and fails with
+        kind ``timeout``. The runner enforces it itself only for programs in worker
+        processes. Subprograms get what is left.
+        """
+        if self._deadline is None:
+            return None
+        return max(0.0, self._deadline - time.monotonic())
+
+    @property
+    def scratch(self) -> Path:
+        """A directory the calculation may write to, made on first use.
+
+        A temporary directory made here is removed when the runner's call returns; a
+        program called directly with ``RunContext()`` removes it itself (or uses its
+        own temporary directory).
+        """
+        if self._scratch is None:
+            self._scratch = Path(tempfile.mkdtemp(prefix="qccompute-"))
+            self._made = True
+        return self._scratch
+
+    def cleanup(self) -> None:
+        """Remove the scratch directory if this context made it (runners call this)."""
+        if self._made and self._scratch is not None:
+            shutil.rmtree(self._scratch, ignore_errors=True)
+            self._scratch = None
+            self._made = False
+
+    def _get_runner(self) -> Runner:
+        """The runner of this calculation's subprograms: its own, else the default."""
+        if self._runner is None:
+            from .runner import default_runner
+
+            return default_runner()
+        return self._runner
+
+    @overload
+    def compute(
+        self, inputs: ProgramInput | FileInput, /, *, raise_exc: bool = True
+    ) -> ProgramOutput[Any, Data]: ...
+
+    @overload
+    def compute(
+        self,
+        inputs: Sequence[ProgramInput | FileInput],
+        /,
+        *,
+        raise_exc: bool = True,
+    ) -> list[ProgramOutput[Any, Data]]: ...
+
+    def compute(self, inputs: Any, /, *, raise_exc: bool = True) -> Any:
+        """Run subprograms within this calculation's grant, as ``Runner.compute`` does.
+
+        A list runs side by side within the grant. Failures raise as from
+        ``qccompute.compute``: `qcdata.ProgramError` for one input, ``ComputeErrors``
+        for a list; ``raise_exc=False`` returns them in place. A subprogram's failure
+        that the program lets escape fails it with kind ``program`` and the
+        subprogram's error as ``cause``.
+
+        Args:
+            inputs: One input, or a list of independent inputs.
+            raise_exc: Raise for failures; False returns failed outputs.
 
         Returns:
-            The directory, or None when the caller provides none.
+            The output, or the outputs in input order.
         """
-        if self.scratch_dir is None and self.make_scratch is not None:
-            self.scratch_dir = self.make_scratch()
-        return self.scratch_dir
+        return self._get_runner()._subcompute(inputs, self, raise_exc)
 
     def session(
         self,
@@ -306,23 +405,20 @@ class RunContext:
         threads: int | None = None,
         calctypes: Iterable[CalcType | str] | None = None,
     ) -> Session:
-        """Open a session for a child program under this calculation's grant.
+        """Open a session of a subprogram under this calculation's grant.
 
         Args:
-            spec: The child's input, or its spec with ``structure``.
-            structure: With a spec: the child's atoms, charge, multiplicity and first
+            spec: The subprogram's input, or its spec with ``structure``.
+            structure: With a spec: the atoms, charge, multiplicity and first
                 geometry.
-            threads: This session's share of the grant (a driver with 16 threads and
-                8 tasks gives each session 2). None: the child's own settings.
+            threads: This session's share of the grant (a program with 16 threads
+                running 8 tasks gives each session 2); None: the whole grant.
             calctypes: The calctypes the session may run (see `session_calctypes`).
 
         Returns:
-            The session; close it (or use it as a context manager) when done. A
-            driver may call its sessions from several threads at once: qccompute makes
-            that safe, serializing sessions of programs that are not thread-safe.
-
-        Raises:
-            RuntimeError: The runner provides neither sessions nor a compute callback.
+            The session; close it (or use it as a context manager) when done. It may be
+            called from several threads at once: the runner serializes sessions of
+            programs that are not thread-safe.
         """
         if isinstance(spec, ProgramInput):
             inp = spec
@@ -330,15 +426,10 @@ class RunContext:
             if structure is None:
                 raise TypeError("A session from a ProgramSpec needs its structure.")
             inp = ProgramInput.from_spec(spec, structure)
-        allowed = session_calctypes(calctypes) if calctypes else None
-        if self.open_session is not None:
-            return self.open_session(inp, threads, allowed)
-        if self.compute is not None:
-            return ComputeSession(self.compute, inp, calctypes=allowed)
-        raise RuntimeError(
-            "This calculation computes child calculations, but its runner provided "
-            "neither sessions nor a compute callback."
-        )
+        share = threads if threads is not None else self.threads
+        if share is not None and self.threads is not None:
+            share = min(share, self.threads)
+        return self._get_runner()._subsession(inp, calctypes, share, self)
 
 
 @runtime_checkable
@@ -359,9 +450,10 @@ class Session(Protocol):
       ``program`` and ``program_version`` are the session's.
     - Lineages are any JSON value, keyed by `qcdata.lineage_key`; None is the default
       lineage. A lineage's history is its last committed success.
-    - A failed request raises `ProgramError` (with its failed frame) from `compute`, and
-      is a failed `Frame` from `compute_many`. The session stays usable and the
-      lineage's history is untouched: a driver may retry a smaller step.
+    - A failed request raises `ProgramError` (with its failed frame) from `compute`;
+      `compute_many` runs every request and then raises `SessionErrors` holding the
+      failures and every frame in order. The session stays usable and the lineage's
+      history is untouched: a caller may retry a smaller step.
     - A ``hessian`` request returns the energy and gradient too.
 
     Attributes:
@@ -425,9 +517,18 @@ class Session(Protocol):
         Args:
             requests: The evaluations.
 
+        Every request runs, failed ones included; then, if any failed, the call
+        raises one `SessionErrors` group holding each failure's `qcdata.ProgramError`
+        and every frame in request order (failed frames in place).
+
+        Args:
+            requests: The evaluations.
+
         Returns:
-            One frame per request, in order; a failed request is a failed frame with
-            its ``error``.
+            One frame per request, in order, all successful.
+
+        Raises:
+            SessionErrors: Some requests failed; ``frames`` holds all of them.
         """
         ...
 
@@ -475,7 +576,11 @@ def failed_frame(structure: Structure, error: ProgramError, program: str) -> Fra
     """
     if error.frame is not None:
         return error.frame
-    results = error.results or SinglePointData(provenance=Provenance(program=program))
+    results = (
+        error.results
+        if isinstance(error.results, SinglePointData)
+        else SinglePointData(provenance=Provenance(program=program))
+    )
     return Frame(
         structure=structure,
         results=results,
@@ -483,6 +588,73 @@ def failed_frame(structure: Structure, error: ProgramError, program: str) -> Fra
         traceback=error.error.message,
         error=error.error,
     )
+
+
+class SessionErrors(ExceptionGroup):  # type: ignore[type-arg]
+    """The failed requests of `Session.compute_many`, raised after every request ran.
+
+    Each sub-exception is one failed request's `qcdata.ProgramError`, with its failed
+    frame. ``frames`` holds every request's frame in request order, the successful
+    ones included, so a finite-difference caller keeps every displaced gradient that
+    succeeded.
+
+    Attributes:
+        frames: One frame per request, in order; failed requests as failed frames.
+    """
+
+    frames: list[Frame]
+
+    def __new__(
+        cls, message: str, exceptions: Sequence[Exception], frames: Sequence[Frame] = ()
+    ) -> SessionErrors:
+        """Build the group and attach every frame."""
+        self = super().__new__(cls, message, exceptions)
+        self.frames = list(frames)
+        return self
+
+    def __init__(
+        self,
+        message: str,
+        exceptions: Sequence[Exception],
+        frames: Sequence[Frame] = (),
+    ) -> None:
+        """Initialize the group; ``__new__`` attaches the frames."""
+        super().__init__(message, exceptions)
+
+    def derive(self, excs: Sequence[Exception]) -> SessionErrors:  # type: ignore[override]
+        """Keep ``frames`` on the groups ``except*`` and ``split`` create."""
+        return SessionErrors(self.message, excs, self.frames)
+
+    def __reduce__(self) -> tuple[Any, ...]:
+        """Pickle with the frames."""
+        return SessionErrors, (self.message, list(self.exceptions), self.frames)
+
+    @classmethod
+    def check(cls, frames: Sequence[Frame]) -> list[Frame]:
+        """The frames of `Session.compute_many`, or the group if any failed.
+
+        A session's ``compute_many`` ends with ``return SessionErrors.check(frames)``.
+
+        Args:
+            frames: One frame per request, in order.
+
+        Returns:
+            The frames, when all succeeded.
+
+        Raises:
+            SessionErrors: Some frames failed.
+        """
+        failed = [
+            ProgramError(
+                f.error or ErrorInfo(kind=ErrorKind.internal, message="failed"),
+                frame=f,
+            )
+            for f in frames
+            if not f.success
+        ]
+        if failed:
+            raise cls(f"{len(failed)} of {len(frames)} requests failed", failed, frames)
+        return list(frames)
 
 
 @runtime_checkable
@@ -531,12 +703,22 @@ class Program(Protocol):
         ...
 
     def compute(
-        self, inp: ProgramInput, ctx: RunContext
+        self, inp: ProgramInput, ctx: RunContext | None = None
     ) -> ProgramOutput[ProgramInput, Data]:
         """Run a calculation.
 
-        A failed calculation returns ``success=False`` with `ProgramOutput.error` and
-        the partial results; it raises only on bugs.
+        Args:
+            inp: The input.
+            ctx: The runner's grant and subprograms; a runner always passes one. None:
+                a direct call, after which a program with subprograms returns
+                ``qccompute.compute(inp)``.
+
+        Returns:
+            The successful output.
+
+        Raises:
+            ProgramError: The calculation failed, with its partial results or its
+                whole failed output (``output``).
         """
         ...
 
@@ -548,7 +730,7 @@ class SessionProgram(Program, Protocol):
     def open_session(
         self,
         inp: ProgramInput,
-        ctx: RunContext,
+        ctx: RunContext | None = None,
         calctypes: frozenset[CalcType] | None = None,
     ) -> Session:
         """Open a session at the input's atoms and first geometry.
@@ -556,9 +738,9 @@ class SessionProgram(Program, Protocol):
         Usually ``return Session(inp, calctypes=calctypes, ctx=ctx)``: the program's
         own session class is the protocol object. ``calctypes`` are the calculation
         types the session may run (None: everything the method supports; see
-        `session_calctypes`). The keywords are
-        checked against them: a setting that applies to none of them is an input error,
-        and so is a later request of another type.
+        `session_calctypes`). The keywords are checked against them: a setting that
+        applies to none of them is an input error, and so is a later request of
+        another type.
 
         Raises:
             ProgramError: The input cannot run (kind ``input`` or ``unsupported``).
@@ -571,23 +753,31 @@ class BatchProgram(Program, Protocol):
     """A program that evaluates many inputs at once (``capabilities().batches``)."""
 
     def compute_batch(
-        self, inputs: Sequence[ProgramInput], ctx: RunContext
+        self, inputs: Sequence[ProgramInput], ctx: RunContext | None = None
     ) -> list[ProgramOutput[ProgramInput, Data]]:
-        """Run many calculations together; one output per input, in order."""
+        """Run many calculations together.
+
+        Returns:
+            One output per input, in order; a failed calculation is a failed output
+            in its place (``ProgramOutput.failure``), and so is an input the program
+            refuses (kind ``input``), so the other inputs still run. The runner
+            raises the failures together, or returns them in place.
+        """
         ...
 
 
 class ComputeSession:
-    """A session over a compute callback, for programs without sessions of their own.
+    """A session over compute, for programs without sessions of their own.
 
     Each request becomes the session's input at the new positions and calctype,
-    computed by `compute` (a program's `Program.compute` under a context, or a runner's
-    callback). It keeps no history: every request starts fresh (``warm_start`` false),
-    so ``lineage``, ``seed`` and ``commit`` change nothing. A ``hessian`` result without
-    a gradient is completed by a gradient calculation.
+    computed by ``compute``: a runner's ``compute`` (one input raises
+    `qcdata.ProgramError` on failure; a list with ``raise_exc=False`` returns failed
+    outputs in place). It keeps no history: every request starts fresh
+    (``warm_start`` false), so ``lineage``, ``seed`` and ``commit`` change nothing. A
+    ``hessian`` result without a gradient is completed by a gradient calculation.
 
     Args:
-        compute: Computes one input (or a list) and returns outputs, failed or not.
+        compute: Computes one input, or a list with ``raise_exc=False``.
         inp: The program, model, keywords and structure; its geometry and calctype are
             the defaults of a request.
         calctypes: The calctypes the session may run (see `session_calctypes`; by
@@ -636,33 +826,35 @@ class ComputeSession:
             update={"calctype": calctype, "structure": structure}
         )
 
-    def _frame(self, out: ProgramOutput[Any, Any]) -> Frame:
-        """The frame of a successful output; raise the failure of a failed one."""
+    def _as_frame(self, out: ProgramOutput[Any, Any]) -> Frame:
+        """An output as a frame, with ``warm_start`` false in its record."""
         version = out.results.provenance.program_version
         if version and not self.program_version:
             self.program_version = version
         frame = Frame.model_validate(out)
-        frame = frame.model_copy(
+        return frame.model_copy(
             update={"record": {"warm_start": False, **frame.record}}
         )
-        if not out.success:
-            error = out.error or ErrorInfo(
-                kind=ErrorKind.internal, message=out.traceback or "failed"
-            )
-            raise ProgramError(error, frame=frame)
-        return frame
 
-    def _complete(self, frame: Frame, inp: ProgramInput) -> Frame:
-        """Add the energy and gradient to a Hessian computed without them."""
-        if frame.results.gradient is not None:
-            return frame
-        gradient = self._frame(
-            self._compute(inp.model_copy(update={"calctype": CalcType.gradient}))
-        ).results
-        results = frame.results.model_copy(
-            update={"gradient": gradient.gradient, "energy": gradient.energy}
-        )
-        return frame.model_copy(update={"results": results})
+    def _one(self, inp: ProgramInput) -> Frame:
+        """Compute one input as a frame; a failure raises with its failed frame."""
+        try:
+            out = self._compute(inp)
+        except ProgramError as e:
+            failed = e.output
+            if e.frame is None and isinstance(failed, ProgramOutput):
+                e.frame = self._as_frame(failed)
+            raise
+        frame = self._as_frame(out)
+        if inp.calctype == CalcType.hessian and frame.results.gradient is None:
+            gradient = self._one(
+                inp.model_copy(update={"calctype": CalcType.gradient})
+            ).results
+            results = frame.results.model_copy(
+                update={"gradient": gradient.gradient, "energy": gradient.energy}
+            )
+            frame = frame.model_copy(update={"results": results})
+        return frame
 
     def compute(
         self,
@@ -700,20 +892,19 @@ class ComputeSession:
                 "A session over compute takes optional outputs from the input's "
                 "keywords, not per request.",
             )
-        inp = self._input(positions, calctype)
-        frame = self._frame(self._compute(inp))
-        if inp.calctype == CalcType.hessian:
-            frame = self._complete(frame, inp)
-        return frame
+        return self._one(self._input(positions, calctype))
 
     def compute_many(self, requests: Sequence[Request]) -> list[Frame]:
-        """Evaluate many geometries in one call to the callback.
+        """Evaluate many geometries in one call to compute.
 
         Args:
             requests: The evaluations.
 
         Returns:
-            One frame per request, in order; failures as failed frames.
+            One frame per request, in order.
+
+        Raises:
+            SessionErrors: Some requests failed; ``frames`` holds every frame.
         """
         if self._closed:
             raise RuntimeError("The session is closed.")
@@ -738,17 +929,20 @@ class ComputeSession:
                     }
                 )
                 frames[i] = failed_frame(structure, e, self.program)
-        outputs = self._compute(inputs) if inputs else []
+        outputs = self._compute(inputs, raise_exc=False) if inputs else []
         for i, inp, out in zip(places, inputs, outputs, strict=True):
             try:
-                frame = self._frame(out)
-                if inp.calctype == CalcType.hessian:
-                    frame = self._complete(frame, inp)
+                if not out.success:
+                    frame = self._as_frame(out)
+                elif inp.calctype == CalcType.hessian and out.results.gradient is None:
+                    frame = self._one(inp)
+                else:
+                    frame = self._as_frame(out)
                 frames[i] = frame
             except ProgramError as e:
                 assert inp.structure is not None
                 frames[i] = failed_frame(inp.structure, e, self.program)
-        return [f for f in frames if f is not None]
+        return SessionErrors.check([f for f in frames if f is not None])
 
     def reset(self, lineage: Lineage = ...) -> None:
         """Nothing to reset: a stateless session keeps no history."""
@@ -773,76 +967,6 @@ class ComputeSession:
     ) -> None:
         """Close the session."""
         self.close()
-
-
-def local_context(
-    programs: Mapping[str, Program] | None = None, *, threads: int | None = None
-) -> RunContext:
-    """A context that runs a driver's children in this process, one at a time.
-
-    For calling a driver directly (tests, notebooks) without a runner. Children run
-    through the given programs, else the installed ones (`find_program`): sessions of
-    their own when they have them, else a `ComputeSession` over their `compute`.
-    qccompute provides the full runner (parallel children, codecs, the cluster).
-
-    Args:
-        programs: Programs by name, ahead of the installed ones.
-        threads: Threads granted to the driver; children get the same.
-
-    Returns:
-        The context.
-    """
-    known = dict(programs or {})
-
-    def lookup(name: str) -> Program:
-        program = known.get(name) or find_program(name)
-        if program is None:
-            raise ProgramError.of(
-                "environment", f"No program {name!r} is installed or given."
-            )
-        return program
-
-    def child_context() -> RunContext:
-        return local_context(known, threads=threads)
-
-    def compute_one(inp: ProgramInput) -> ProgramOutput[ProgramInput, Data]:
-        try:
-            program = lookup(inp.program)
-        except ProgramError as e:
-            return ProgramOutput(
-                input_data=inp,
-                success=False,
-                traceback=e.error.message,
-                error=e.error,
-                results=SinglePointData(provenance=Provenance(program=inp.program))
-                if inp.calctype
-                in (CalcType.energy, CalcType.gradient, CalcType.hessian)
-                else _empty_results(inp),
-            )
-        return program.compute(inp, child_context())
-
-    def compute(inputs: Any, previous: Any = None) -> Any:
-        if isinstance(inputs, ProgramInput):
-            return compute_one(inputs)
-        return [compute_one(i) for i in inputs]
-
-    def open_session(
-        inp: ProgramInput, share: int | None, calctypes: frozenset[CalcType] | None
-    ) -> Session:
-        program = lookup(inp.program)
-        if isinstance(program, SessionProgram) and capabilities_of(program).sessions:
-            return program.open_session(inp, RunContext(threads=share), calctypes)
-        return ComputeSession(compute, inp, calctypes=calctypes)
-
-    return RunContext(
-        threads=threads,
-        compute=compute,  # type: ignore[arg-type]
-        open_session=open_session,
-    )
-
-
-def _empty_results(inp: ProgramInput) -> Any:
-    return get_data_type(inp.calctype)(provenance=Provenance(program=inp.program))
 
 
 _registered: dict[str, Program] = {}
@@ -870,8 +994,9 @@ def _require_program(obj: object, what: str) -> Program:
 def register_program(program: Program) -> None:
     """Make a program findable by name in this process, ahead of installed ones.
 
-    For programs that are not installed packages: in tests, notebooks and scripts. Drivers'
-    plans, `local_context` and qccompute all find it through `find_program`.
+    For programs that are not installed packages: in tests, notebooks and scripts.
+    Runners in this process find it through `find_program`; worker processes find
+    it only when it is defined at the top level of an importable module.
 
     Args:
         program: An object implementing `Program`.
@@ -957,3 +1082,144 @@ def plan_of(program: Program, inp: ProgramInput) -> Plan:
         ProgramError: The input cannot run.
     """
     return Plan.model_validate(program.plan(inp), from_attributes=True)
+
+
+class FunctionProgram:
+    """A program made of Python functions of the positions.
+
+    For a model surface, an ML potential in a script, or teaching: the smallest
+    complete program. It has no settings (any keyword is an ``unknown_key`` input
+    error) and ignores the model; it runs in process and is thread-safe::
+
+        def morse(x):  # positions (bohr, n x 3) -> energy (Eh), gradient (Eh/bohr)
+            ...
+            return energy, gradient
+
+        qccompute.register_program(FunctionProgram("morse", morse))
+        out = qccompute.compute(ProgramInput(program="morse", calctype="gradient",
+                                             structure=h2))
+
+    An exception from a function is a failed calculation of kind ``internal``, with
+    the function's traceback in the failed output.
+
+    Args:
+        name: The program's name, as in ``ProgramInput.program``.
+        energy_gradient: Positions (bohr, n_atoms x 3) to the energy (Eh) and the
+            gradient (Eh/bohr, n_atoms x 3).
+        hessian: Positions to the Hessian (Eh/bohr^2, 3 n_atoms x 3 n_atoms); without
+            it the program computes energies and gradients only.
+        version: The program's version, for provenance and the store.
+    """
+
+    _SCHEMA: dict[str, Any] = {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": False,
+    }
+
+    def __init__(
+        self,
+        name: str,
+        energy_gradient: Callable[[np.ndarray], tuple[float, Any]],
+        hessian: Callable[[np.ndarray], Any] | None = None,
+        *,
+        version: str = "0",
+    ) -> None:
+        """Make a program of the functions."""
+        self.name = name
+        self._energy_gradient = energy_gradient
+        self._hessian = hessian
+        self._version = version
+        calctypes = {CalcType.energy, CalcType.gradient}
+        if hessian is not None:
+            calctypes.add(CalcType.hessian)
+        self._caps = Capabilities(
+            calctypes=frozenset(calctypes), in_process=True, thread_safe=True
+        )
+
+    def __repr__(self) -> str:
+        """Show the program's name."""
+        return f"FunctionProgram({self.name!r})"
+
+    def version(self) -> str:
+        """The version given."""
+        return self._version
+
+    def capabilities(self) -> Capabilities:
+        """Energies and gradients (and Hessians with a Hessian function)."""
+        return self._caps
+
+    def settings_schema(self, calctype: CalcType) -> dict[str, Any]:
+        """No settings."""
+        return self._SCHEMA
+
+    def record_schema(self, calctype: CalcType) -> dict[str, Any]:
+        """No record."""
+        return {"type": "object", "properties": {}}
+
+    def plan(self, inp: ProgramInput) -> Plan:
+        """Check the input: a structure, a supported calctype, no keywords.
+
+        Raises:
+            ProgramError: Kind ``input`` (``unknown_key``, no structure) or
+                ``unsupported``.
+        """
+        if inp.calctype not in self._caps.calctypes:
+            raise ProgramError.of(
+                "unsupported",
+                f"{self.name} computes {sorted(c.value for c in self._caps.calctypes)},"
+                f" not {inp.calctype.value}.",
+            )
+        if inp.structure is None:
+            raise ProgramError.of("input", f"{self.name} needs a structure.")
+        if inp.keywords:
+            raise ProgramError.of(
+                "input",
+                f"{self.name} has no settings; unknown {sorted(inp.keywords)}.",
+                code="unknown_key",
+            )
+        return Plan(resolved=Resolved())
+
+    def compute(
+        self, inp: ProgramInput, ctx: RunContext | None = None
+    ) -> ProgramOutput[ProgramInput, Data]:
+        """Evaluate the functions at the input's structure.
+
+        Raises:
+            ProgramError: The input is refused, or a function raised (kind
+                ``internal``; the failed output holds its traceback).
+        """
+        start = time.perf_counter()
+        self.plan(inp)
+        assert inp.structure is not None
+        x = np.asarray(inp.structure.geometry, dtype=float).reshape(-1, 3)
+        provenance = Provenance(program=self.name, program_version=self._version)
+        try:
+            energy, gradient = self._energy_gradient(x.copy())
+            values: dict[str, Any] = {"energy": float(energy)}
+            if inp.calctype != CalcType.energy:
+                values["gradient"] = np.asarray(gradient, dtype=float).reshape(-1, 3)
+            if inp.calctype == CalcType.hessian:
+                assert self._hessian is not None
+                values["hessian"] = np.asarray(self._hessian(x.copy()), dtype=float)
+            results = SinglePointData(provenance=provenance, **values)
+        except Exception as e:  # noqa: BLE001 - the function's failure, with its trace
+            error = ErrorInfo(
+                kind=ErrorKind.internal, message=f"{type(e).__name__}: {e}"
+            )
+            out = ProgramOutput.failure(
+                inp,
+                error,
+                traceback="".join(traceback.format_exception(e)),
+                execution=ExecutionInfo(threads=1),
+            )
+            raise ProgramError(error, output=out) from e
+        return ProgramOutput(
+            input_data=inp,
+            success=True,
+            results=results,
+            resolved=Resolved(),
+            execution=ExecutionInfo(
+                threads=1, timings={"total": time.perf_counter() - start}
+            ),
+        )

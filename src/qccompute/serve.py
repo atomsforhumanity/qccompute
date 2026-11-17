@@ -24,9 +24,11 @@ Wire, one JSON message per line:
   ``compute_many {session, requests}`` -> [Frame]; ``reset {session, lineage}`` (absent:
   every lineage; null: the default one); ``plan {session}``, ``{session, calctype}`` or
   ``{input}``; ``close {session}``; ``compute {input, ctx}`` (a one-off) ->
-  ProgramOutput; ``lineages {session}`` where the session offers them.
-- ``ctx`` is ``{threads, memory_gib, scratch_dir, gpus}``. The GPU is fixed when the
-  worker is spawned, so ``gpus`` must be empty or match ``CUDA_VISIBLE_DEVICES``.
+  ProgramOutput; ``compute_batch {inputs, ctx}`` -> [ProgramOutput]; ``lineages
+  {session}`` where the session offers them.
+- ``ctx`` is ``{threads, memory_gib, device_memory_gib, timeout, scratch_dir, gpus}``.
+  The GPU is fixed when the worker is spawned, so ``gpus`` must be empty or match
+  ``CUDA_VISIBLE_DEVICES``.
 - Numbers are shortest round-trip decimals, so positions and results cross bit for bit.
   No NaN or Infinity: a message holding one is refused, and a non-finite result becomes a
   failed frame (kind ``numerical``, code ``non_finite``).
@@ -60,6 +62,7 @@ from qcdata import (
     CalcType,
     ErrorInfo,
     ErrorKind,
+    FileInput,
     Frame,
     ProgramError,
     ProgramInput,
@@ -68,6 +71,7 @@ from qcdata import (
 )
 
 from .program import (
+    BatchProgram,
     Program,
     RunContext,
     Session,
@@ -84,7 +88,7 @@ __all__ = ["PROTOCOL", "EXIT_DEVICE_LOST", "Host", "serve", "main"]
 PROTOCOL = 1
 #: The exit status after a ``device_lost`` reply.
 EXIT_DEVICE_LOST = 3
-_OPS = "open, compute, compute_many, reset, plan, close, lineages"
+_OPS = "open, compute, compute_batch, compute_many, reset, plan, close, lineages"
 
 
 class MessageError(Exception):
@@ -248,12 +252,14 @@ class Host:
                 f"{self.program.name} has no sessions", ErrorKind.unsupported
             )
         inp = self._input(msg)
+        if not isinstance(inp, ProgramInput):
+            raise MessageError("a session opens from a ProgramInput")
         calctypes = msg.get("calctypes")
         try:
             session = self.program.open_session(
                 inp,
                 self._ctx(msg.get("ctx")),
-                frozenset(calctypes) if calctypes else None,
+                frozenset(CalcType(c) for c in calctypes) if calctypes else None,
             )
         except ProgramError as e:
             raise MessageError.of(e) from None
@@ -264,7 +270,7 @@ class Host:
     def op_compute(self, msg: dict[str, Any]) -> Any:
         """A session's frame, or a one-off output for ``input``."""
         if "input" in msg:
-            out = self.program.compute(self._input(msg), self._ctx(msg.get("ctx")))
+            out = self._compute(self._input(msg), self._ctx(msg.get("ctx")))
             self._watch(out)
             return _dump(out)
         session = self._session(msg)
@@ -287,10 +293,44 @@ class Host:
         self._watch(frame)
         return _dump(frame)
 
+    def op_compute_batch(self, msg: dict[str, Any]) -> Any:
+        """Outputs of many one-off inputs, computed together; failures in place."""
+        inputs = [self._input({"input": i}) for i in msg.get("inputs") or []]
+        ctx = self._ctx(msg.get("ctx"))
+        if isinstance(self.program, BatchProgram):
+            try:
+                outs = list(self.program.compute_batch(inputs, ctx))  # type: ignore[arg-type]
+            except Exception as e:  # noqa: BLE001 - a bug: every input fails with it
+                outs = [_failed(i, e) for i in inputs]
+        else:
+            outs = [self._compute(i, ctx) for i in inputs]
+        for out in outs:
+            self._watch(out)
+        return _dump(outs)
+
+    def _compute(
+        self, inp: ProgramInput | FileInput, ctx: RunContext
+    ) -> ProgramOutput[Any, Any]:
+        """One output, failed or not: a ProgramError or a bug becomes a failed output."""
+        try:
+            return self.program.compute(inp, ctx)  # type: ignore[arg-type]
+        except Exception as e:  # noqa: BLE001 - failures are results on the wire
+            return _failed(inp, e)
+        finally:
+            ctx.cleanup()
+
     def op_compute_many(self, msg: dict[str, Any]) -> Any:
         """A session's frames for many requests, in order."""
         session = self._session(msg)
-        frames = session.compute_many([_request(r) for r in msg.get("requests") or []])
+        frames: list[Frame]
+        try:
+            frames = session.compute_many(
+                [_request(r) for r in msg.get("requests") or []]
+            )
+        except ExceptionGroup as group:  # SessionErrors: every frame, in order
+            if not hasattr(group, "frames"):
+                raise
+            frames = group.frames
         for frame in frames:
             self._watch(frame)
         return _dump(list(frames))
@@ -316,7 +356,7 @@ class Host:
         """A session's plan, its input's plan at another calctype, or an input's plan."""
         try:
             if "input" in msg:
-                return _dump(plan_of(self.program, self._input(msg)))
+                return _dump(plan_of(self.program, self._input(msg)))  # type: ignore[arg-type]
             session = self._session(msg)
             if msg.get("calctype"):
                 try:
@@ -343,9 +383,12 @@ class Host:
                 print(f"qccompute.serve: closing a session: {e}", file=sys.stderr)
         self.sessions.clear()
 
-    def _input(self, msg: dict[str, Any]) -> ProgramInput:
+    def _input(self, msg: dict[str, Any]) -> ProgramInput | FileInput:
         try:
-            return ProgramInput.model_validate(msg["input"])
+            data = msg["input"]
+            if isinstance(data, dict) and "calctype" not in data:
+                return FileInput.model_validate(data)
+            return ProgramInput.model_validate(data)
         except Exception as e:  # noqa: BLE001 - a ValidationError or a missing key
             raise MessageError(f"invalid input: {e}") from None
 
@@ -375,18 +418,20 @@ class Host:
                 f"for {list(gpus)}",
                 ErrorKind.environment,
             )
-        unknown = sorted(set(fields) - {"threads", "memory_gib", "scratch_dir"})
+        known = {"threads", "memory_gib", "device_memory_gib", "timeout", "scratch_dir"}
+        unknown = sorted(set(fields) - known)
         if unknown:
             raise MessageError(
-                f"unknown ctx fields {unknown}; ctx has threads, memory_gib, "
-                "scratch_dir, gpus"
+                f"unknown ctx fields {unknown}; ctx has {', '.join(sorted(known))}, gpus"
             )
         scratch = fields.get("scratch_dir")
         return RunContext(
             threads=fields.get("threads"),
             memory_gib=fields.get("memory_gib"),
+            device_memory_gib=fields.get("device_memory_gib"),
+            timeout=fields.get("timeout"),
             gpus=visible,
-            scratch_dir=Path(scratch) if scratch else None,
+            scratch=Path(scratch) if scratch else None,
         )
 
     def _watch(self, out: Frame | ProgramOutput[Any, Any]) -> None:
@@ -396,6 +441,24 @@ class Host:
             and out.error.code == "device_lost"
         ):
             self.device_lost = True
+
+
+def _failed(inp: ProgramInput | FileInput, e: Exception) -> ProgramOutput[Any, Any]:
+    """The failed output of a one-off compute that raised."""
+    trace = "".join(traceback.format_exception(e))
+    if isinstance(e, ProgramError):
+        attached = e.output
+        if isinstance(attached, ProgramOutput):
+            return attached
+        try:
+            return ProgramOutput.failure(
+                inp, e.error, results=e.results, traceback=trace
+            )
+        except Exception:  # noqa: BLE001 - partial results of the wrong type
+            return ProgramOutput.failure(inp, e.error, traceback=trace)
+    traceback.print_exc(file=sys.stderr)
+    error = ErrorInfo(kind=ErrorKind.internal, message=f"{type(e).__name__}: {e}")
+    return ProgramOutput.failure(inp, error, traceback=trace)
 
 
 def _id_of(line: str) -> Any:

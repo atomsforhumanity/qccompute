@@ -1,6 +1,5 @@
 """The Program/Session protocol, its conformance suite, and the toy program."""
 
-from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -11,6 +10,7 @@ from qcdata import (
     ErrorKind,
     ProgramError,
     ProgramInput,
+    ProgramOutput,
     ProgramSpec,
     Request,
     Structure,
@@ -22,10 +22,10 @@ from qccompute.program import (
     Program,
     RunContext,
     Session,
+    SessionErrors,
     SessionProgram,
     available_programs,
     find_program,
-    local_context,
     register_program,
     unregister_program,
 )
@@ -101,18 +101,37 @@ def test_unknown_keys_get_suggestions_and_typed_errors():
         program.plan(toy_input(sigmaa=1.0))
     assert e.value.error.kind is ErrorKind.input
     assert e.value.error.code == "unknown_key"
-    out = program.compute(toy_input(output={"pair_energie": True}), RunContext())
-    assert not out.success
-    assert out.error.kind is ErrorKind.input
-    assert "output.pair_energies" in out.error.message
+    with pytest.raises(ProgramError) as e:
+        program.compute(toy_input(output={"pair_energie": True}))
+    assert e.value.error.kind is ErrorKind.input
+    assert "output.pair_energies" in e.value.error.message
 
 
 @pytest.mark.parametrize("kind", ["convergence", "resource", "internal"])
-def test_failures_are_returned_with_kinds(kind):
-    out = program.compute(toy_input(fail=kind), RunContext())
-    assert not out.success and out.traceback
-    assert out.error.kind == kind
-    assert out.resolved.settings["fail"] == kind
+def test_failures_raise_with_kinds(kind):
+    with pytest.raises(ProgramError) as e:
+        program.compute(toy_input(fail=kind))
+    assert e.value.error.kind == kind
+    assert e.value.results is not None  # partial results travel with the error
+
+
+def test_programs_honour_the_thread_grant():
+    assert program.compute(toy_input()).execution.threads == 1  # direct: 1
+    assert program.compute(toy_input(), RunContext(threads=8)).execution.threads == 8
+    capped = program.compute(toy_input(threads=4), RunContext(threads=2))
+    assert capped.execution.threads == 2
+    assert capped.resolved.settings["threads"] == 2
+    assert [w.code for w in capped.warnings] == ["resource_capped"]
+
+    class Greedy(ToyProgram):
+        def compute(self, inp, ctx=None):
+            out = super().compute(inp)
+            return out.model_copy(
+                update={"execution": out.execution.model_copy(update={"threads": 64})}
+            )
+
+    with pytest.raises(ConformanceError, match="honours ctx.threads"):
+        check_program(Greedy(), [toy_input()])
 
 
 def test_unsupported_calctype():
@@ -129,7 +148,7 @@ def test_check_program_reports_every_broken_contract():
             clean = {k: v for k, v in inp.keywords.items() if k != "zz_not_a_setting"}
             return super().plan(inp.model_copy(update={"keywords": clean}))
 
-        def compute(self, inp, ctx):
+        def compute(self, inp, ctx=None):
             clean = {k: v for k, v in inp.keywords.items() if k != "zz_not_a_setting"}
             return super().compute(inp.model_copy(update={"keywords": clean}), ctx)
 
@@ -137,14 +156,18 @@ def test_check_program_reports_every_broken_contract():
         check_program(Lenient(), [toy_input()])
     message = str(e.value)
     assert "unknown key rejected by plan" in message
-    assert "unknown key fails compute with kind input" in message
+    assert "unknown key fails compute" in message
+
+
+def plain_compute(inputs, raise_exc=True):
+    """What a runner's compute gives a ComputeSession: one raises, a list does not."""
+    if isinstance(inputs, ProgramInput):
+        return program.compute(inputs)
+    return program.compute_batch(inputs)
 
 
 def test_compute_session_over_a_program():
-    def compute(inputs, previous=None):
-        if isinstance(inputs, ProgramInput):
-            return program.compute(inputs, RunContext())
-        return [program.compute(i, RunContext()) for i in inputs]
+    compute = plain_compute
 
     spec = ProgramSpec(program="toy", calctype="gradient", model={"method": "lj"})
     x = np.asarray(ARGON3.geometry)
@@ -161,9 +184,12 @@ def test_compute_session_over_a_program():
         assert s.compute(x).results.energy == r.energy  # still usable
         assert frame.record["warm_start"] is False  # stateless: always fresh
         assert np.allclose(s.compute().structure.geometry, x)  # the input's own
-        many = s.compute_many(
-            [Request(positions=x), Request(positions=np.full_like(x, np.nan))]
-        )
+        with pytest.raises(SessionErrors) as group:
+            s.compute_many(
+                [Request(positions=x), Request(positions=np.full_like(x, np.nan))]
+            )
+        many = group.value.frames  # every frame, in request order
+        assert len(group.value.exceptions) == 1
         assert many[0].success and not many[1].success
         assert many[1].error.kind is ErrorKind.numerical
         with pytest.raises(ProgramError) as e:
@@ -176,8 +202,8 @@ def test_compute_session_over_a_program():
 
 
 def test_compute_session_completes_hessians_without_gradients():
-    def no_gradient(inp, previous=None):
-        out = program.compute(inp, RunContext())
+    def no_gradient(inp, raise_exc=True):
+        out = program.compute(inp)
         if inp.calctype == CalcType.hessian:
             return out.model_copy(
                 update={"results": out.results.model_copy(update={"gradient": None})}
@@ -190,22 +216,20 @@ def test_compute_session_completes_hessians_without_gradients():
     assert h.gradient is not None and h.hessian is not None
 
 
-def test_run_context_sessions():
-    spec = ProgramSpec(program="toy", calctype="gradient", model={"method": "lj"})
-    with pytest.raises(RuntimeError, match="neither sessions nor a compute"):
-        RunContext().session(spec, ARGON3)
-    ctx = RunContext(compute=lambda i, previous=None: program.compute(i, RunContext()))
-    assert isinstance(ctx.session(spec, ARGON3), ComputeSession)
-    opened = []
-
-    def open_session(inp, threads, calctypes):
-        opened.append(threads)
-        return program.open_session(inp, RunContext(threads=threads), calctypes)
-
-    ctx = RunContext(threads=16, open_session=open_session)
-    with ctx.session(spec, ARGON3, threads=2) as s:
-        s.compute(np.asarray(ARGON3.geometry))
-    assert opened == [2]
+def test_run_context_sessions_and_compute_use_the_default_runner():
+    """Called directly, a program with subprograms runs them on the default runner."""
+    register_program(program)
+    try:
+        spec = ProgramSpec(program="toy", calctype="gradient", model={"method": "lj"})
+        with RunContext().session(spec, ARGON3) as s:
+            assert s.calctypes  # the program's own session, guarded for subprograms
+            assert s.compute().success
+        with RunContext(threads=16).session(spec, ARGON3, threads=2) as s:
+            assert s.compute().success
+        out = RunContext().compute(toy_input())
+        assert out.success and out.execution.threads is not None
+    finally:
+        unregister_program("toy")
 
 
 def test_discovery_of_unregistered_programs():
@@ -224,7 +248,7 @@ def test_registered_programs_are_found_everywhere():
         child = ProgramSpec(
             program="toy-registered", calctype="energy", model={"method": "lj"}
         )
-        with local_context().session(child, ARGON3) as s:
+        with RunContext().session(child, ARGON3) as s:
             assert s.compute(np.asarray(ARGON3.geometry), CalcType.energy).success
     finally:
         unregister_program("toy-registered")
@@ -316,7 +340,7 @@ class FiniteDifference(ToyProgram):
         return (
             super()
             .capabilities()
-            .model_copy(update={"driver": True, "sessions": False, "batches": False})
+            .model_copy(update={"sessions": False, "batches": False})
         )
 
     def settings_schema(self, calctype):
@@ -339,19 +363,14 @@ class FiniteDifference(ToyProgram):
             resolved=Resolved(settings={"step": inp.keywords.get("step", 1e-4)})
         )
 
-    def compute(self, inp, ctx):
+    def compute(self, inp, ctx=None):
         from qcdata import ExecutionInfo, ProgramOutput, Provenance, SinglePointData
 
-        try:
-            plan = self.plan(inp)
-        except ProgramError as e:
-            return ProgramOutput(
-                input_data=inp,
-                success=False,
-                traceback=e.error.message,
-                error=e.error,
-                results=SinglePointData(provenance=Provenance(program="fd")),
-            )
+        if ctx is None:  # a direct call: the default runner runs it, with a ctx
+            import qccompute
+
+            return qccompute.compute(inp)
+        plan = self.plan(inp)
         step = plan.resolved.settings["step"]
         child = inp.subprograms[0]
         x = np.asarray(inp.structure.geometry, dtype=float).reshape(-1)
@@ -381,7 +400,7 @@ class FiniteDifference(ToyProgram):
                 gradient=(energies[0::2] - energies[1::2]) / (2 * step),
             ),
             resolved=plan.resolved,
-            execution=ExecutionInfo(timings={"total": 0.0}),
+            execution=ExecutionInfo(threads=ctx.threads, timings={"total": 0.0}),
         )
 
 
@@ -403,20 +422,28 @@ def fd_input(child_program: str = "toy", **child_keywords: Any) -> ProgramInput:
     )
 
 
-def test_drivers_conform_with_local_children():
-    ran = check_program(FiniteDifference(), [fd_input()], children={"toy": program})
+@pytest.fixture
+def toy_registered():
+    register_program(program)
+    yield
+    unregister_program("toy")
+
+
+def test_programs_with_subprograms_conform(toy_registered):
+    ran = check_program(FiniteDifference(), [fd_input()])
     assert "input 0 (gradient): compute succeeds" in ran
 
 
-def test_local_context_runs_children_in_process():
-    from qccompute.program import local_context
-
-    out = FiniteDifference().compute(fd_input(), local_context({"toy": program}))
-    exact = program.compute(toy_input("gradient"), RunContext())
+def test_subprograms_of_direct_calls_run_on_the_default_runner(toy_registered):
+    fd = FiniteDifference()
+    register_program(fd)  # called directly, it hands itself to the default runner
+    out = fd.compute(fd_input())
+    unregister_program("fd")
+    exact = program.compute(toy_input("gradient"))
     assert np.allclose(out.results.gradient, exact.results.gradient, atol=1e-8)
-    ctx = local_context({})
-    missing = ctx.compute(toy_input().model_copy(update={"program": "no-such"}))
-    assert not missing.success and missing.error.kind is ErrorKind.environment
+    with pytest.raises(ProgramError) as e:
+        RunContext().compute(toy_input().model_copy(update={"program": "no-such"}))
+    assert e.value.error.kind is ErrorKind.environment
 
 
 def test_toy_sessions_fail_on_request():
@@ -426,15 +453,18 @@ def test_toy_sessions_fail_on_request():
         model={"method": "lj"},
         keywords={"fail": "convergence"},
     )
-    with program.open_session(ProgramInput.from_spec(spec, ARGON3), RunContext()) as s:
+    with program.open_session(ProgramInput.from_spec(spec, ARGON3)) as s:
         with pytest.raises(ProgramError) as e:
             s.compute(np.asarray(ARGON3.geometry))
         assert e.value.error.kind is ErrorKind.convergence
-        frame = s.compute_many([Request()])[0]
+        with pytest.raises(SessionErrors) as group:
+            s.compute_many([Request()])
+        frame = group.value.frames[0]
         assert not frame.success and frame.error.kind is ErrorKind.convergence
+        assert group.value.exceptions[0].frame is frame
 
 
-def test_sessions_run_only_the_calctypes_they_were_opened_for():
+def test_sessions_run_only_the_calctypes_they_were_opened_for(toy_registered):
     from qccompute.program import session_calctypes
 
     spec = ProgramSpec(program="toy", calctype="gradient", model={"method": "lj"})
@@ -452,38 +482,36 @@ def test_sessions_run_only_the_calctypes_they_were_opened_for():
             s.compute(x, "hessian")
         assert e.value.error.kind is ErrorKind.input
         assert e.value.error.code == "not_applicable"
-        frame = s.compute_many([Request(positions=x, calctype=CalcType.hessian)])[0]
+        with pytest.raises(SessionErrors) as group:
+            s.compute_many([Request(positions=x, calctype=CalcType.hessian)])
+        frame = group.value.frames[0]
         assert not frame.success and frame.error.code == "not_applicable"
     with program.open_session(
         inp, RunContext(), frozenset({CalcType.gradient, CalcType.hessian})
     ) as s:
         assert s.compute(x, "hessian").results.hessian is not None
 
-    def compute(inputs, previous=None):
-        return program.compute(inputs, RunContext())
-
-    plain = ComputeSession(compute, inp, calctypes=["gradient"])
+    plain = ComputeSession(plain_compute, inp, calctypes=["gradient"])
     with pytest.raises(ProgramError) as e:
         plain.compute(x, "hessian")
     assert e.value.error.code == "not_applicable"
-    ctx = RunContext(compute=compute)
+    ctx = RunContext()
     assert (
         ctx.session(spec, ARGON3, calctypes=["hessian"]).compute(x, "hessian").success
     )
 
 
-def test_scratch_is_made_on_first_use_only():
-    made = []
-
-    def make():
-        made.append(1)
-        return Path("/tmp")
-
-    ctx = RunContext(make_scratch=make)
-    assert not made
-    assert ctx.scratch == Path("/tmp") and ctx.scratch == Path("/tmp")
-    assert made == [1]
-    assert RunContext().scratch is None
+def test_scratch_is_made_on_first_use_and_removed_by_cleanup(tmp_path):
+    ctx = RunContext()
+    assert ctx._scratch is None  # nothing made until asked for
+    scratch = ctx.scratch
+    assert scratch.is_dir() and ctx.scratch == scratch
+    ctx.cleanup()
+    assert not scratch.exists()
+    given = RunContext(scratch=tmp_path)
+    assert given.scratch == tmp_path
+    given.cleanup()
+    assert tmp_path.is_dir()  # a given directory is kept
 
 
 def test_sessions_open_from_an_input_and_default_to_it():
@@ -496,7 +524,7 @@ def test_sessions_open_from_an_input_and_default_to_it():
         assert frame.results.gradient is not None and frame.results.hessian is None
     with pytest.raises(TypeError, match="ProgramInput"):
         ToySession(ProgramSpec(program="toy", calctype="energy"))  # type: ignore[arg-type]
-    opened = program.open_session(inp, RunContext())
+    opened = program.open_session(inp)
     assert type(opened) is ToySession
 
 
@@ -557,21 +585,31 @@ def test_capabilities_and_plans_may_be_plain_mappings():
 
 
 def test_program_errors_keep_the_failed_frame_through_compute_sessions():
-    def unconverged(inputs, previous=None):
+    def unconverged(inputs, raise_exc=True):
         def one(inp):
             failing = inp.model_copy(update={"keywords": {"fail": "convergence"}})
-            out = program.compute(failing, RunContext())
-            return out.model_copy(update={"record": {"scf": {"iterations": 128}}})
+            try:
+                program.compute(failing)
+            except ProgramError as e:
+                out = ProgramOutput.failure(failing, e.error, results=e.results)
+                return out.model_copy(update={"record": {"scf": {"iterations": 128}}})
+            raise AssertionError("did not fail")
 
-        return one(inputs) if isinstance(inputs, ProgramInput) else map(one, inputs)
+        if isinstance(inputs, ProgramInput):
+            out = one(inputs)
+            e = ProgramError(out.error, out.results)
+            e.output = out
+            raise e
+        return [one(i) for i in inputs]
 
     s = ComputeSession(unconverged, toy_input())
     with pytest.raises(ProgramError) as e:
         s.compute()
     assert e.value.frame is not None and not e.value.frame.success
     assert e.value.frame.record["scf"]["iterations"] == 128
-    failed = s.compute_many([Request()])[0]
-    assert failed.record["scf"]["iterations"] == 128
+    with pytest.raises(SessionErrors) as group:
+        s.compute_many([Request()])
+    assert group.value.frames[0].record["scf"]["iterations"] == 128
 
 
 def test_plans_may_defer_what_the_run_decides():
@@ -595,11 +633,12 @@ def test_plans_may_defer_what_the_run_decides():
                     **plan.resolved.reasons,
                     "storage.kind": "decided at run time",
                 },
-                deferred=["storage.kind"] if self.declare else [],
+                deferred=plan.resolved.deferred
+                + (["storage.kind"] if self.declare else []),
             )
             return Plan(resolved=resolved, resources=plan.resources)
 
-        def compute(self, inp, ctx):
+        def compute(self, inp, ctx=None):
             out = super().compute(
                 inp.model_copy(
                     update={

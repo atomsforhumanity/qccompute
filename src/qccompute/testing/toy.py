@@ -1,9 +1,11 @@
 """A complete toy program: Lennard-Jones energies, gradients, and Hessians.
 
 It implements every part of the `qccompute.program` protocol (settings schema with
-``"auto"``, plan, compute with typed errors, sessions, batches) in a few hundred lines, as
-an example for program authors and as a stand-in program for runners' tests. Like a real
-program, its session is usable directly (``ToySession(inp)``) and is the object
+``"auto"``, plan, compute with typed errors that raise, the thread grant, sessions,
+batches) in a few hundred lines, as an example for program authors and as a stand-in
+program for runners' tests. Like a real program, it imports only qcdata at run time
+(``qccompute.program`` for its data classes), ``program.compute(inp)`` works without a
+runner, and its session is usable directly (``ToySession(inp)``) and is the object
 ``open_session`` returns. Register it with an entry point to try it under qccompute::
 
     [project.entry-points."qccompute.programs"]
@@ -33,6 +35,7 @@ from qcdata import (
     ProgramInput,
     ProgramOutput,
     ProgramSpec,
+    ProgramWarning,
     Provenance,
     Request,
     Resolved,
@@ -46,6 +49,7 @@ from ..program import (
     Plan,
     Resources,
     RunContext,
+    SessionErrors,
     check_session_calctype,
     failed_frame,
     session_calctypes,
@@ -80,10 +84,9 @@ _SETTINGS_SCHEMA: dict[str, Any] = {
             "x-concern": "model",
         },
         "threads": {
-            "type": "integer",
-            "minimum": 1,
-            "default": 1,
-            "description": "CPU threads.",
+            "anyOf": [{"type": "integer", "minimum": 1}, {"const": "auto"}],
+            "default": "auto",
+            "description": "CPU threads; auto: the runner's grant (1 without one).",
             "x-tier": "common",
             "x-concern": "resource",
         },
@@ -168,11 +171,16 @@ def _resolve(spec: ProgramInput | ProgramSpec) -> Plan:
         raise ProgramError.of(
             "input", "sigma must be a positive number (bohr) or 'auto'."
         )
-    threads = kw.get("threads", 1)
+    threads = kw.get("threads", "auto")
+    deferred = []
+    if threads == "auto":
+        deferred.append("threads")  # the run decides it from the grant
+    elif isinstance(threads, bool) or not isinstance(threads, int) or threads < 1:
+        raise ProgramError.of("input", "threads must be a positive integer or 'auto'.")
     settings: dict[str, Any] = {
         "epsilon": float(epsilon),
         "sigma": float(sigma),
-        "threads": int(threads),
+        "threads": threads,
         "output": {
             "pair_energies": bool(kw.get("output", {}).get("pair_energies", False))
         },
@@ -180,9 +188,28 @@ def _resolve(spec: ProgramInput | ProgramSpec) -> Plan:
     if kw.get("fail") is not None:
         settings["fail"] = ErrorKind(kw["fail"]).value
     return Plan(
-        resolved=Resolved(settings=settings, reasons=reasons),
-        resources=Resources(threads=int(threads)),
+        resolved=Resolved(settings=settings, reasons=reasons, deferred=deferred),
+        resources=Resources(threads=1 if threads == "auto" else threads),
     )
+
+
+def _threads(
+    requested: int | str, ctx: RunContext | None
+) -> tuple[int, list[ProgramWarning]]:
+    """The threads to use: the smaller of the request and the grant."""
+    grant = ctx.threads if ctx is not None else None
+    if requested == "auto":
+        return grant or 1, []
+    assert isinstance(requested, int)
+    if grant is not None and requested > grant:
+        return grant, [
+            ProgramWarning(
+                code="resource_capped",
+                message=f"threads {requested} capped to the {grant} granted",
+                path="threads",
+            )
+        ]
+    return requested, []
 
 
 def _lj(
@@ -243,22 +270,6 @@ def _single_point(values: Mapping[str, Any]) -> SinglePointData:
         gradient=values.get("gradient"),
         hessian=values.get("hessian"),
         energy_components=values["energy_components"],
-    )
-
-
-def _failure(
-    inp: ProgramInput, error: ErrorInfo, plan: Plan | None, start: float
-) -> ProgramOutput[ProgramInput, Data]:
-    return ProgramOutput(
-        input_data=inp,
-        success=False,
-        traceback=error.message,
-        error=error,
-        results=SinglePointData(
-            provenance=Provenance(program=NAME, program_version=__version__)
-        ),
-        resolved=plan.resolved if plan is not None else None,
-        execution=ExecutionInfo(timings={"total": time.perf_counter() - start}),
     )
 
 
@@ -415,7 +426,7 @@ class ToySession:
         return frame, ({key: x} if r.commit else {})
 
     def compute_many(self, requests: Sequence[Request]) -> list[Frame]:
-        """Evaluate many geometries; failures are failed frames, in place.
+        """Evaluate many geometries; every request runs, then failures raise together.
 
         Each request reads the history as committed by the requests before it.
 
@@ -424,6 +435,9 @@ class ToySession:
 
         Returns:
             One frame per request, in order.
+
+        Raises:
+            SessionErrors: Some requests failed; ``frames`` holds every frame.
         """
         frames: list[Frame] = []
         for r in requests:
@@ -441,7 +455,7 @@ class ToySession:
                     }
                 )
                 frames.append(failed_frame(structure, e, NAME))
-        return frames
+        return SessionErrors.check(frames)
 
     def reset(self, lineage: Lineage = ...) -> None:
         """Forget the history of one lineage, or of all.
@@ -516,24 +530,37 @@ class ToyProgram:
         return _resolve(inp)
 
     def compute(
-        self, inp: ProgramInput, ctx: RunContext
+        self, inp: ProgramInput, ctx: RunContext | None = None
     ) -> ProgramOutput[ProgramInput, Data]:
-        """Compute an energy, gradient, or Hessian; failures are returned, not raised."""
+        """Compute an energy, gradient, or Hessian.
+
+        Args:
+            inp: The input.
+            ctx: The runner's grant; None when called directly.
+
+        Returns:
+            The output.
+
+        Raises:
+            ProgramError: The input cannot run or the calculation failed.
+        """
         start = time.perf_counter()
-        plan = None
-        try:
-            plan = ctx.plan if ctx.plan is not None else self.plan(inp)
-            s = plan.resolved.settings
-            if "fail" in s:
-                raise ProgramError.of(s["fail"], "failed on request (keyword fail)")
-            assert inp.structure is not None
-            values = _lj(inp.structure.geometry, s["epsilon"], s["sigma"], inp.calctype)
-            if inp.calctype == CalcType.hessian:
-                values["gradient"] = _lj(
-                    inp.structure.geometry, s["epsilon"], s["sigma"], CalcType.gradient
-                )["gradient"]
-        except ProgramError as e:
-            return _failure(inp, e.error, plan, start)
+        plan = ctx.plan if ctx is not None and ctx.plan is not None else self.plan(inp)
+        s = plan.resolved.settings
+        threads, warnings = _threads(s["threads"], ctx)
+        if "fail" in s:
+            raise ProgramError(
+                ErrorInfo(kind=s["fail"], message="failed on request (keyword fail)"),
+                SinglePointData(
+                    provenance=Provenance(program=NAME, program_version=__version__)
+                ),
+            )
+        assert inp.structure is not None
+        values = _lj(inp.structure.geometry, s["epsilon"], s["sigma"], inp.calctype)
+        if inp.calctype == CalcType.hessian:
+            values["gradient"] = _lj(
+                inp.structure.geometry, s["epsilon"], s["sigma"], CalcType.gradient
+            )["gradient"]
         record: dict[str, Any] = {"pairs": len(values["pairs"]), "evaluation": 0}
         if s["output"]["pair_energies"]:
             record["pair_energies"] = values["pairs"]
@@ -541,21 +568,32 @@ class ToyProgram:
             input_data=inp,
             success=True,
             results=_single_point(values),
-            resolved=plan.resolved,
+            resolved=Resolved(
+                settings={**s, "threads": threads}, reasons=plan.resolved.reasons
+            ),
+            warnings=warnings,
             record=record,
-            execution=ExecutionInfo(timings={"total": time.perf_counter() - start}),
+            execution=ExecutionInfo(
+                threads=threads, timings={"total": time.perf_counter() - start}
+            ),
         )
 
     def compute_batch(
-        self, inputs: Sequence[ProgramInput], ctx: RunContext
+        self, inputs: Sequence[ProgramInput], ctx: RunContext | None = None
     ) -> list[ProgramOutput[ProgramInput, Data]]:
-        """Compute many inputs; one output per input, in order."""
-        return [self.compute(inp, ctx) for inp in inputs]
+        """Compute many inputs; one output per input, failures in place."""
+        outputs: list[ProgramOutput[ProgramInput, Data]] = []
+        for inp in inputs:
+            try:
+                outputs.append(self.compute(inp, ctx))
+            except ProgramError as e:
+                outputs.append(ProgramOutput.failure(inp, e.error, results=e.results))
+        return outputs
 
     def open_session(
         self,
         inp: ProgramInput,
-        ctx: RunContext,
+        ctx: RunContext | None = None,
         calctypes: frozenset[CalcType] | None = None,
     ) -> ToySession:
         """Open a session pinned to the input's settings, for the given calctypes.

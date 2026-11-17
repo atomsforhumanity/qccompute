@@ -1258,6 +1258,87 @@ def test_closing_a_runner_cancels_what_waits():
     assert first.result(timeout=10).success  # in process: it ran on
 
 
+@pytest.mark.parametrize("isolation", ["auto", "process"])
+def test_a_stopped_calculation_keeps_what_it_reached_and_is_never_stored(isolation):
+    """runner.stop(future): the program ends at its next step, kind stopped (#75)."""
+    register_program(serve_programs.stepping)
+    store = FakeStore()
+    with Runner(threads=2, isolation=isolation) as runner:
+        many = toy_input(program="stepping", steps=2000, sleep=0.005)
+        future = runner.submit(many, store=store)
+        while not future.running():
+            time.sleep(0.01)
+        time.sleep(0.5)
+        assert runner.stop(future)
+        with pytest.raises(ProgramError) as e:
+            future.result(timeout=30)
+        assert not runner.stop(future)  # done: nothing to ask
+        details = e.value.output.error.details
+        assert e.value.error.kind is ErrorKind.stopped and details["steps"] < 2000
+        assert (details["pid"] != os.getpid()) is (isolation == "process")
+        assert store.puts == 0
+        # The program's process carries on: the worker was asked, not killed.
+        after = runner.submit(toy_input(program="stepping"), store=store)
+        assert after.result(timeout=30).success and store.puts == 1
+
+
+def test_a_stop_before_the_start_ends_the_calculation_at_its_first_step():
+    register_program(serve_programs.stepping)
+    with Runner(threads=1) as runner:
+        first = runner.submit(toy_input(program="stepping", steps=20, sleep=0.01))
+        waiting = runner.submit(toy_input(program="stepping", steps=20))
+        assert qccompute.stop(waiting)
+        assert first.result(timeout=10).success
+        with pytest.raises(ProgramError) as e:
+            waiting.result(timeout=10)
+    assert e.value.error.details["steps"] == 0
+    with pytest.raises(ValueError):
+        qccompute.stop(Future())  # not a calculation's
+
+
+class Driver(ToyProgram):
+    """In process, runs its subprogram and lets a failure of it escape."""
+
+    name = "driver"
+
+    def plan(self, inp):
+        own = inp.model_copy(update={"program": "toy", "subprograms": []})
+        return super().plan(own)
+
+    def compute(self, inp, ctx=None):
+        child = ProgramInput.from_spec(inp.subprograms[0], inp.structure)
+        ctx.compute(child)
+        raise AssertionError("the subprogram was meant to stop")
+
+
+def test_a_program_whose_subprogram_stopped_stops_too():
+    """The request covers the whole calculation: kind stopped, not program (#75)."""
+    register_program(serve_programs.stepping)
+    register_program(Driver())
+    child = {
+        "program": "stepping",
+        "calctype": "gradient",
+        "model": {"method": "lj"},
+        "keywords": {"steps": 2000, "sleep": 0.005},
+    }
+    inp = ProgramInput.model_validate(
+        toy_input(program="driver").model_dump() | {"subprograms": [child]}
+    )
+    store = FakeStore()
+    with Runner(threads=2) as runner:
+        future = runner.submit(inp, store=store)
+        while not future.running():
+            time.sleep(0.01)
+        time.sleep(0.2)
+        runner.stop(future)
+        with pytest.raises(ProgramError) as e:
+            future.result(timeout=30)
+    error = e.value.error
+    assert (error.kind, error.program) == (ErrorKind.stopped, "stepping")
+    assert error.cause.kind is ErrorKind.stopped
+    assert store.puts == 0
+
+
 def test_dynamic_workflows_need_no_stage_barriers():
     """Per reaction: search, then IRC, then both ends, as each step finishes (#55)."""
     register_program(serve_programs.serial)

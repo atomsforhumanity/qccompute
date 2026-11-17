@@ -170,7 +170,7 @@ code made it in `execution.identities`, with or without a store. A stored run
 is reused only when its identities are those of the programs that would run now; a
 stored failure only when the input determines it (kind `input`, `unsupported` or
 `convergence`, or `program` with such a cause), never one of the machine or the moment
-(`resource`, `timeout`, `environment`, ...). `rerun=True` always runs, past a stored
+(`resource`, `timeout`, `environment`, ...). A stopped run is never stored. `rerun=True` always runs, past a stored
 failure too; `tags` go onto every key, cache hits included. Every output returned with a
 store names its run, computed or hit, in `execution.store_run` (`"<key>/<run>"`), so a
 network or a report can cite the exact run and read it back with
@@ -212,6 +212,21 @@ names from your input down to the one that emitted it, so a subprogram's events
 at once. Stored outputs emit nothing, and nothing is stored. A program in a worker
 process streams its events back. `submit`, `as_completed` and `session` take
 `progress=` too; to tell a list's inputs apart, submit each with its own callable.
+
+A submitted calculation can be stopped at its next step, keeping what it reached:
+
+```python
+future = qccompute.submit(search, progress=show)
+...
+qccompute.stop(future)  # the program sees ctx.stop_requested() and ends there
+try:
+    future.result()
+except qcdata.ProgramError as e:  # kind "stopped", with the frames reached so far
+    frames = e.output.results.frames
+```
+
+A stopped output is never stored. `future.cancel()` instead ends the calculation and
+discards it.
 
 ## Programs
 

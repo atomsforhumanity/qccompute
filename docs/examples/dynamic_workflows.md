@@ -69,6 +69,11 @@ with qccompute.Runner(threads=8, isolation="process") as runner:
   running in this process stops at its next look at `ctx.timeout`, which reads 0, as
   for a timeout. A cancelled calculation is never stored; `future.result()` raises
   `CancelledError`.
+- **Stopping, keeping what was reached.** `runner.stop(future)` asks a running search to
+  end at its next step: the program sees `ctx.stop_requested()` and returns its partial
+  output under kind `stopped`, which `future.result()` raises with as `e.output` (in a
+  worker process too). Its subprograms stop with it. A stopped output is never stored,
+  so a later run of the same input runs it in full.
 - **Programs that are not thread-safe**, qcopt among them, take turns in one process:
   submitted from threads or as futures, they would run one at a time. The runner warns
   the first time a calculation waits for its turn; `isolation="process"`, as above,

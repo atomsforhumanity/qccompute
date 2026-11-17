@@ -11,6 +11,7 @@ from qcdata import (
     ErrorInfo,
     ErrorKind,
     ExecutionInfo,
+    ProgramError,
     ProgramInput,
     ProgramOutput,
     Provenance,
@@ -191,6 +192,38 @@ class Spawner(Isolated):
         return super().compute(inp, ctx)
 
 
+class Stepping(ToyProgram):
+    """Takes ``steps`` steps of ``sleep`` s, then the toy's result; stops on request.
+
+    A stopped run fails with kind ``stopped`` and the steps it took in its details,
+    as a search ends with its frames so far.
+    """
+
+    name = "stepping"
+
+    def _own(self, inp):
+        keywords = {
+            k: v for k, v in inp.keywords.items() if k not in ("steps", "sleep")
+        }
+        return inp.model_copy(update={"program": "toy", "keywords": keywords})
+
+    def plan(self, inp):
+        return super().plan(self._own(inp))
+
+    def compute(self, inp, ctx=None):
+        for step in range(inp.keywords.get("steps", 1)):
+            if ctx is not None and ctx.stop_requested():
+                error = ErrorInfo(
+                    kind=ErrorKind.stopped,
+                    message=f"stopped on request after {step} steps",
+                    details={"steps": step, "pid": os.getpid()},
+                )
+                raise ProgramError(error, output=ProgramOutput.failure(inp, error))
+            time.sleep(inp.keywords.get("sleep", 0.01))
+        out = super().compute(self._own(inp), ctx)
+        return out.model_copy(update={"input_data": inp})
+
+
 class Fallback(IsolatedGPU):
     """The isolated GPU toy; with ``fallback``, it ran on the CPU and says so."""
 
@@ -299,6 +332,7 @@ class Stray(Relay):
 
 
 device_lost = DeviceLost()
+stepping = Stepping()
 spawner = Spawner()
 fallback = Fallback()
 pools = Pools()

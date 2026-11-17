@@ -196,9 +196,12 @@ class Worker:
         self._write_lock = threading.Lock()
         self._ids = 0
         self._dead: ProgramError | None = None
-        # The caller's control of the message in flight, and whether it cancelled it.
+        # The caller's control of the message in flight, the file that asks it to
+        # stop, and whether it cancelled it; the controls this worker has served.
         self._flight_lock = threading.Lock()
         self._flight: _Control | None = None
+        self._stop_file: Path | None = None
+        self._stops: Path | None = None  # a directory for stop files, made on use
         self._cancelled = False
         self._watched: weakref.WeakSet[_Control] = weakref.WeakSet()
         self._dir: Path | None = None
@@ -250,6 +253,12 @@ class Worker:
         """Kill the worker and every process it started."""
         if self._proc.poll() is None:
             _kill_tree(self._proc.pid)
+
+    def _stop(self, control: _Control) -> None:
+        """Ask the message in flight to stop, if it is that calculation's."""
+        with self._flight_lock:
+            if self._flight is control and self._stop_file is not None:
+                self._stop_file.touch()
 
     def _cancel(self, control: _Control) -> None:
         """Kill the worker if the message in flight is that of a cancelled calculation."""
@@ -311,9 +320,13 @@ class Worker:
             self._ids += 1
             self._parent.ctx = grant
             if control is not None:
+                stop_file = self._stop_file_for(op, fields)
                 with self._flight_lock:
                     cancelled = control.cancelled
                     self._flight = None if cancelled else control
+                    self._stop_file = stop_file
+                    if stop_file is not None and control.stopping:
+                        stop_file.touch()
                 if cancelled:  # never sent: the worker serves on
                     raise ProgramError.of(
                         "timeout", "The calculation was cancelled before it ran."
@@ -321,16 +334,35 @@ class Worker:
                 if control not in self._watched:
                     self._watched.add(control)
                     control.on_cancel(partial(self._cancel, control))
+                    control.on_stop(partial(self._stop, control))
             try:
                 reply = self._exchange(op, timeout, grant, fields)
             finally:
                 with self._flight_lock:
                     self._flight = None
+                    if self._stop_file is not None:
+                        self._stop_file.unlink(missing_ok=True)
+                        self._stop_file = None
         if not reply.get("ok"):
             raise ProgramError(ErrorInfo.model_validate(reply["error"]))
         if self._proc.poll() is not None or _lost(reply.get("result")):
             self._died("exited after losing its GPU context")
         return reply.get("result")
+
+    def _stop_file_for(self, op: str, fields: dict[str, Any]) -> Path | None:
+        """The file that asks a one-off calculation to stop, named in its wire ``ctx``.
+
+        A submitted calculation's ``compute`` and ``compute_batch`` carry one (session
+        requests are steps of their caller, which sees its own stop).
+        """
+        ctx = fields.get("ctx")
+        if op not in ("compute", "compute_batch") or not isinstance(ctx, dict):
+            return None
+        if self._stops is None:
+            self._stops = Path(tempfile.mkdtemp(prefix="qccompute-stop-"))
+        path = self._stops / str(self._ids)
+        ctx["stop_file"] = str(path)
+        return path
 
     def _exchange(
         self,
@@ -540,8 +572,9 @@ class Worker:
         self._calls.close_all()  # sessions its program opened here
         if self._proc.poll() is not None and self._proc.stdout is not None:
             self._proc.stdout.close()
-        if self._dir is not None:
-            shutil.rmtree(self._dir, ignore_errors=True)
+        for directory in (self._dir, self._stops):
+            if directory is not None:
+                shutil.rmtree(directory, ignore_errors=True)
 
     def __enter__(self) -> Worker:
         """Use the worker as a context manager that stops it."""

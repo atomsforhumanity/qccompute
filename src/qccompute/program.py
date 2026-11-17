@@ -406,21 +406,58 @@ class _Progress:
 
 
 class _Control:
-    """What a caller asks of a running calculation: to be cancelled.
+    """What a caller asks of a running calculation: to stop at a step, or be cancelled.
 
     One per submitted calculation, shared by the contexts of its subprograms, so a
-    request reaches every level. Cancelling reads to the calculation as its time
-    running out (`RunContext.timeout` is 0), and calls each registered callback once:
-    the runner registers what ends the calculation's work (a worker's process tree,
-    its place in the queue).
+    request reaches every level. A stop is seen by the program
+    (`RunContext.stop_requested`); cancelling reads to it as its time running out
+    (`RunContext.timeout` is 0). Each request calls its registered callbacks once:
+    the runner registers what carries it further (a worker's stop file, a worker's
+    process tree, a place in the queue). In a worker, the stop request of the message
+    in flight is a file its client creates (``stop_file``).
     """
 
-    __slots__ = ("cancelled", "_lock", "_on_cancel", "__weakref__")
+    __slots__ = (
+        "cancelled",
+        "stopping",
+        "stop_file",
+        "_lock",
+        "_on_cancel",
+        "_on_stop",
+        "__weakref__",
+    )
 
-    def __init__(self) -> None:
+    def __init__(self, stop_file: str | None = None) -> None:
         self.cancelled = False
+        self.stopping = False
+        self.stop_file = stop_file
         self._lock = threading.Lock()
         self._on_cancel: list[Callable[[], object]] = []
+        self._on_stop: list[Callable[[], object]] = []
+
+    def stop_requested(self) -> bool:
+        """Whether the caller asked the calculation to stop."""
+        if not self.stopping and self.stop_file is not None:
+            self.stopping = os.path.exists(self.stop_file)
+        return self.stopping
+
+    def on_stop(self, callback: Callable[[], object]) -> None:
+        """Call ``callback`` when a stop is requested (now, if it is)."""
+        with self._lock:
+            if not self.stopping:
+                self._on_stop.append(callback)
+                return
+        callback()
+
+    def stop(self) -> None:
+        """Ask the calculation to stop at its next step; its callbacks run."""
+        with self._lock:
+            if self.stopping:
+                return
+            self.stopping = True
+            callbacks, self._on_stop = self._on_stop, []
+        for callback in callbacks:
+            callback()
 
     def on_cancel(self, callback: Callable[[], object]) -> None:
         """Call ``callback`` when the calculation is cancelled (now, if it is)."""
@@ -589,6 +626,22 @@ class RunContext:
         if self._deadline is None:
             return None
         return max(0.0, self._deadline - time.monotonic())
+
+    def stop_requested(self) -> bool:
+        """Whether the caller asked this calculation to stop (``runner.stop(future)``).
+
+        A program that works in steps (an optimizer, a path search, a dynamics run)
+        checks it where it can end cleanly, before each step, and ends there: its
+        output is a failure of kind ``stopped`` holding what it reached (a search's
+        frames so far), raised as for any failure
+        (``ProgramError(out.error, output=out)``). The request covers the whole
+        calculation, its subprograms included: a program whose subprogram stopped
+        stops too, with kind ``stopped``. A program with no steps need not check. The
+        runner never stores a stopped output. A cheap check (a flag, or in a worker
+        a file's existence): call it every step.
+        """
+        control = self._control
+        return control is not None and control.stop_requested()
 
     def device_ordinals(self) -> list[int]:
         """The granted GPUs as CUDA device ordinals in this process, in grant order.

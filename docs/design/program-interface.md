@@ -112,6 +112,8 @@ subprograms:
 - `progress`: where the program reports what it is doing while it runs, when the
   caller listens (below, **Progress**); None when nobody does, so a program checks it
   before building an event.
+- `stop_requested()`: whether the caller asked the calculation to stop (below,
+  **Stopping**). A program that works in steps checks it before each step.
 - `scratch`: a directory, made on first use and removed when the call returns.
 - `compute(inputs, raise_exc=True)` and `session(spec, structure, threads=, calctypes=)`:
   subprograms, within the grant. They run only programs the calculation's input names,
@@ -155,6 +157,28 @@ one event per step); the runner only delivers them, and nothing is stored.
   (`ctx.progress` on the wire, below); a program run without a listener has
   `ctx.progress` None, so an unused progress channel costs nothing.
 
+## Stopping
+
+`runner.stop(future)` (`qccompute.stop` for the default runner) asks a submitted
+calculation to stop at its next step and keep what it reached: Stop & analyze in a live
+view, a search ended on a budget. It is not a cancel, which discards the calculation.
+
+- The program sees the request as `ctx.stop_requested()`, checks it where it can end
+  cleanly (an optimizer: before each step), and ends there: its output is a failure of
+  kind `stopped` with its partial results (a search's frames so far), raised as for any
+  failure. `future.result()` raises `qcdata.ProgramError` with that output.
+- The request covers the whole calculation: its subprograms see it through their
+  contexts, and a program whose subprogram stopped stops too. When a program lets a
+  stopped subprogram's failure escape, the runner fails it with kind `stopped` (not
+  `program`), the subprogram's error as `cause`.
+- In a worker process the request reaches the program through a file named in the
+  message's context (`stop_file`), which the client creates while the message is in
+  flight: one `stat` per check, and never the wrong message. The worker is asked, not
+  killed, and serves on.
+- A calculation asked before it starts stops at its first step; a program with no steps
+  runs to its end. The runner never stores a stopped output, and a store never reuses
+  one.
+
 ## Failures
 
 A failed calculation raises `qcdata.ProgramError`, from `compute` as from sessions. Its
@@ -177,8 +201,9 @@ The runner turns failures into failed outputs only where it needs data:
 
 A subprogram's failure that a program lets escape fails it with kind `program`, the
 subprogram's name and its error as `cause`; a program that catches it sees the
-subprogram's own error. The runner sets the kinds `timeout` (a deadline) and
-`environment` (a program not installed, a worker that died: code `worker_died`).
+subprogram's own error (kind `stopped` when the subprogram stopped on request). The
+runner sets the kinds `timeout` (a deadline) and `environment` (a program not
+installed, a worker that died: code `worker_died`).
 
 ## Sessions
 
@@ -367,8 +392,9 @@ programs it would run now, looks the key up with them, and returns a stored run 
 it was made with exactly those identities: a success always, a failure only when the
 input determines it (kind `input`, `unsupported` or `convergence`, or `program` with such
 a cause; never `resource`, `backend`, `environment`, `timeout`, `numerical` or
-`internal`). Misses run, and every run is stored with
-its identities. Every output the runner returns carries the identities of the programs
+`internal`). Misses run, and every run is stored with its identities, except a stopped
+one (kind `stopped`, or failed because a subprogram stopped): it is where the caller
+chose to end the run, not what the input gives. Every output the runner returns carries the identities of the programs
 that made it in `execution.identities`, with or without a store, so an output read back
 says which code made it; a stored run keeps the ones it was made with. `rerun=True`
 always runs; `tags` go onto every key, cache hits included;
@@ -424,7 +450,10 @@ between calls. `qccompute.worker.Worker` is its client.
   started by the client, never by a worker. Without it, subprograms run in the
   worker's own default runner.
 - **Context on the wire:** `{threads, memory_gib, device_memory_gib, timeout,
-  scratch_dir, progress}`; the GPUs are fixed when the worker starts. With
+  scratch_dir, progress, stop_file}`; the GPUs are fixed when the worker starts.
+  `stop_file` names a file whose existence asks the calculation to stop
+  (`ctx.stop_requested()` checks it): the client creates it for `runner.stop`, while the
+  message is in flight, so a request never reaches another message. With
   `progress: true` (the client's caller listens) the program's progress events stream
   back as lines `{"id", "progress": event}` naming the message in flight (for a
   session, its request's message); the client hands each to the caller's callable.

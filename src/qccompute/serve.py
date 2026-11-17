@@ -29,8 +29,12 @@ Wire, one JSON message per line:
   ProgramOutput; ``compute_batch {inputs, ctx}`` -> [ProgramOutput]; ``lineages
   {session}`` where the session offers them; ``options {array_dir, calls}``.
 - ``ctx`` is ``{threads, memory_gib, device_memory_gib, timeout, scratch_dir, gpus,
-  progress}``. The GPU is fixed when the worker is spawned, so ``gpus`` must be empty or
-  match ``CUDA_VISIBLE_DEVICES``. With ``progress: true`` the program's progress events
+  progress, stop_file}``. The GPU is fixed when the worker is spawned, so ``gpus`` must
+  be empty or match ``CUDA_VISIBLE_DEVICES``. ``stop_file`` names a file whose
+  existence asks the calculation to stop at its next step (``ctx.stop_requested()``):
+  the client creates it while the message is in flight, and removes it after. While
+  the message runs, the worker holds its BLAS and OpenMP pools at ``threads``. With
+  ``progress: true`` the program's progress events
   (``ctx.progress``) stream to the client while a message is in flight, as lines
   ``{"id", "progress": event}`` naming the message (for a session, each request's
   message); an event that is not JSON is dropped, with a note on stderr. A plain
@@ -100,6 +104,7 @@ from .program import (
     RunContext,
     Session,
     SessionProgram,
+    _Control,
     _cuda_visible_devices,
     capabilities_of,
     failed_frame,
@@ -491,6 +496,7 @@ class Host:
             "timeout",
             "scratch_dir",
             "progress",
+            "stop_file",
         }
         unknown = sorted(set(fields) - known)
         if unknown:
@@ -498,7 +504,7 @@ class Host:
                 f"unknown ctx fields {unknown}; ctx has {', '.join(sorted(known))}, gpus"
             )
         scratch = fields.get("scratch_dir")
-        return RunContext(
+        made = RunContext(
             threads=fields.get("threads"),
             memory_gib=fields.get("memory_gib"),
             device_memory_gib=fields.get("device_memory_gib"),
@@ -508,6 +514,10 @@ class Host:
             runner=self._subprograms,
             progress=self._progress if fields.get("progress") else None,
         )
+        stop_file = fields.get("stop_file")
+        if isinstance(stop_file, str):
+            made._control = _Control(stop_file=stop_file)
+        return made
 
     def _progress(self, event: Any) -> None:
         """Stream a progress event to the client, naming the message in flight."""

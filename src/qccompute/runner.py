@@ -99,6 +99,7 @@ __all__ = [
     "FILES",
     "compute",
     "submit",
+    "stop",
     "session",
     "default_runner",
 ]
@@ -113,10 +114,16 @@ _DETERMINISTIC = frozenset(
 )
 
 
-def _deterministic(error: ErrorInfo | None) -> bool:
-    """Whether a stored failure is determined by its input, and so reusable."""
+def _root(error: ErrorInfo | None) -> ErrorInfo | None:
+    """A failure's own error: through kind ``program`` to the subprogram's cause."""
     while error is not None and error.kind is ErrorKind.program:
         error = error.cause
+    return error
+
+
+def _deterministic(error: ErrorInfo | None) -> bool:
+    """Whether a stored failure is determined by its input, and so reusable."""
+    error = _root(error)
     return error is not None and error.kind in _DETERMINISTIC
 
 
@@ -497,16 +504,20 @@ def _as_failure(
     """A program's exception as its failed output and the ProgramError to raise.
 
     A `ProgramError` raised by a subprogram (through ``ctx``) that the program let
-    escape fails it with kind ``program`` and the subprogram's error as ``cause``. Any
-    other exception than a ProgramError is a bug: kind ``internal``.
+    escape fails it with kind ``program`` and the subprogram's error as ``cause``, or
+    kind ``stopped`` when the subprogram stopped on request (the request covers the
+    whole calculation). Any other exception than a ProgramError is a bug: kind
+    ``internal``.
     """
     trace = "".join(traceback.format_exception(exc))
     if isinstance(exc, ProgramError):
         child = getattr(exc, "_subprogram", None)
         if child is not None:
+            stopped = exc.error.kind is ErrorKind.stopped
             error = ErrorInfo(
-                kind=ErrorKind.program,
-                message=f"subprogram {child} failed: {exc.error.message}",
+                kind=ErrorKind.stopped if stopped else ErrorKind.program,
+                message=f"subprogram {child} "
+                f"{'stopped' if stopped else 'failed'}: {exc.error.message}",
                 program=child,
                 cause=exc.error,
             )
@@ -637,13 +648,18 @@ def _put(
     tags: Sequence[str],
     meta: Mapping[str, Any] | None,
 ) -> None:
-    """Store a run, unless it was warm-started (its numbers depend on history).
+    """Store a run, unless it was warm-started (its numbers depend on history) or stopped.
 
-    The output then names its run, ``execution.store_run = "<key>/<run>"``, as an
-    output read from the store does, so a fresh result can be cited exactly too.
+    A stopped output is where the caller chose to end the run, not what the input
+    gives: never stored (nor one that failed because a subprogram stopped). The output
+    then names its run, ``execution.store_run = "<key>/<run>"``, as an output read from
+    the store does, so a fresh result can be cited exactly too.
     """
     if out.record.get("warm_start") is True:
         return
+    if not out.success and (root := _root(out.error)) is not None:
+        if root.kind is ErrorKind.stopped:
+            return
     run = store.put(out, tags=tuple(tags), meta=meta)
     cited = out.execution.model_copy(update={"store_run": f"{key}/{run}"})
     out.__dict__["execution"] = cited
@@ -1626,6 +1642,29 @@ class Runner:
             budget.release(granted, share)
         future._finish(out, failure)
 
+    def stop(self, future: Future[Output]) -> bool:
+        """Ask a submitted calculation to stop at its next step, keeping what it reached.
+
+        The program sees the request as ``ctx.stop_requested()`` (in a worker process
+        too), ends at its next step and returns its partial output (a search's frames
+        so far) as a failure of kind ``stopped``: ``future.result()`` raises
+        `qcdata.ProgramError` with it as ``output``. The request covers the
+        calculation's subprograms, and one that has not started yet stops at its
+        first step. A program with no steps runs to its end. A stopped output is never
+        stored. Unlike ``future.cancel()``, which discards the calculation, a stop
+        keeps what it reached.
+
+        Args:
+            future: A future from `submit`.
+
+        Returns:
+            Whether the request was made: False once the calculation is done.
+
+        Raises:
+            ValueError: The future is not one `submit` made.
+        """
+        return _stop(future)
+
     def as_completed(
         self,
         inputs: Iterable[Input],
@@ -2308,6 +2347,31 @@ def submit(
         progress=progress,
         priority=priority,
     )
+
+
+def stop(future: Future[Output]) -> bool:
+    """Ask a submitted calculation to stop at its next step: `Runner.stop`.
+
+    Args:
+        future: A future from `submit` (any runner's).
+
+    Returns:
+        Whether the request was made: False once the calculation is done.
+
+    Raises:
+        ValueError: The future is not one `submit` made.
+    """
+    return _stop(future)
+
+
+def _stop(future: Future[Output]) -> bool:
+    """`Runner.stop`, which needs no runner: the future holds its calculation's control."""
+    if future.done():
+        return False
+    if not isinstance(future, _Future):
+        raise ValueError("Only a future from submit() can be stopped.")
+    future._control.stop()
+    return True
 
 
 def session(

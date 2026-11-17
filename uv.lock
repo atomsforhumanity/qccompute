@@ -1353,7 +1353,7 @@ wheels = [
 
 [[package]]
 name = "qccodec"
-version = "0.22.0a5"
+version = "0.22.0a6"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "packaging" },
@@ -1363,14 +1363,14 @@ dependencies = [
     { name = "threadpoolctl" },
     { name = "tomli-w" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/3b/74/7f7f6e9f9ecd9f5d571d350970c2c2cf3fa334619d60e18fb3066ec1736a/qccodec-0.22.0a5.tar.gz", hash = "sha256:405b5a94e5d316870d0cb6ac12e3ae68c27aa4c965b910c3ebeae8a9439bedda", size = 1309726, upload-time = "2026-11-17T20:46:07.16Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/bb/89/6c5ee771342561e28e8e875df4ee493433cdcc90b25018eefe939c138b01/qccodec-0.22.0a6.tar.gz", hash = "sha256:c02e36600b415f4b6f5b6c1bc4551d8b18938c7b734f22a8637d0439c8ebd03a", size = 1311300, upload-time = "2026-11-17T22:08:56.314Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a3/f7/0c201d54b41515b542dcb40566daa4d8c5c1385aeabe97ab58e3d1164afb/qccodec-0.22.0a5-py3-none-any.whl", hash = "sha256:0fb42771a94c49251c1edd8603ee3880066357b1ce78931d106df52898c5cc23", size = 160856, upload-time = "2026-11-17T20:46:05.656Z" },
+    { url = "https://files.pythonhosted.org/packages/9c/e3/8cbde452b39e10f0b17d42b0c64969455419450b1e385654c0bd139d755b/qccodec-0.22.0a6-py3-none-any.whl", hash = "sha256:78f76cba87a94a6dd02437d75f3bf6424c71a85bfd940dc1647b50d1ea09ace6", size = 161771, upload-time = "2026-11-17T22:08:54.494Z" },
 ]
 
 [[package]]
 name = "qccompute"
-version = "0.23.0a6"
+version = "0.23.0a7"
 source = { editable = "." }
 default-groups = ["dev", "docs"]
 dependencies = [
@@ -1412,7 +1412,7 @@ docs = [
 [package.metadata]
 requires-dist = [
     { name = "jsonschema", marker = "extra == 'testing'", specifier = ">=4.18" },
-    { name = "qccodec", marker = "extra == 'qccodec'", specifier = ">=0.22.0a5" },
+    { name = "qccodec", marker = "extra == 'qccodec'", specifier = ">=0.22.0a6" },
     { name = "qcdata", specifier = ">=0.24.0a8" },
     { name = "threadpoolctl", specifier = ">=3.1" },
 ]

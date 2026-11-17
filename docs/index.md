@@ -5,12 +5,12 @@ runs the same way, whether it implements qccompute's protocol in Python or is an
 external program that [qccodec](https://qccodec.docs.afh.org/next/) brings in:
 
 ```sh
-uv pip install --prerelease=allow "qcdata>=0.24.0a8" "qccompute[qccodec]>=0.23.0a6" "qccodec>=0.22.0a5" "qcstore>=0.1.0a4"
+uv pip install --prerelease=allow "qcdata>=0.24.0a8" "qccompute[qccodec]>=0.23.0a7" "qccodec>=0.22.0a6" "qcstore>=0.1.0a4"
 ```
 
 This is the alpha line, with minimum versions of its matching packages (`--prerelease=allow` lets the
 resolver take pre-releases); a plain `pip install qccompute` resolves the previous stable
-release. `qccompute` alone is the runner (`"qcdata>=0.24.0a8" "qccompute>=0.23.0a6"`);
+release. `qccompute` alone is the runner (`"qcdata>=0.24.0a8" "qccompute>=0.23.0a7"`);
 the `qccodec` extra adds external programs (xtb, ORCA, Psi4, ...) and `qcstore` is the
 calculation store. These pages document the alpha, at
 [qccompute.docs.afh.org/next](https://qccompute.docs.afh.org/next/); the site root

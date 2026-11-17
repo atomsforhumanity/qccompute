@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [unreleased]
 
+## [0.23.0a7] - 2026-11-17
+
+### Added
+
+- `QCCOMPUTE_KEEP_SCRATCH=1` keeps temporary scratch directories, in process and in workers, for debugging (`qccompute.program.KEEP_SCRATCH`); a killed worker's error then says where its scratch is.
+
+### Changed
+
+- **Breaking:** a calculation whose input names subprograms holds its own BLAS and OpenMP pools at one thread, in process and in workers, for one input, a batch or a session; its grant (`ctx.threads`) is its subprograms'. A program with heavy linear algebra of its own may raise its pools while it works, if it restores them around its subprograms' calls. Before, a parent asking for the whole grant had its own pools at the whole grant too, and an idle OpenBLAS thread spins for about 0.1 s after each call: parent and children together ran up to twice the grant's threads. qcopt over axtb g-xTB, 38 submitted TS searches, IRCs and end minimizations on 8 threads: 80–140 s before, 24–26 s after.
+- The `qccodec` extra requires qccodec 0.22.0a6.
+
+### Fixed
+
+- A worker killed for a timeout or a cancel no longer leaves its calculations' scratch behind: a `Worker` gives its worker a directory (`python -m qccompute.serve PROGRAM --scratch DIR`) and removes it when it closes the worker.
+
 ## [0.23.0a6] - 2026-11-17
 
 ### Added

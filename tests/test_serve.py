@@ -10,7 +10,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from qcdata import ProgramInput, Structure
+from qcdata import CalcType, ProgramInput, Structure
 
 from qccompute.testing.toy import ToySession
 
@@ -243,3 +243,51 @@ def test_socket_sessions_outlive_connections(tmp_path):
     finally:
         p.terminate()
         p.wait(timeout=30)
+
+
+def test_wavefunctions_cross_the_wire_with_their_basis(tmp_path):
+    """Wavefunction.basis and its AO arrays cross as files and validate again (#43)."""
+    from qcdata import ProgramOutput, SinglePointData, Wavefunction
+
+    from qccompute import _wire
+
+    n = 400  # 400 x 400 float64 is over 1 MiB: coefficients and overlap cross as files
+    rng = np.random.default_rng(7)
+    shells = [
+        {
+            "center": 0,
+            "angular_momentum": 0,
+            "pure": True,
+            "exponents": [float(e)],
+            "coefficients": [1.0],
+        }
+        for e in np.geomspace(0.01, 1e4, n)
+    ]
+    wavefunction = Wavefunction(
+        orbitals={
+            "spin": "restricted",
+            "energies_a": np.sort(rng.normal(size=n)),
+            "occupations_a": np.r_[np.ones(27), np.zeros(n - 27)],
+            "occupations_b": np.r_[np.ones(27), np.zeros(n - 27)],
+            "coefficients_a": rng.normal(size=(n, n)),
+        },
+        basis={"shells": shells},
+        overlap=np.eye(n) + 1e-3 * rng.normal(size=(n, n)),
+    )
+    out = ProgramOutput(
+        input_data=INP.model_copy(update={"calctype": CalcType.energy}),
+        success=True,
+        results=SinglePointData(
+            provenance={"program": "toy"}, energy=-1.0, wavefunction=wavefunction
+        ),
+    )
+    data = _wire.dump(out, tmp_path)
+    assert len(list(tmp_path.iterdir())) == 2  # coefficients and overlap
+    back = _wire.load(ProgramOutput, json.loads(_wire.encode(data)), tmp_path)
+    assert not any(tmp_path.iterdir())  # read, then deleted
+    got = back.results.wavefunction
+    assert got.basis == wavefunction.basis
+    assert np.array_equal(
+        got.orbitals.coefficients_a, wavefunction.orbitals.coefficients_a
+    )
+    assert np.array_equal(got.overlap, wavefunction.overlap)

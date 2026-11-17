@@ -72,15 +72,27 @@ def dump(value: Any, directory: Path | None) -> Any:
 
 
 def load(cls: type[M], data: Any, directory: Path | None) -> M:
-    """Validate a model from the wire, reading (then deleting) its array files."""
+    """Validate a model from the wire, reading (then deleting) its array files.
+
+    An empty directory means the message has no array files (a reader deletes each
+    file once read), so the document is not searched for pointers.
+    """
+    if directory is None or _empty(directory):
+        return cls.model_validate(data)
     try:
-        return cls.model_validate(
-            data, context=None if directory is None else {DIRECTORY: directory}
-        )
+        return cls.model_validate(data, context={DIRECTORY: directory})
     finally:
-        if directory is not None:
-            for name in _pointers(data):
-                (directory / name).unlink(missing_ok=True)
+        for name in _pointers(data):
+            (directory / name).unlink(missing_ok=True)
+
+
+def _empty(directory: Path) -> bool:
+    """Whether a directory holds no files (False when it cannot be read)."""
+    try:
+        with os.scandir(directory) as entries:
+            return next(entries, None) is None
+    except OSError:
+        return False
 
 
 def _pointers(node: Any) -> Iterator[str]:

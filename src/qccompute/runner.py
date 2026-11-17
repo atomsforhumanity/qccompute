@@ -453,7 +453,7 @@ def _name(inp: Input) -> str:
 
 
 def _not_found(inp: Input) -> ProgramError:
-    name = inp.program if isinstance(inp, ProgramInput) else FILES
+    name = _name(inp)
     hint = (
         " (a FileInput runs under qccodec's 'files' program: pip install "
         "qccompute[qccodec])"
@@ -631,13 +631,13 @@ def _put(
     """Store a run, unless it was warm-started (its numbers depend on history).
 
     The output then names its run, ``execution.store_run = "<key>/<run>"``, as an
-    output read from the store does, so a fresh result can be cited exactly too. The
-    output's `ExecutionInfo` is the runner's own copy (`_with_execution`).
+    output read from the store does, so a fresh result can be cited exactly too.
     """
     if out.record.get("warm_start") is True:
         return
     run = store.put(out, tags=tuple(tags), meta=meta)
-    out.execution.__dict__["store_run"] = f"{key}/{run}"
+    cited = out.execution.model_copy(update={"store_run": f"{key}/{run}"})
+    out.__dict__["execution"] = cited
 
 
 def _with_execution(
@@ -913,8 +913,7 @@ class Runner:
 
     def _entry(self, inp: Input) -> _Entry | None:
         """The program of an input, with what the runner needs to place it."""
-        name = inp.program if isinstance(inp, ProgramInput) else FILES
-        program = find_program(name)
+        program = find_program(_name(inp))
         if program is None:
             return None
         return self._entry_of(program)
@@ -1416,7 +1415,9 @@ class Runner:
         this returns. The others are planned now and run in the runner's threads:
         every submitted calculation of the runner is packed into its threads and GPUs
         as a list's are, admitted in the order submitted. They share the machine
-        with each other, not with `compute` calls, which take their own share.
+        with each other, not with `compute` calls, which take their own share. A
+        calculation never waits on a future itself (it would hold its share while
+        it waits): a program runs its subprograms through ``ctx.compute``.
 
         Args:
             inp: The input.

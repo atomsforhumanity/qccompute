@@ -5,9 +5,13 @@ runs the same way, whether it implements qccompute's protocol in Python or is an
 external program that [qccodec](https://qccodec.docs.afh.org) brings in:
 
 ```sh
-python -m pip install qccompute            # the runner
-python -m pip install qccompute[qccodec]   # and external programs (xtb, ORCA, Psi4, ...)
+uv pip install --prerelease=allow "qcdata==0.24.0a2" "qccompute[qccodec]==0.23.0a1" "qcstore==0.1.0a1"
 ```
+
+This is the alpha line, pinned with its matching packages; a plain `pip install
+qccompute` resolves the previous stable release. `qccompute` alone is the runner; the
+`qccodec` extra adds external programs (xtb, ORCA, Psi4, ...) and `qcstore` is the
+calculation store.
 
 ## One calculation
 

@@ -1,13 +1,13 @@
 """Conformance tests for programs implementing `qccompute.program.Program`.
 
-Each AFH program runs `check_program` in its CI with a few small inputs of its own (the
-one place a program imports qccompute, as a test dependency)::
+A program runs `check_program` in its CI with a few small inputs of its own (the one
+place a program imports qccompute, as a test dependency)::
 
     from qccompute.testing import check_program
 
     def test_conforms(water):
-        check_program(linus.qc.program, [
-            ProgramInput(program="linus", calctype="gradient", structure=water,
+        check_program(mychem.qc.program, [
+            ProgramInput(program="mychem", calctype="gradient", structure=water,
                          model={"method": "hf", "basis": "sto-3g"}),
         ])
 

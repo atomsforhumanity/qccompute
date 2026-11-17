@@ -11,10 +11,13 @@ Runs quantum chemistry programs on [qcdata](https://github.com/atomsforhumanity/
 
 ## Install
 
+The new runner is in alpha. Install the alpha line with its matching packages pinned (a plain `pip install qccompute` resolves the previous stable release):
+
 ```sh
-python -m pip install qccompute            # the runner, for programs that implement its protocol
-python -m pip install qccompute[qccodec]   # and external programs: xtb, ORCA, Psi4, CREST, ...
+uv pip install --prerelease=allow "qcdata==0.24.0a2" "qccompute[qccodec]==0.23.0a1" "qcstore==0.1.0a1"
 ```
+
+`qccompute` alone is the runner, for programs that implement its protocol; the `qccodec` extra adds external programs (xtb, ORCA, Psi4, CREST, ...) and `qcstore` is the calculation store.
 
 ## One way to run things
 

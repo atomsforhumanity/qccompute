@@ -1,10 +1,10 @@
-"""The protocol an AFH program implements to run under qccompute, and its sessions.
+"""The protocol a program implements to run under qccompute, and its sessions.
 
 A program package registers one object (an instance, not its class) under the
 ``qccompute.programs`` entry point group::
 
     [project.entry-points."qccompute.programs"]
-    linus = "linus.qc:program"
+    mychem = "mychem.qc:program"
 
 The object implements `Program`: it says what it can do (`capabilities`), publishes the
 JSON Schema of its settings (`settings_schema`) and of its run record (`record_schema`),
@@ -43,7 +43,7 @@ potential in a script): the smallest complete example of the protocol.
 plain mapping (the document its command line prints and its worker sends), which
 qccompute validates (`capabilities_of`, `plan_of`). What programs share as data is in
 qcdata: inputs and outputs, `Frame`, `qcdata.Request`, `qcdata.Accuracy` and
-`qcdata.ProgramError`. So ``linus.Session(inp)`` and ``linus.compute(inp)`` work without
+`qcdata.ProgramError`. So ``mychem.Session(inp)`` and ``mychem.compute(inp)`` work without
 qccompute, and qccompute runs the same objects.
 
 Programs are found by name through `find_program`. A program that is not an installed
@@ -182,7 +182,7 @@ class Plan(QCDataBaseModel):
             the input's ``threads`` keyword asks) and packs lists by it. A program with
             subprograms gives the largest over its subprograms' plans.
         warnings: What the program would warn about.
-        record: The program's own detail of the plan (linus: placement, arithmetic
+        record: The program's own detail of the plan (a placement, arithmetic
             and memory plan), shaped like a run's record.
     """
 
@@ -457,7 +457,7 @@ class RunContext:
 class Session(Protocol):
     """The same program and molecule at many geometries, warm-started.
 
-    Opened from a `ProgramInput` (``linus.Session(inp)`` directly, or
+    Opened from a `ProgramInput` (``mychem.Session(inp)`` directly, or
     `SessionProgram.open_session` under qccompute). The input pins the atoms, charge,
     multiplicity, model and keywords (method, basis, grids, precision) for the session's
     lifetime, so all its evaluations lie on one potential energy surface; anything else
@@ -1030,8 +1030,8 @@ def numerics_of(program: Program, spec: ProgramSpec | FileInput) -> str:
     """A program's numerics identity for a spec: ``program.numerics(spec)``, else its version.
 
     ``numerics(spec) -> str`` is optional in the protocol: a string that changes
-    whenever the program's results for an unchanged input may change (linus: its
-    numerics epoch; an external program: its executable's sha256; an ML potential: its
+    whenever the program's results for an unchanged input may change (a numerics
+    epoch the program bumps; an external program: its executable's sha256; an ML potential: its
     model's checksum). It takes the spec (an input, or a subprogram's `ProgramSpec`),
     so a program of several methods can give each its own. A store files every run
     under the identities of the programs that made it, and a runner reuses a run only

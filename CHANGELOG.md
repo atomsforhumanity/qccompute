@@ -11,7 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 The first alpha of qccompute as the runner for AFH programs. qccompute now depends on
 qcdata only. External programs come from qccodec, the optional add-on
 (`pip install qccompute[qccodec]`), as programs like any other. Breaking changes come
-without compatibility shims; [the migration guide](https://qccompute.docs.afh.org/migration/)
+without compatibility shims; [the migration guide](https://github.com/atomsforhumanity/qccompute/blob/0.23.0a1/docs/migration.md)
 covers moving from 0.22.
 
 ### Added

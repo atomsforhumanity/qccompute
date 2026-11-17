@@ -188,6 +188,14 @@ fails without running), place it (this process, or a worker process for programs
 `in_process=False` and for `isolation="process"`), call `compute` or `compute_batch`
 with a context, record the execution.
 
+**Execution.** The runner sets each output's `execution`: `wall_time` (the call's), the
+host, `identities`, and `threads` when the program left it unset (the threads granted).
+The outputs of a batch ran together, so each carries the whole batch's `wall_time`, and
+one whose program left `threads` unset gets its own input's part of the batch's grant:
+the threads it asked for, scaled down when the batch was capped (`max(1, asked × granted
+// total asked)`). So `wall_time × threads` adds up across a batch's outputs, and a
+store's runs, to what the batch cost, to rounding.
+
 **Resources.** qc* never allocates machines, queues work or enforces limits: a
 dispatcher (a batch system, Kubernetes) gives the process its cores, memory and GPUs. A
 runner shares them out. Each calculation gets the threads it asks for (its `threads`

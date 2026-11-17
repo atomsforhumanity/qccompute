@@ -864,7 +864,9 @@ class BatchProgram(Program, Protocol):
         Under a runner, ``ctx`` is the batch's grant: the sum of its inputs' threads
         (at most the runner's) and the most GPUs any of them asks for. The program
         divides it among the inputs (one thread each to N one-thread searches run
-        side by side).
+        side by side), and records in each output's ``execution.threads`` what that
+        input used; left unset, the runner records the input's own part of the
+        grant. Every output carries the whole batch's ``wall_time``.
 
         Returns:
             One output per input, in order; a failed calculation is a failed output

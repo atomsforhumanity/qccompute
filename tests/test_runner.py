@@ -532,6 +532,44 @@ def test_a_batch_gets_the_threads_of_its_inputs_together():
     assert granted == [(8, 8), (3, 3), (20, 8), (3, 6), (2, 2)]
 
 
+def test_a_batch_output_reports_its_own_inputs_threads():
+    """Not the whole batch's: its term in the sum, scaled down if capped (#52)."""
+
+    class Unrecorded(ToyProgram):  # a batch program that records no threads
+        name = "unrecorded"
+
+        def compute_batch(self, inputs, ctx=None):
+            toy = [i.model_copy(update={"program": "toy"}) for i in inputs]
+            outs = super().compute_batch(toy, ctx)
+            return [
+                o.model_copy(
+                    update={
+                        "input_data": i,
+                        "execution": o.execution.model_copy(update={"threads": None}),
+                    }
+                )
+                for i, o in zip(inputs, outs, strict=True)
+            ]
+
+    register_program(Unrecorded())
+
+    def batch(*threads):
+        return [
+            toy_input(program="unrecorded", epsilon=0.01 * (i + 1), threads=t)
+            for i, t in enumerate(threads)
+        ]
+
+    with Runner(threads=8) as runner:
+        three = runner.compute(batch(2, 2, 2))  # 6 threads, uncapped
+        capped = runner.compute(batch(8, 4, 4))  # 16 asked, 8 granted
+        many = runner.compute(batch(*[1] * 20))  # 20 asked, 8 granted
+    assert [o.execution.threads for o in three] == [2, 2, 2]
+    assert [o.execution.threads for o in capped] == [4, 2, 2]  # adds up to 8
+    assert {o.execution.threads for o in many} == {1}  # at least 1 each
+    # Every output of a batch carries the whole batch's wall time.
+    assert len({o.execution.wall_time for o in capped}) == 1
+
+
 # ------------------------------------------------------------------------- store
 
 

@@ -483,6 +483,10 @@ def _with_execution(
 ) -> Output:
     """The output with what the runner measured and the code that made it.
 
+    ``wall_time`` is the call's: for an output of a batch, the whole batch's, since its
+    inputs ran together. ``threads`` stays the program's when it set it; else it is
+    the grant, and for an output of a batch its own part of it (`_Task.threads_of`),
+    so ``wall_time * threads`` adds up across a batch's outputs to the batch's cost.
     The program's own timings stay. ``identities`` are those of the programs that ran
     (`Runner.identities`). The output is the caller's from here on, so it is updated
     in place; its `ExecutionInfo` is copied (a program may share one between outputs)
@@ -570,7 +574,7 @@ class _Task:
     GPUs any of them asks for (a batch runs its inputs together on its devices).
     """
 
-    __slots__ = ("indices", "inputs", "entry", "threads", "gpus", "plan")
+    __slots__ = ("indices", "inputs", "entry", "threads", "asked", "gpus", "plan")
 
     def __init__(
         self, index: int, inp: Input, entry: _Entry, plan: Plan, threads: int
@@ -579,6 +583,7 @@ class _Task:
         self.inputs = [inp]
         self.entry = entry
         self.threads = threads
+        self.asked = [threads]
         self.gpus = plan.resources.gpus
         self.plan = plan
 
@@ -586,8 +591,19 @@ class _Task:
         """Add an input to a batch, with the threads it asks for (at most ``cap``)."""
         self.indices.append(index)
         self.inputs.append(inp)
+        self.asked.append(threads)
         self.threads = min(cap, self.threads + threads)
         self.gpus = max(self.gpus, plan.resources.gpus)
+
+    def threads_of(self, granted: int) -> list[int]:
+        """Each input's part of the batch's ``granted`` threads, for its output.
+
+        Its own term in the sum the batch asked for, scaled down when the batch got
+        less: ``max(1, asked * granted // total asked)``. They add up to the grant,
+        to rounding.
+        """
+        total = sum(self.asked)
+        return [max(1, asked * granted // total) for asked in self.asked]
 
 
 # ---------------------------------------------------------------------------- runner
@@ -1338,9 +1354,12 @@ class Runner:
             ctx.cleanup()
             if worker is not None:
                 self._release(worker, devices)
-        wall = time.perf_counter() - start
-        for i, inp, out in zip(task.indices, task.inputs, outs, strict=True):
-            out = _with_execution(out, wall, threads, self.identities(inp))
+        wall = time.perf_counter() - start  # the batch's: its inputs ran together
+        parts = task.threads_of(threads)
+        for i, inp, out, part in zip(
+            task.indices, task.inputs, outs, parts, strict=True
+        ):
+            out = _with_execution(out, wall, part, self.identities(inp))
             yield i, out, None if out.success else _error(out)
 
     # ------------------------------------------------------------------ subprograms

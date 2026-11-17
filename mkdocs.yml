@@ -109,7 +109,7 @@ nav:
       - Programs and sessions (API): api/program.md
       - Running (API): api/runner.md
       - The program interface (design): design/program-interface.md
-      - Program pages and examples: https://qccodec.docs.afh.org/programs/
+      - Program pages and examples: https://qccodec.docs.afh.org/next/programs/
   - Examples:
       - Overview: examples/overview.md
       - File Input: examples/file_input.md

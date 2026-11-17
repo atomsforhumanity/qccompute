@@ -7,17 +7,17 @@
 
 Runs quantum chemistry programs on [qcdata](https://github.com/atomsforhumanity/qcdata) inputs: one input or many, in this process or in worker processes, with an optional calculation store. Every program, whether written in Python for the protocol or an external program brought in by [qccodec](https://github.com/atomsforhumanity/qccodec), runs the same way.
 
-**Documentation: [qccompute.docs.afh.org](https://qccompute.docs.afh.org)**
+**Documentation of the alpha: [qccompute.docs.afh.org/next](https://qccompute.docs.afh.org/next/)** (the site root documents the stable release)
 
 ## Install
 
-The new runner is in alpha. Install the alpha line with its matching packages pinned (a plain `pip install qccompute` resolves the previous stable release):
+The new runner is in alpha. Install the alpha line with its matching packages pinned (`--prerelease=allow` lets the resolver take pre-releases; a plain `pip install qccompute` resolves the previous stable release):
 
 ```sh
-uv pip install --prerelease=allow "qcdata==0.24.0a2" "qccompute[qccodec]==0.23.0a1" "qcstore==0.1.0a1"
+uv pip install --prerelease=allow "qcdata==0.24.0a6" "qccompute[qccodec]==0.23.0a5" "qccodec==0.22.0a4" "qcstore==0.1.0a4"
 ```
 
-`qccompute` alone is the runner, for programs that implement its protocol; the `qccodec` extra adds external programs (xtb, ORCA, Psi4, CREST, ...) and `qcstore` is the calculation store.
+`qccompute` alone is the runner, for programs that implement its protocol (`uv pip install --prerelease=allow "qcdata==0.24.0a6" "qccompute==0.23.0a5"`); the `qccodec` extra adds external programs (xtb, ORCA, Psi4, CREST, ...) and `qcstore` is the calculation store. Coming from 0.22? See [the migration guide](https://qccompute.docs.afh.org/next/migration/).
 
 ## One way to run things
 
@@ -67,10 +67,10 @@ qccompute.register_program(FunctionProgram("harmonic", harmonic))
 ## The QC Suite
 
 - [qcref](https://github.com/atomsforhumanity/qcref) - Reference data: physical constants, conversion factors, a periodic table, solvents, each value with its source.
-- [qcdata](https://github.com/atomsforhumanity/qcdata) - Data structures for quantum chemistry inputs and results. [Documentation](https://qcdata.docs.afh.org)
+- [qcdata](https://github.com/atomsforhumanity/qcdata) - Data structures for quantum chemistry inputs and results. [Documentation](https://qcdata.docs.afh.org/next/)
 - [qcinf](https://github.com/atomsforhumanity/qcinf) - Cheminformatics algorithms and structure utilities for qcdata structures.
-- [qccodec](https://github.com/atomsforhumanity/qccodec) - External programs as programs qccompute runs: their input files, output parsers, and execution. [Documentation](https://qccodec.docs.afh.org)
-- [qccompute](https://github.com/atomsforhumanity/qccompute) - Runs programs on qcdata inputs. [Documentation](https://qccompute.docs.afh.org)
+- [qccodec](https://github.com/atomsforhumanity/qccodec) - External programs as programs qccompute runs: their input files, output parsers, and execution. [Documentation](https://qccodec.docs.afh.org/next/)
+- [qccompute](https://github.com/atomsforhumanity/qccompute) - Runs programs on qcdata inputs. [Documentation](https://qccompute.docs.afh.org/next/)
 
 ## Support
 

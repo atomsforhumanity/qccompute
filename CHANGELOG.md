@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [unreleased]
 
+## [0.23.0a2] - 2026-11-17
+
+### Changed
+
+- **Breaking:** a calculation gets the threads it asks for: its `threads` keyword, else its plan's `resources.threads`, else 1, capped at the runner's. `resources.threads = None` asks for the whole runner, or the parent's whole grant for a subprogram. This applies to single inputs, sessions and subprograms; before, every single calculation got the whole machine (a water gradient took 221 ms and 9.9 CPU-s on a large node; now 1.3 ms).
+- **Breaking:** every input is planned before it runs; an input its plan refuses fails without running.
+- **Breaking:** `FunctionProgram(..., version=None)`: its version and numerics default to a digest of the functions' code, so editing a function never serves stale stored results.
+- **Breaking:** the identities of a program named with several specs are joined with `;`.
+- **Breaking:** `WorkerSession(worker, key, inp, program_version="", on_close=None, grant=None)`; `Host(program, array_dir=None)`.
+- Stored failures of kind `convergence`, and of kind `program` caused by one, are reused, as decision 29 says; `rerun=True` gets past them.
+
+### Added
+
+- Worker protocol: hello flags `array_files` and `calls`, and an `options` op. Subprograms of a program hosted in a worker run in the caller's process, so a program registered there (a `FunctionProgram` in a script) works as a subprogram of geomeTRIC. Arrays over 1 MiB cross as `.npy` files (a 1200 × 1200 Hessian: 852 ms inline, 20 ms as files).
+- `qccompute.default_runner`; a sessions example and a docs page on lineages, seeds, commits and resets.
+
+### Fixed
+
+- Every second geomeTRIC run failed with `FileNotFoundError`: a nested worker inherited a deleted scratch directory as its working directory.
+- The migration-guide link.
+
+
 ## [0.23.0a1] - 2026-11-17
 
 The first alpha of qccompute as the runner for AFH programs. qccompute now depends on

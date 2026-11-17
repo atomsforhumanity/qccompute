@@ -1,13 +1,13 @@
 [project]
 name = "qccompute"
-version = "0.23.0a1"
+version = "0.23.0a2"
 description = "Run quantum chemistry programs on qcdata inputs: one input or many, in process or in workers, with a calculation store. External programs come with qccompute[qccodec]."
 authors = [{ name = "Colton Hicks", email = "github@coltonhicks.com" }]
 requires-python = ">=3.11"
 readme = "README.md"
 license = { file = "LICENSE" }
 dependencies = [
-    "qcdata>=0.24.0a2",
+    "qcdata>=0.24.0a3",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",

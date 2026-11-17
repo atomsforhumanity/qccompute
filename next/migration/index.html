@@ -1152,7 +1152,8 @@ runner's threads and GPUs, instead of within <code>max_workers</code>. A program
 many inputs at once gets them together; there is no <code>batch_size</code> or <code>batch_index</code> in
 <code>execution.extras</code> beyond what a program records, and the batch's wall time is
 <code>execution.timings["batch"]</code>. <code>Runner.as_completed</code> yields outputs as they finish, and
-<code>qccompute.submit(inp)</code> returns a <code>concurrent.futures.Future</code> of one output.</p>
+<code>qccompute.submit(inp, priority=0)</code> returns a <code>concurrent.futures.Future</code> of one output,
+whose <code>cancel()</code> ends the calculation even while it runs.</p>
 <h2 id="sessions">Sessions<a class="headerlink" href="#sessions" title="Permanent link">&para;</a></h2>
 <p><code>qccompute.session(spec, structure, threads=..., **compute_options)</code> is
 <code>qccompute.session(inp, calctypes=None, threads=None, progress=None)</code>: build the input

@@ -1096,11 +1096,11 @@
 <p>qccompute runs programs on <a href="https://qcdata.docs.afh.org/next/">qcdata</a> inputs. Every program
 runs the same way, whether it implements qccompute's protocol in Python or is an
 external program that <a href="https://qccodec.docs.afh.org/next/">qccodec</a> brings in:</p>
-<div class="language-sh highlight"><pre><span></span><code>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>--prerelease<span class="o">=</span>allow<span class="w"> </span><span class="s2">&quot;qcdata==0.24.0a6&quot;</span><span class="w"> </span><span class="s2">&quot;qccompute[qccodec]==0.23.0a5&quot;</span><span class="w"> </span><span class="s2">&quot;qccodec==0.22.0a4&quot;</span><span class="w"> </span><span class="s2">&quot;qcstore==0.1.0a4&quot;</span>
+<div class="language-sh highlight"><pre><span></span><code>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>--prerelease<span class="o">=</span>allow<span class="w"> </span><span class="s2">&quot;qcdata&gt;=0.24.0a8&quot;</span><span class="w"> </span><span class="s2">&quot;qccompute[qccodec]&gt;=0.23.0a6&quot;</span><span class="w"> </span><span class="s2">&quot;qccodec&gt;=0.22.0a5&quot;</span><span class="w"> </span><span class="s2">&quot;qcstore&gt;=0.1.0a4&quot;</span>
 </code></pre></div>
-<p>This is the alpha line, pinned with its matching packages (<code>--prerelease=allow</code> lets the
+<p>This is the alpha line, with minimum versions of its matching packages (<code>--prerelease=allow</code> lets the
 resolver take pre-releases); a plain <code>pip install qccompute</code> resolves the previous stable
-release. <code>qccompute</code> alone is the runner (<code>"qcdata==0.24.0a6" "qccompute==0.23.0a5"</code>);
+release. <code>qccompute</code> alone is the runner (<code>"qcdata&gt;=0.24.0a8" "qccompute&gt;=0.23.0a6"</code>);
 the <code>qccodec</code> extra adds external programs (xtb, ORCA, Psi4, ...) and <code>qcstore</code> is the
 calculation store. These pages document the alpha, at
 <a href="https://qccompute.docs.afh.org/next/">qccompute.docs.afh.org/next</a>; the site root
@@ -1230,18 +1230,23 @@ code made it in <code>execution.identities</code>, with or without a store. A st
 is reused only when its identities are those of the programs that would run now; a
 stored failure only when the input determines it (kind <code>input</code>, <code>unsupported</code> or
 <code>convergence</code>, or <code>program</code> with such a cause), never one of the machine or the moment
-(<code>resource</code>, <code>timeout</code>, <code>environment</code>, ...). <code>rerun=True</code> always runs, past a stored
+(<code>resource</code>, <code>timeout</code>, <code>environment</code>, ...). A stopped run is never stored. <code>rerun=True</code> always runs, past a stored
 failure too; <code>tags</code> go onto every key, cache hits included. Every output returned with a
 store names its run, computed or hit, in <code>execution.store_run</code> (<code>"&lt;key&gt;/&lt;run&gt;"</code>), so a
 network or a report can cite the exact run and read it back with
 <code>store.get(key, run=...)</code>. A store implements <code>key</code>, <code>get</code>, <code>put</code> and <code>tag</code>
-(<code>qccompute.runner.Store</code>); qcstore is one.</p>
+(<code>qccompute.runner.Store</code>); qcstore is one. Rerunning a workflow from a store is all
+cache hits only when it asks for the same inputs; a workflow whose choices depend on
+timing keeps its own decision state (see
+<a href="examples/dynamic_workflows/">Dynamic workflows</a>).</p>
 <h2 id="one-calculation-at-a-time-as-futures">One calculation at a time, as futures<a class="headerlink" href="#one-calculation-at-a-time-as-futures" title="Permanent link">&para;</a></h2>
 <p><code>qccompute.submit(inp)</code> (and <code>Runner.submit</code>) starts a calculation and returns a
 <code>concurrent.futures.Future</code> of its output, for workflows whose next step depends on the
 last: per reaction, the IRC starts as soon as its transition-state search ends, with no
-stage barriers. Submitted calculations share the runner's threads as a list's do; a
-stored result resolves at once. See <a href="examples/dynamic_workflows/">Dynamic workflows</a>.</p>
+stage barriers. Submitted calculations share the runner's threads as a list's do,
+waiting highest <code>priority</code> first; a stored result resolves at once, and
+<code>future.cancel()</code> ends a calculation even while it runs. See
+<a href="examples/dynamic_workflows/">Dynamic workflows</a>.</p>
 <p>A program that is not thread-safe (qcopt) runs one calculation at a time per process.
 The runner warns the first time one waits for its turn; <code>Runner(isolation="process")</code>
 runs them side by side in worker processes.</p>
@@ -1259,6 +1264,17 @@ names from your input down to the one that emitted it, so a subprogram's events
 at once. Stored outputs emit nothing, and nothing is stored. A program in a worker
 process streams its events back. <code>submit</code>, <code>as_completed</code> and <code>session</code> take
 <code>progress=</code> too; to tell a list's inputs apart, submit each with its own callable.</p>
+<p>A submitted calculation can be stopped at its next step, keeping what it reached:</p>
+<div class="language-python highlight"><pre><span></span><code><span class="n">future</span> <span class="o">=</span> <span class="n">qccompute</span><span class="o">.</span><span class="n">submit</span><span class="p">(</span><span class="n">search</span><span class="p">,</span> <span class="n">progress</span><span class="o">=</span><span class="n">show</span><span class="p">)</span>
+<span class="o">...</span>
+<span class="n">qccompute</span><span class="o">.</span><span class="n">stop</span><span class="p">(</span><span class="n">future</span><span class="p">)</span>  <span class="c1"># the program sees ctx.stop_requested() and ends there</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">future</span><span class="o">.</span><span class="n">result</span><span class="p">()</span>
+<span class="k">except</span> <span class="n">qcdata</span><span class="o">.</span><span class="n">ProgramError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>  <span class="c1"># kind &quot;stopped&quot;, with the frames reached so far</span>
+    <span class="n">frames</span> <span class="o">=</span> <span class="n">e</span><span class="o">.</span><span class="n">output</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">frames</span>
+</code></pre></div>
+<p>A stopped output is never stored. <code>future.cancel()</code> instead ends the calculation and
+discards it.</p>
 <h2 id="programs">Programs<a class="headerlink" href="#programs" title="Permanent link">&para;</a></h2>
 <p>A program is an object implementing <code>qccompute.program.Program</code>: its <code>name</code>, <code>version()</code>,
 <code>capabilities()</code>, the JSON Schema of its settings and of its record, <code>plan(inp)</code> (a dry

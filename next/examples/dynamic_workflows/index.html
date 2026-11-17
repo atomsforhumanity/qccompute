@@ -909,17 +909,39 @@ so each reaction moves to its next step as soon as its last one finishes:</p>
 <li><strong>The runner packs submitted calculations</strong> into its threads and GPUs as it packs a
   list, admitted in the order submitted: on 8 threads, eight one-thread searches run at
   once and the ninth starts when one ends. A stored result resolves its future before
-  <code>submit</code> returns, so a rerun of the whole workflow from a store computes nothing.</li>
+  <code>submit</code> returns, so a rerun of this workflow from a store computes nothing: it asks
+  for the same inputs again.</li>
 <li><strong><code>future.result()</code></strong> is the output, or raises <code>qcdata.ProgramError</code> with the failed
-  output as <code>e.output</code>, as <code>compute</code> does. <code>concurrent.futures.as_completed</code>,
-  <code>future.add_done_callback</code> and <code>future.cancel()</code> (before it starts) work as for any
-  future.</li>
+  output as <code>e.output</code>, as <code>compute</code> does. <code>concurrent.futures.as_completed</code> and
+  <code>future.add_done_callback</code> work as for any future.</li>
+<li><strong>Priorities and cancelling.</strong> <code>runner.submit(inp, priority=2)</code> puts a calculation
+  ahead of every waiting one of lower priority (default 0); within a priority, the first
+  submitted starts first, and running calculations are never displaced. So a workflow
+  can keep submitting what it finds and still have its most promising work start
+  first. <code>future.cancel()</code> works while the calculation runs, too: a worker running it
+  is killed with every process it started (an external program's included), and one
+  running in this process stops at its next look at <code>ctx.timeout</code>, which reads 0, as
+  for a timeout. A cancelled calculation is never stored; <code>future.result()</code> raises
+  <code>CancelledError</code>.</li>
+<li><strong>Stopping, keeping what was reached.</strong> <code>runner.stop(future)</code> asks a running search to
+  end at its next step: the program sees <code>ctx.stop_requested()</code> and returns its partial
+  output under kind <code>stopped</code>, which <code>future.result()</code> raises with as <code>e.output</code> (in a
+  worker process too). Its subprograms stop with it. A stopped output is never stored,
+  so a later run of the same input runs it in full.</li>
 <li><strong>Programs that are not thread-safe</strong>, qcopt among them, take turns in one process:
   submitted from threads or as futures, they would run one at a time. The runner warns
   the first time a calculation waits for its turn; <code>isolation="process"</code>, as above,
   runs each in a worker process, side by side. On ten reactions of 12 to 30 atoms
   (g-xTB, 8 cores), threads each chaining <code>compute</code> took 55.8 s, the three stage lists
   28.0 s, and the same chains on <code>Runner(threads=8, isolation="process")</code> 14.8 s.</li>
+<li><strong>Rerunning is not resuming.</strong> A rerun is all cache hits only when the workflow, given
+  the same results, asks for exactly the same inputs: the key is the input as given, so
+  a geometry, seed or keyword that differs is a miss. A workflow whose choices depend on
+  timing (which future finished first, a reference structure replaced when a lower one
+  arrives, priorities that read what has been found so far) takes other branches when
+  rerun. The store still serves every calculation it asks for again, but it does not
+  hold the workflow's decisions: what was searched, what was set aside, where it was
+  heading. Such a workflow keeps that decision state itself and resumes from it.</li>
 <li><strong>Live progress:</strong> <code>submit(inp, progress=functools.partial(show, name))</code> hands each
   calculation's events to a callable that knows which reaction it is (see
   <a href="../../#progress">Progress</a>).</li>

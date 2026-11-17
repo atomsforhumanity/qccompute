@@ -647,6 +647,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#stopping" class="md-nav__link">
+    <span class="md-ellipsis">
+      Stopping
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#failures" class="md-nav__link">
     <span class="md-ellipsis">
       Failures
@@ -1022,6 +1031,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#stopping" class="md-nav__link">
+    <span class="md-ellipsis">
+      Stopping
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#failures" class="md-nav__link">
     <span class="md-ellipsis">
       Failures
@@ -1219,7 +1237,9 @@ subprograms:</p>
   smaller of its own request and the grant, or the grant when it requested nothing; a
   capped request is a <code>resource_capped</code> warning. The GPUs are as many as its plan asks
   for (<code>plan.resources.gpus</code>), of the runner's or the parent's: a program whose
-  subprograms use GPUs plans theirs and passes them on.</li>
+  subprograms use GPUs plans theirs and passes them on. While the program runs, the
+  runner holds the process's BLAS and OpenMP pools at its threads (below, <strong>Thread
+  pools</strong>).</li>
 <li><code>device_ordinals()</code>: the granted GPUs as this process's CUDA device ordinals, so every
   program maps a grant alike. <code>gpus</code> names them as <code>CUDA_VISIBLE_DEVICES</code> does (indices
   or <code>GPU-</code>/<code>MIG-</code> UUIDs). When the process's <code>CUDA_VISIBLE_DEVICES</code> is set, a GPU's
@@ -1245,12 +1265,16 @@ subprograms:</p>
 <li><code>progress</code>: where the program reports what it is doing while it runs, when the
   caller listens (below, <strong>Progress</strong>); None when nobody does, so a program checks it
   before building an event.</li>
+<li><code>stop_requested()</code>: whether the caller asked the calculation to stop (below,
+  <strong>Stopping</strong>). A program that works in steps checks it before each step.</li>
 <li><code>scratch</code>: a directory, made on first use and removed when the call returns.</li>
 <li><code>compute(inputs, raise_exc=True)</code> and <code>session(spec, structure, threads=, calctypes=)</code>:
   subprograms, within the grant. They run only programs the calculation's input names,
   its own and its subprograms' recursively, and every program a subprogram's input
   names must be among them; another is refused (kind <code>input</code>, code
-  <code>unnamed_subprogram</code>), so a run's identities cover every program it used. A program
+  <code>unnamed_subprogram</code>), so a run's identities cover every program it used. The
+  refusal fails the calculation, whatever the program returns or raises afterwards: a
+  store then reuses it, as any input error, rather than rerunning the work. A program
   that decides at run time which programs to run (a path method that minimizes its
   ends) names each in its input's subprograms.</li>
 </ul>
@@ -1285,6 +1309,27 @@ one event per step); the runner only delivers them, and nothing is stored.</p>
   (<code>ctx.progress</code> on the wire, below); a program run without a listener has
   <code>ctx.progress</code> None, so an unused progress channel costs nothing.</li>
 </ul>
+<h2 id="stopping">Stopping<a class="headerlink" href="#stopping" title="Permanent link">&para;</a></h2>
+<p><code>runner.stop(future)</code> (<code>qccompute.stop</code> for the default runner) asks a submitted
+calculation to stop at its next step and keep what it reached: Stop &amp; analyze in a live
+view, a search ended on a budget. It is not a cancel, which discards the calculation.</p>
+<ul>
+<li>The program sees the request as <code>ctx.stop_requested()</code>, checks it where it can end
+  cleanly (an optimizer: before each step), and ends there: its output is a failure of
+  kind <code>stopped</code> with its partial results (a search's frames so far), raised as for any
+  failure. <code>future.result()</code> raises <code>qcdata.ProgramError</code> with that output.</li>
+<li>The request covers the whole calculation: its subprograms see it through their
+  contexts, and a program whose subprogram stopped stops too. When a program lets a
+  stopped subprogram's failure escape, the runner fails it with kind <code>stopped</code> (not
+  <code>program</code>), the subprogram's error as <code>cause</code>.</li>
+<li>In a worker process the request reaches the program through a file named in the
+  message's context (<code>stop_file</code>), which the client creates while the message is in
+  flight: one <code>stat</code> per check, and never the wrong message. The worker is asked, not
+  killed, and serves on.</li>
+<li>A calculation asked before it starts stops at its first step; a program with no steps
+  runs to its end. The runner never stores a stopped output, and a store never reuses
+  one.</li>
+</ul>
 <h2 id="failures">Failures<a class="headerlink" href="#failures" title="Permanent link">&para;</a></h2>
 <p>A failed calculation raises <code>qcdata.ProgramError</code>, from <code>compute</code> as from sessions. Its
 <code>error</code> is an <code>ErrorInfo</code> (<code>kind</code>, <code>message</code>, an optional <code>code</code>, and for a failed
@@ -1305,8 +1350,9 @@ runner reports it as kind <code>internal</code>, caused by the original exceptio
 </ul>
 <p>A subprogram's failure that a program lets escape fails it with kind <code>program</code>, the
 subprogram's name and its error as <code>cause</code>; a program that catches it sees the
-subprogram's own error. The runner sets the kinds <code>timeout</code> (a deadline) and
-<code>environment</code> (a program not installed, a worker that died: code <code>worker_died</code>).</p>
+subprogram's own error (kind <code>stopped</code> when the subprogram stopped on request). The
+runner sets the kinds <code>timeout</code> (a deadline) and <code>environment</code> (a program not
+installed, a worker that died: code <code>worker_died</code>).</p>
 <h2 id="sessions">Sessions<a class="headerlink" href="#sessions" title="Permanent link">&para;</a></h2>
 <p>The same program and molecule at many geometries, warm-started: what optimizers, IRCs,
 dynamics, path methods and finite differences need. <code>prog.Session(inp)</code> is both the
@@ -1357,10 +1403,15 @@ every visible GPU), made on first use, never reconfigured.</p>
 <p><code>submit</code> is for workflows whose next calculation depends on the last (per reaction, a
 transition-state search, the IRC from its saddle, then both ends), many at once with no
 stage barriers. A stored output, or an input its program refuses, resolves the future
-before <code>submit</code> returns; the others are planned at once and run in the runner's threads.
-A runner's submitted calculations are packed into its threads and GPUs as a list's are,
-admitted in the order submitted; <code>compute</code> calls take their own share, as before.
-Cancelling a future before it starts skips its calculation.</p>
+before <code>submit</code> returns; the others are planned at once and wait in the runner's queue:
+highest <code>priority</code> first (default 0), then in the order submitted. The head of the queue
+starts as soon as it fits in the runner's threads and GPUs, packed as a list's
+calculations are; running calculations are never displaced, and <code>compute</code> calls take
+their own share, as before. <code>future.cancel()</code> cancels a calculation whether it waits or
+runs: one that waits never starts; one running in a worker process is killed with every
+process it started (below, <strong>Workers</strong>); one running in this process ends cooperatively,
+as for a timeout: <code>ctx.timeout</code> reads 0 for it and every subprogram, and it starts no
+more subprograms. A cancelled calculation's output is discarded, never stored.</p>
 <p>Every input goes one path: find the program, plan it (an input its program refuses
 fails without running), place it (this process, or a worker process for programs with
 <code>in_process=False</code> and for <code>isolation="process"</code>), call <code>compute</code> or <code>compute_batch</code>
@@ -1370,7 +1421,9 @@ with a context, record the execution.</p>
 environment: <code>hostname</code>, <code>host_cpu</code>, <code>host_mem_gib</code>, <code>cpu_model</code> (as the operating
 system names the CPU), <code>libc</code> (<code>glibc 2.39</code>) and <code>devices</code> (the granted GPUs' names, as
 <code>nvidia-smi</code> gives them), each read once per process and filled only where the program
-left it unset, so a program that knows better (one that ran elsewhere) sets its own.
+left it unset, so a program that knows better (one that ran elsewhere) sets its own. A
+program granted a GPU that ran on none (a CPU fallback) says <code>devices=[]</code>, which stays; a
+worker fills its program's <code>devices</code> the same way before the output crosses the pipe.
 The outputs of a batch ran together: each keeps a <code>wall_time</code> its program set (a
 lockstep batch knows when each task finished), else gets the batch's, and the batch's
 wall time is always <code>timings["batch"]</code>. One whose program left <code>threads</code> unset gets its
@@ -1410,6 +1463,8 @@ What the runner grants, in <code>ctx</code>:</p>
   subprogram, since a parent's grant holds its children. A batch's single <code>ctx</code> gets the
   shares, not its inputs' keywords. Like <code>threads</code>, these resource keywords are what a
   calculation asks for, and they are left out of its key.</li>
+<li>Nothing is rounded: a keyword reaches the program as given, a share as computed, so a
+  small grant is never zero and a keyword at the grant is never "capped" by rounding.</li>
 </ul>
 <p><strong>Placement.</strong> A program that may share the process runs in its threads; one that is not
 thread-safe takes turns on a lock per program. The first time one of its calculations
@@ -1424,13 +1479,38 @@ calls with different <code>threads</code>, share the program's workers rather th
 each. Each call's threads reach the program in <code>ctx.threads</code>, which it applies to that
 call (a subprocess's <code>OMP_NUM_THREADS</code>, <code>torch.set_num_threads</code>); a worker's numerical
 libraries start with the threads of the call that started it (<code>OMP_NUM_THREADS</code> and the
-others, unless set), and a library that reads them only once keeps that count. On GPUs
+others, unless set), which sizes the pools they make when they load; each call's pools
+are then held at its own threads, as in process (<strong>Thread pools</strong>). On GPUs
 at most <code>per_gpu</code> workers serve every calculation and session of a program on those
 GPUs, whose work queues on the device anyway; without GPUs, at most as many as fit side
 by side in the runner's threads at a call's threads. A call or session takes an idle
 worker of its pool, else starts one while the pool has room, else shares the worker with
 the fewest users, taking turns on it. A worker that dies or is killed for a timeout ends
 the sessions it hosts.</p>
+<p><strong>Thread pools.</strong> Multithreaded BLAS gives different last bits at different thread counts,
+so the runner holds the numerical libraries loaded in a process (OpenBLAS, MKL, BLIS,
+FlexiBLAS and the OpenMP runtimes, as <code>threadpoolctl</code> finds them) at a calculation's
+threads around each call of its program: <code>compute</code>, <code>compute_batch</code>, a session's opening
+and each of its requests, in process and in workers alike. A calculation run alone thus
+gives the same numbers in process and in a worker, whatever the caller's environment and
+whichever call started a pooled worker.</p>
+<ul>
+<li>A count that belongs to the calling thread (OpenMP's, MKL's, OpenBLAS's on OpenMP) is
+  set on the thread that calls the program and restored after.</li>
+<li>A count that belongs to the process (OpenBLAS on its own threads, BLIS, FlexiBLAS) is
+  set, and on return the call gives back what it found: a subprogram holds its own
+  threads and its parent gets its own back. In process, calculations running at once
+  with different threads share these counts (the one started last holds them); for
+  bitwise reproducibility across mixed thread counts, use <code>isolation="process"</code>. Once no
+  calculation runs, every count is back where the caller had it.</li>
+<li>A program may hold its own small linear algebra lower (qcopt runs its steps on one
+  thread), if it restores the counts around its subprograms' calls and before it returns.</li>
+<li>A program's own session in this process (what <code>qccompute.session(inp)</code> hands back
+  unwrapped: a thread-safe program's, opened by the caller) is called directly, not
+  through the runner, so its requests run with the caller's counts: the program applies
+  <code>ctx.threads</code> to them itself, or the session runs in a worker. Subprograms' sessions
+  and those of programs that take turns are held.</li>
+</ul>
 <h2 id="the-store">The store<a class="headerlink" href="#the-store" title="Permanent link">&para;</a></h2>
 <p>A store files runs by two identities, kept apart:</p>
 <ul>
@@ -1448,8 +1528,9 @@ programs it would run now, looks the key up with them, and returns a stored run 
 it was made with exactly those identities: a success always, a failure only when the
 input determines it (kind <code>input</code>, <code>unsupported</code> or <code>convergence</code>, or <code>program</code> with such
 a cause; never <code>resource</code>, <code>backend</code>, <code>environment</code>, <code>timeout</code>, <code>numerical</code> or
-<code>internal</code>). Misses run, and every run is stored with
-its identities. Every output the runner returns carries the identities of the programs
+<code>internal</code>). Misses run, and every run is stored with its identities, except a stopped
+one (kind <code>stopped</code>, or failed because a subprogram stopped): it is where the caller
+chose to end the run, not what the input gives. Every output the runner returns carries the identities of the programs
 that made it in <code>execution.identities</code>, with or without a store, so an output read back
 says which code made it; a stored run keeps the ones it was made with. <code>rerun=True</code>
 always runs; <code>tags</code> go onto every key, cache hits included;
@@ -1496,16 +1577,31 @@ between calls. <code>qccompute.worker.Worker</code> is its client.</p>
   <code>{path, shape, dtype, sha256}</code> in its place, as in a saved model; the reader checks it
   and deletes the file. A 1200 x 1200 Hessian's output crosses in 20 ms instead of
   0.85 s and a 28 MB line.</li>
-<li><strong>Subprograms run in the client:</strong> with <code>calls: true</code>, the worker's program's
-  <code>ctx.compute</code> and <code>ctx.session</code> come back to the client as call lines,
-  <code>{"call", "op", ...}</code> with the ops above, which the client answers in any order
-  (<code>{"call", "ok", "result"}</code>) while the message is in flight. So a subprogram of a
-  program in a worker (geomeTRIC's gradients) is any program the client finds,
-  registered ones included, run within the client's grant, and a nested worker is
-  started by the client, never by a worker. Without it, subprograms run in the
-  worker's own default runner.</li>
+<li><strong>Subprograms run in the worker when they can, else in the client:</strong> with
+  <code>calls: true</code>, a subprogram call of the worker's program (<code>ctx.compute</code>,
+  <code>ctx.session</code>) runs in the worker itself, within the calculation's grant, when it can
+  run there exactly as the client would run it: every program its input names is found
+  in the worker with the identities the client gave for the calculation (the wire
+  context's <code>identities</code>), may run in process, and its plan uses no GPU. So qcopt's
+  axtb gradients cost no round trip: one caffeine optimization took 10.9 ms per
+  gradient instead of 12.8-15.0 through the client, and 16 submitted at once on 8
+  threads 1.0-1.2 s instead of 1.5-2.0 s, with identical numbers. Every other call
+  comes back to the client as a call line, <code>{"call", "op", ...}</code> with the ops above,
+  which the client answers in any order (<code>{"call", "ok", "result"}</code>) while the message
+  is in flight: a program registered only in the client, one that needs a worker of its
+  own, a GPU calculation. A nested worker is started by the client, never by a worker.
+  Either way the grant, the time left, a stop, progress (paths compose: the worker's
+  <code>["axtb"]</code> under the client's <code>["qcopt"]</code>) and the check that the input names the
+  program apply alike. Without <code>calls</code>, subprograms run in the worker's own default
+  runner. A list of subprograms runs in the worker only if all of it can.</li>
 <li><strong>Context on the wire:</strong> <code>{threads, memory_gib, device_memory_gib, timeout,
-  scratch_dir, progress}</code>; the GPUs are fixed when the worker starts. With
+  scratch_dir, progress, stop_file, identities}</code>; the GPUs are fixed when the worker
+  starts. <code>identities</code> are those of the programs the client would run for the
+  calculation (<code>{program: numerics}</code>), against which the worker checks its own before
+  running a subprogram itself.
+  <code>stop_file</code> names a file whose existence asks the calculation to stop
+  (<code>ctx.stop_requested()</code> checks it): the client creates it for <code>runner.stop</code>, while the
+  message is in flight, so a request never reaches another message. With
   <code>progress: true</code> (the client's caller listens) the program's progress events stream
   back as lines <code>{"id", "progress": event}</code> naming the message in flight (for a
   session, its request's message); the client hands each to the caller's callable.</li>
@@ -1516,7 +1612,10 @@ between calls. <code>qccompute.worker.Worker</code> is its client.</p>
 <li><strong>Crashes:</strong> a dead worker is kind <code>environment</code>, code <code>worker_died</code>, with the exit
   status and the end of its stderr. After a GPU fault that poisons the device context
   (code <code>device_lost</code>) the worker answers, then exits 3. A runner kills a worker whose
-  calculation exceeds its timeout.</li>
+  calculation exceeds its timeout or is cancelled, with every process it started,
+  however deep and in whatever session (qccodec runs each external program in a
+  session of its own): the tree is found through <code>/proc</code>, frozen, then killed. Closing a
+  runner kills a worker still running a calculation rather than waiting for it.</li>
 </ul>
 <h2 id="external-programs">External programs<a class="headerlink" href="#external-programs" title="Permanent link">&para;</a></h2>
 <p>qccodec registers each external program as a program (<code>qccodec.CodecProgram</code>). An adapter
@@ -1538,9 +1637,10 @@ with the failed output and the logs when it fails.</p>
   wrote.</li>
 </ul>
 <h2 id="cost">Cost<a class="headerlink" href="#cost" title="Permanent link">&para;</a></h2>
-<p>On one core, <code>qccompute.compute</code> adds about 7 µs to a direct call of a <code>FunctionProgram</code>
-with a <code>version</code> and about 10 µs for the toy program (finding it, planning it, its
-context, recording the execution and the identities); a <code>FunctionProgram</code> without a
+<p>On one core, <code>qccompute.compute</code> adds about 10 µs to a direct call of a <code>FunctionProgram</code>
+with a <code>version</code> (finding it, planning it, its context, recording the execution and the
+identities, and about 2.4 µs of it holding numpy's OpenBLAS at the calculation's
+threads and giving the count back); a <code>FunctionProgram</code> without a
 <code>version</code> adds about 6 µs more, the digest of its functions that is its identity. The
 runner hands its plan on in <code>ctx.plan</code>, so a program need not plan twice. Through qccodec, a trivial external
 command takes about 0.26 ms more than launching it in a fresh directory by hand. A worker

@@ -633,10 +633,10 @@ class Runner:
         self._memory: float | None | Literal[False] = False
         self._entries: dict[int, _Entry] = {}
         self._entries_lock = threading.Lock()
-        # Workers by pool (`_pool`), each with its users: calls in flight and open
-        # sessions; workers being started, by pool.
-        self._pools: dict[tuple[Any, ...], dict[Worker, int]] = {}
-        self._starting: dict[tuple[Any, ...], int] = {}
+        # Workers by pool (program and GPUs), each with its users: calls in flight
+        # and open sessions; workers being started, by pool.
+        self._pools: dict[tuple[str, tuple[str, ...]], dict[Worker, int]] = {}
+        self._starting: dict[tuple[str, tuple[str, ...]], int] = {}
         self._pools_changed = threading.Condition()
         self._all_workers: weakref.WeakSet[Worker] = weakref.WeakSet()
         self._closed = False
@@ -737,25 +737,16 @@ class Runner:
 
     # ------------------------------------------------------------------ workers
 
-    def _pool(
-        self, spec: str, devices: tuple[str, ...], threads: int
-    ) -> tuple[tuple[Any, ...], int]:
-        """The pool of workers a calculation uses, and how many workers it may hold.
-
-        A worker with GPUs is pooled by its program and GPUs: a GPU program's state (a
-        model on the device, its context) is costly to repeat, and its work queues on
-        the device, so ``per_gpu`` workers serve every calculation and session of
-        that program on those GPUs, whatever their threads (a batch's threads vary
-        with its size). A worker without GPUs is pooled by its program and threads,
-        which its numerical libraries fix when it starts; as many as fit side by side
-        in the runner's threads.
-        """
-        if devices:
-            return (spec, devices), self.per_gpu
-        return (spec, threads), max(1, self.threads // threads)
-
     def _worker(self, entry: _Entry, devices: tuple[str, ...], threads: int) -> Worker:
         """A worker for this program and grant: idle, newly started, else shared.
+
+        Workers are pooled by program and GPUs, whatever the threads of the calls
+        they serve: a program's state (a model loaded, a GPU context) is costly to
+        repeat, so calls of different threads (a list's batches of different sizes)
+        share its workers. Each call's threads reach the program in its ``ctx``; a
+        worker's numerical libraries start with the threads of the call that started
+        it. A pool holds ``per_gpu`` workers on GPUs; without GPUs, as many as fit
+        side by side in the runner's threads at this call's threads.
 
         An idle worker of the pool is used first; else a new one starts while the
         pool has room; else the calculation shares the worker with the fewest users,
@@ -763,7 +754,8 @@ class Runner:
         """
         from .worker import Worker
 
-        key, room = self._pool(entry.spec, devices, threads)
+        key = (entry.spec, devices)
+        room = self.per_gpu if devices else max(1, self.threads // threads)
         dead: list[Worker] = []
         worker: Worker | None
         with self._pools_changed:
@@ -803,9 +795,9 @@ class Runner:
         worker.close()
         raise RuntimeError("This runner is closed.")
 
-    def _release(self, worker: Worker, devices: tuple[str, ...], threads: int) -> None:
+    def _release(self, worker: Worker, devices: tuple[str, ...]) -> None:
         """A call or session is done with its worker; a dead worker leaves its pool."""
-        key, _ = self._pool(worker.spec, devices, threads)
+        key = (worker.spec, devices)
         with self._pools_changed:
             pool = self._pools.get(key, {})
             if worker in pool:
@@ -877,7 +869,7 @@ class Runner:
         finally:
             ctx.cleanup()
             if worker is not None:
-                self._release(worker, devices, threads)
+                self._release(worker, devices)
         out = _with_execution(out, time.perf_counter() - start, threads, identities)
         if failure is not None:
             failure.output = out
@@ -1278,7 +1270,7 @@ class Runner:
         finally:
             ctx.cleanup()
             if worker is not None:
-                self._release(worker, devices, threads)
+                self._release(worker, devices)
         wall = time.perf_counter() - start
         for i, inp, out in zip(task.indices, task.inputs, outs, strict=True):
             out = _with_execution(out, wall, threads, self.identities(inp))
@@ -1368,7 +1360,7 @@ class Runner:
         lock = entry.lock
         if self._in_worker(entry):
             worker = self._worker(entry, granted, threads)
-            release = partial(self._release, worker, granted, threads)
+            release = partial(self._release, worker, granted)
             opened = worker.session(inp, allowed, ctx, on_close=release)
             lock = None  # the worker is this session's own process
         elif entry.caps.sessions and isinstance(program, SessionProgram):

@@ -73,8 +73,9 @@ M = TypeVar("M", bound=BaseModel)
 #: The client's ``sys.path`` for the worker, which takes it out of its environment.
 PATH_VARIABLE = "QCCOMPUTE_WORKER_SYS_PATH"
 
-#: Thread counts of numerical libraries, set for a worker to its grant unless the
-#: environment already sets them.
+#: Thread counts of numerical libraries, set for a worker to the threads of the call
+#: that starts it unless the environment already sets them; a library that reads them
+#: once keeps that count for the worker's life.
 THREAD_VARIABLES = (
     "OMP_NUM_THREADS",
     "OPENBLAS_NUM_THREADS",
@@ -89,8 +90,9 @@ class Worker:
 
     Args:
         program: The program's name (an installed program) or ``module:attribute``.
-        threads: CPU threads of the process; numerical libraries are limited to
-            these. None: not limited.
+        threads: CPU threads the process's numerical libraries start with (the
+            `THREAD_VARIABLES`, unless the environment sets them); each call's own
+            threads come in its ``ctx``, which the program applies. None: not set.
         gpus: GPUs the process sees (``CUDA_VISIBLE_DEVICES``); None: as this one.
         environment: More environment variables for the process.
 

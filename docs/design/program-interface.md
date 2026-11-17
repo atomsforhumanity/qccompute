@@ -210,15 +210,20 @@ them asks for; the program divides its grant among them.
 **Placement.** A program that may share the process runs in its threads; one that is not
 thread-safe takes turns on a lock per program. Worker processes are kept for the next
 call until the runner closes, in pools. A worker sees exactly the GPUs granted to it
-(`CUDA_VISIBLE_DEVICES`, empty for none). Workers with GPUs are pooled by program and
-GPUs: at most `per_gpu` of them serve every calculation and session of that program on
-those GPUs, whatever their threads, because a GPU program's state (a model on the
-device, its context) is costly to repeat and its work queues on the device anyway.
-Workers without GPUs are pooled by program and threads, which a worker's numerical
-libraries fix when it starts, at most as many as fit side by side in the runner's
-threads. A call or session takes an idle worker of its pool, else starts one while the
-pool has room, else shares the worker with the fewest users, taking turns on it. A
-worker that dies or is killed for a timeout ends the sessions it hosts.
+(`CUDA_VISIBLE_DEVICES`, empty for none). Workers are pooled by program and GPUs,
+whatever the threads of the calls they serve, because a program's state (a model
+loaded, a GPU context) is costly to repeat: a list's batches of different sizes, and
+calls with different `threads`, share the program's workers rather than starting one
+each. Each call's threads reach the program in `ctx.threads`, which it applies to that
+call (a subprocess's `OMP_NUM_THREADS`, `torch.set_num_threads`); a worker's numerical
+libraries start with the threads of the call that started it (`OMP_NUM_THREADS` and the
+others, unless set), and a library that reads them only once keeps that count. On GPUs
+at most `per_gpu` workers serve every calculation and session of a program on those
+GPUs, whose work queues on the device anyway; without GPUs, at most as many as fit side
+by side in the runner's threads at a call's threads. A call or session takes an idle
+worker of its pool, else starts one while the pool has room, else shares the worker with
+the fewest users, taking turns on it. A worker that dies or is killed for a timeout ends
+the sessions it hosts.
 
 ## The store
 

@@ -1212,7 +1212,7 @@ def test_gpus_come_from_the_plan():
 
 
 def test_workers_with_gpus_are_shared_by_sessions_and_calls():
-    """per_gpu workers per program and GPUs, whatever the threads; others per grant."""
+    """per_gpu workers per program and GPUs; without GPUs, as many as fit."""
     register_program(serve_programs.isolated_gpu)
     register_program(serve_programs.isolated)
     gpu = "isolated-gpu"
@@ -1249,6 +1249,20 @@ def test_workers_with_gpus_are_shared_by_sessions_and_calls():
         assert out.results.extras["ordinals"] == []
         for s in sessions:
             s.close()
+
+
+def test_workers_without_gpus_serve_calls_of_any_threads():
+    """A list's batches of different sizes share the program's worker (alpha 4)."""
+    register_program(serve_programs.isolated)
+    with Runner(threads=4, gpus=()) as runner:
+        three = runner.compute(
+            [toy_input(program="isolated", epsilon=e) for e in (1, 2, 3)]
+        )
+        two = runner.compute([toy_input(program="isolated", epsilon=e) for e in (4, 5)])
+        one = runner.compute(toy_input(program="isolated", threads=1))
+    assert len({o.results.extras["pid"] for o in [*three, *two, one]}) == 1
+    # Each call's threads reach the worker in its ctx.
+    assert [o.execution.threads for o in [*three, *two, one]] == [3, 3, 3, 2, 2, 1]
 
 
 def test_subprograms_start_only_within_the_calculations_time():

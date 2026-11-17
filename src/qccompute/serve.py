@@ -13,9 +13,8 @@ qcdata and the protocol, and knows nothing of the program beyond it. Design:
 Wire, one JSON message per line:
 
 - The first line is the hello: ``{"protocol": 1, "program", "version", "capabilities",
-  "extras", "array_files": true, "calls": true}``; ``extras`` are the capabilities'
-  (``{"numerics_epoch": 8}``), so a store guard can check them without importing the
-  program. ``array_files`` and ``calls`` say what the ``options`` message may turn on.
+  "array_files": true, "calls": true}``. ``array_files`` and ``calls`` say what the
+  ``options`` message may turn on.
 - Every message carries an ``id``; replies are ``{"id", "ok": true, "result"}`` or
   ``{"id", "ok": false, "error": ErrorInfo}``. ``ok: false`` is for the message itself
   (bad JSON, an unknown op or session, a failed open or plan); a failed calculation is a
@@ -223,14 +222,12 @@ class Host:
         self.device_lost = False
 
     def hello(self) -> dict[str, Any]:
-        """The worker's first line: protocol, program, version, capabilities, extras."""
-        caps = capabilities_of(self.program).model_dump(mode="json")
+        """The worker's first line: protocol, program, version, capabilities, options."""
         return {
             "protocol": PROTOCOL,
             "program": self.program.name,
             "version": self.program.version(),
-            "capabilities": caps,
-            "extras": dict(caps.get("extras") or {}),
+            "capabilities": capabilities_of(self.program).model_dump(mode="json"),
             "array_files": True,
             "calls": True,
         }

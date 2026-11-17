@@ -73,6 +73,14 @@ def test_sessions_cross_the_wire_bit_for_bit(client):
     hello = client.hello
     assert hello["protocol"] == 1 and hello["program"] == "toy"
     assert "lj" in hello["capabilities"]["methods"]
+    assert set(hello) == {  # no extras since numerics are per spec (#50)
+        "protocol",
+        "program",
+        "version",
+        "capabilities",
+        "array_files",
+        "calls",
+    }
     sid = client.ask(op="open", input=INP.model_dump(mode="json"))["result"]["session"]
     x = np.asarray(ARGON3.geometry) + 0.01
     first = client.ask(op="compute", session=sid)["result"]

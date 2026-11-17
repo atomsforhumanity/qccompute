@@ -257,7 +257,7 @@ between calls. `qccompute.worker.Worker` is its client.
 - **Transport:** stdin and stdout, one JSON message per line, one client per connection;
   `--socket PATH` serves a Unix socket on the same framing.
 - **Hello:** the first line, `{"protocol": 1, "program", "version", "capabilities",
-  "extras", "array_files": true, "calls": true}`.
+  "array_files": true, "calls": true}`.
 - **Envelope:** every message has an `id`; replies are `{"id", "ok": true, "result"}` or
   `{"id", "ok": false, "error"}`. `ok: false` is for the message itself; a failed
   calculation is a result (a failed output or frame).

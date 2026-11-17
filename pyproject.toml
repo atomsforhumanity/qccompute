@@ -7,7 +7,7 @@ requires-python = ">=3.11"
 readme = "README.md"
 license = { file = "LICENSE" }
 dependencies = [
-    "qcdata>=0.24.0a4",
+    "qcdata>=0.24.0a5",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",

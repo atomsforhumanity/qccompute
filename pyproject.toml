@@ -8,6 +8,7 @@ readme = "README.md"
 license = { file = "LICENSE" }
 dependencies = [
     "qcdata>=0.24.0a6",
+    "threadpoolctl>=3.1",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",

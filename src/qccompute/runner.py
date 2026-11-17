@@ -57,6 +57,7 @@ from qcdata import (
     Structure,
 )
 
+from ._pools import hold_threads
 from .program import (
     FILES,
     BatchProgram,
@@ -1028,9 +1029,9 @@ class Runner:
         Workers are pooled by program and GPUs, whatever the threads of the calls
         they serve: a program's state (a model loaded, a GPU context) is costly to
         repeat, so calls of different threads (a list's batches of different sizes)
-        share its workers. Each call's threads reach the program in its ``ctx``; a
-        worker's numerical libraries start with the threads of the call that started
-        it. A pool holds ``per_gpu`` workers on GPUs; without GPUs, as many as fit
+        share its workers. Each call's threads reach the program in its ``ctx``, and
+        the worker holds its BLAS and OpenMP pools at them while the call runs. A
+        pool holds ``per_gpu`` workers on GPUs; without GPUs, as many as fit
         side by side in the runner's threads at this call's threads.
 
         An idle worker of the pool is used first; else a new one starts while the
@@ -1155,10 +1156,11 @@ class Runner:
                 worker = self._worker(entry, devices, threads)
                 out = worker.compute(inp, ctx)
             elif entry.lock is not None:
-                with entry.lock:
+                with entry.lock, hold_threads(threads):
                     out = entry.program.compute(inp, ctx)  # type: ignore[arg-type]
             else:
-                out = entry.program.compute(inp, ctx)  # type: ignore[arg-type]
+                with hold_threads(threads):
+                    out = entry.program.compute(inp, ctx)  # type: ignore[arg-type]
             failure = None
             if not out.success:  # a program that returned its failure
                 failure = _error(out)
@@ -1753,10 +1755,11 @@ class Runner:
                 worker = self._worker(entry, devices, threads)
                 outs = worker.compute_batch(task.inputs, ctx)
             elif entry.lock is not None:
-                with entry.lock:
+                with entry.lock, hold_threads(threads):
                     outs = entry.program.compute_batch(task.inputs, ctx)  # type: ignore[attr-defined]
             else:
-                outs = entry.program.compute_batch(task.inputs, ctx)  # type: ignore[attr-defined]
+                with hold_threads(threads):
+                    outs = entry.program.compute_batch(task.inputs, ctx)  # type: ignore[attr-defined]
             if len(outs) != len(task.inputs):
                 raise RuntimeError(
                     f"{entry.program.name}.compute_batch returned {len(outs)} "
@@ -1888,20 +1891,23 @@ class Runner:
         ctx = self._context(
             threads, granted, memory, timeout, None, inp, parent, None, progress
         )
+        held: int | None = None  # the threads its requests hold the pools at here
         if self._in_worker(entry):
             worker = self._worker(entry, granted, threads)
             release = partial(self._release, worker, granted)
             opened = worker.session(inp, allowed, ctx, on_close=release)
             lock = None  # the worker is this session's own process
         else:
-            opened = program.open_session(inp, ctx, allowed)  # type: ignore[attr-defined]
+            with hold_threads(threads):
+                opened = program.open_session(inp, ctx, allowed)  # type: ignore[attr-defined]
+            held = threads
         try:
             weakref.finalize(opened, ctx.cleanup)
         except TypeError:  # not weak-referenceable
             pass
         if lock is None and parent is None:
             return opened
-        return _Guarded(opened, lock, parent)
+        return _Guarded(opened, lock, parent, held)
 
     def _session_compute(
         self,
@@ -1949,7 +1955,10 @@ class _Guarded:
     (ten TS searches side by side): they take turns on one lock per program. A
     subprogram's session (``parent``: the grant of the calculation it serves) marks its
     failures, so a program that lets one escape fails with kind ``program``, and
-    computes nothing once the calculation's time has run out (kind ``timeout``).
+    computes nothing once the calculation's time has run out (kind ``timeout``). A
+    program's own session in this process has its requests hold the BLAS and OpenMP
+    pools at its grant (``threads``; None: its requests are calculations, which hold
+    their own, or run in a worker).
     """
 
     def __init__(
@@ -1957,10 +1966,12 @@ class _Guarded:
         session: Session,
         lock: _Turns | None,
         parent: RunContext | None = None,
+        threads: int | None = None,
     ) -> None:
         self._session = session
         self._lock = lock if lock is not None else _NoLock()
         self._parent = parent
+        self._threads = threads
         self._subprogram = None if parent is None else session.program
 
     def _out_of_time(self) -> ProgramError | None:
@@ -1990,7 +2001,7 @@ class _Guarded:
             late = self._out_of_time()
             if late is not None:
                 raise late
-            with self._lock:
+            with self._lock, hold_threads(self._threads):
                 return self._session.compute(*args, **kwargs)
         except ProgramError as e:
             if self._subprogram is not None:
@@ -2008,7 +2019,7 @@ class _Guarded:
                         for r in requests
                     ]
                 )
-            with self._lock:
+            with self._lock, hold_threads(self._threads):
                 return self._session.compute_many(requests)
         except ExceptionGroup as group:
             if self._subprogram is not None:

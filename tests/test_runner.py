@@ -1610,6 +1610,132 @@ def test_a_dead_worker_is_an_environment_failure(isolated):
         assert runner.compute(toy_input(program="isolated")).success
 
 
+# ------------------------------------------------------------ BLAS and OpenMP pools
+
+blas_threads = serve_programs.blas_threads
+
+
+@pytest.fixture
+def pools():
+    register_program(serve_programs.pools)  # workers import it by module:attribute
+    assert blas_threads() is not None, "numpy's BLAS is not one threadpoolctl finds"
+    yield serve_programs.pools
+
+
+def test_a_calculation_holds_blas_at_its_threads_and_gives_the_counts_back(pools):
+    """In process, the pools follow each call's grant, and come back after (#66)."""
+    outside = blas_threads()
+    with Runner(threads=4) as runner:
+        assert runner.compute(toy_input(program="pools")).results.extras["blas"] == 1
+        three = runner.compute(toy_input(program="pools", threads=3))
+        assert three.results.extras["blas"] == 3
+        assert blas_threads() == outside
+        batch = runner.compute([toy_input(program="pools") for _ in range(3)])
+        assert [o.results.extras["blas"] for o in batch] == [3, 3, 3]  # the batch's
+        with runner.session(toy_input(program="pools", threads=2)):
+            assert blas_threads() == outside  # opened, it holds nothing
+    assert blas_threads() == outside
+
+
+def test_a_pooled_worker_holds_each_calls_threads(pools):
+    """A worker started by a one-thread call gives a later call its own threads (#66)."""
+    with Runner(threads=4, isolation="process") as runner:
+        outs = [
+            runner.compute(toy_input(program="pools", threads=n)) for n in (1, 3, 2)
+        ]
+        assert len({o.results.extras["pid"] for o in outs}) == 1  # one worker
+        assert [o.results.extras["blas"] for o in outs] == [1, 3, 2]
+        batch = runner.compute([toy_input(program="pools") for _ in range(3)])
+        assert [o.results.extras["blas"] for o in batch] == [3, 3, 3]
+        with runner.session(toy_input(program="pools", threads=2)) as s:
+            assert s.compute().record["blas"] == 2
+        assert runner.compute(toy_input(program="pools")).results.extras["blas"] == 1
+
+
+class Pinning(ToyProgram):
+    """Like qcopt: its own work on one BLAS thread, its children's at what it found."""
+
+    name = "pinning"
+
+    def plan(self, inp):
+        own = inp.model_copy(update={"program": "toy", "subprograms": []})
+        return super().plan(own).model_copy(update={"resources": Resources(threads=4)})
+
+    def compute(self, inp, ctx=None):
+        from threadpoolctl import threadpool_limits
+
+        seen = {"granted": blas_threads()}
+        with threadpool_limits(limits=1, user_api="blas"):
+            seen["own"] = blas_threads()
+        spec = inp.subprograms[0]
+        child = ProgramInput.from_spec(spec, inp.structure)
+        seen["child"] = ctx.compute(child).results.extras["blas"]
+        seen["after child"] = blas_threads()
+        with ctx.session(spec, inp.structure, threads=2) as s:
+            seen["session"] = s.compute().record["blas"]
+        seen["after session"] = blas_threads()
+        own = inp.model_copy(update={"program": "toy", "subprograms": []})
+        out = super().compute(own, ctx)
+        results = out.results.model_copy(update={"extras": seen})
+        return out.model_copy(update={"input_data": inp, "results": results})
+
+
+def test_a_subprogram_holds_its_own_threads_and_gives_its_parent_its_back(pools):
+    """Nesting: the child's grant inside, the parent's after; a program's own pin."""
+    register_program(Pinning())
+    outside = blas_threads()
+    child = {"program": "pools", "calctype": "gradient", "model": {"method": "lj"}}
+    inp = ProgramInput.model_validate(
+        toy_input(program="pinning").model_dump()
+        | {"subprograms": [child | {"keywords": {"threads": 3}}]}
+    )
+    with Runner(threads=8) as runner:
+        seen = runner.compute(inp).results.extras
+    assert seen == {
+        "granted": 4,
+        "own": 1,
+        "child": 3,
+        "after child": 4,
+        "session": 2,
+        "after session": 4,
+    }
+    assert blas_threads() == outside
+
+
+def test_overlapping_holds_restore_the_counts_from_before():
+    """The latest running call holds a process-wide count; the last out restores."""
+    from qccompute._pools import hold_threads
+
+    outside = blas_threads()
+    a, b, c = hold_threads(4), hold_threads(1), hold_threads(2)
+    a.__enter__()
+    b.__enter__()
+    c.__enter__()
+    assert blas_threads() == 2
+    b.__exit__()  # c, which started later, still holds the count
+    assert blas_threads() == 2
+    c.__exit__()  # gives back what it found
+    assert blas_threads() == 1
+    a.__exit__()  # the last out: the outside, though a's own was never 1
+    assert blas_threads() == outside
+    for n in (outside, 1):  # equal to the outside count, the last out still checks
+        first, second = hold_threads(n), hold_threads(5)
+        first.__enter__()
+        second.__enter__()
+        first.__exit__()
+        second.__exit__()
+        assert blas_threads() == outside
+
+
+def test_overlapping_calculations_in_threads_leave_the_counts_as_they_were(pools):
+    outside = blas_threads()
+    with Runner(threads=8) as runner:
+        inputs = [toy_input(program="pools", threads=1 + i % 3) for i in range(24)]
+        outs = runner.compute(inputs)
+    assert all(o.success for o in outs)
+    assert blas_threads() == outside
+
+
 # ------------------------------------------------------------- the protocol's rules
 
 

@@ -168,6 +168,43 @@ class IsolatedGPU(Isolated):
         return plan.model_copy(update={"resources": Resources(gpus=1)})
 
 
+def blas_threads() -> int | None:
+    """The thread count of this process's first BLAS library (numpy's), if any."""
+    from threadpoolctl import threadpool_info
+
+    counts = [i["num_threads"] for i in threadpool_info() if i["user_api"] == "blas"]
+    return counts[0] if counts else None
+
+
+class Pools(ToyProgram):
+    """The toy, reporting the BLAS threads each calculation and request ran with."""
+
+    name = "pools"
+
+    def compute(self, inp, ctx=None):
+        own = inp.model_copy(update={"program": "toy"})
+        out = super().compute(own, ctx)
+        extras = {"blas": blas_threads(), "pid": os.getpid()}
+        results = out.results.model_copy(update={"extras": extras})
+        return out.model_copy(update={"input_data": inp, "results": results})
+
+    def compute_batch(self, inputs, ctx=None):
+        return [self.compute(i, ctx) for i in inputs]
+
+    def open_session(self, inp, ctx=None, calctypes=None):
+        own = inp.model_copy(update={"program": "toy"})
+        return PoolsSession(own, calctypes=calctypes, ctx=ctx)
+
+
+class PoolsSession(ToySession):
+    """The toy's session, with the BLAS threads of each request in its record."""
+
+    def compute(self, *args, **kwargs):
+        frame = super().compute(*args, **kwargs)
+        record = {**frame.record, "blas": blas_threads()}
+        return frame.model_copy(update={"record": record})
+
+
 class Relay(ToyProgram):
     """In a worker of its own, runs its subprogram through ctx: one, a list, a session.
 
@@ -221,6 +258,7 @@ class Stray(Relay):
 
 
 device_lost = DeviceLost()
+pools = Pools()
 stray = Stray()
 relay = Relay()
 noisy = Noisy()

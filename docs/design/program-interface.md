@@ -84,7 +84,9 @@ subprograms:
   smaller of its own request and the grant, or the grant when it requested nothing; a
   capped request is a `resource_capped` warning. The GPUs are as many as its plan asks
   for (`plan.resources.gpus`), of the runner's or the parent's: a program whose
-  subprograms use GPUs plans theirs and passes them on.
+  subprograms use GPUs plans theirs and passes them on. While the program runs, the
+  runner holds the process's BLAS and OpenMP pools at its threads (below, **Thread
+  pools**).
 - `device_ordinals()`: the granted GPUs as this process's CUDA device ordinals, so every
   program maps a grant alike. `gpus` names them as `CUDA_VISIBLE_DEVICES` does (indices
   or `GPU-`/`MIG-` UUIDs). When the process's `CUDA_VISIBLE_DEVICES` is set, a GPU's
@@ -305,13 +307,38 @@ calls with different `threads`, share the program's workers rather than starting
 each. Each call's threads reach the program in `ctx.threads`, which it applies to that
 call (a subprocess's `OMP_NUM_THREADS`, `torch.set_num_threads`); a worker's numerical
 libraries start with the threads of the call that started it (`OMP_NUM_THREADS` and the
-others, unless set), and a library that reads them only once keeps that count. On GPUs
+others, unless set), which sizes the pools they make when they load; each call's pools
+are then held at its own threads, as in process (**Thread pools**). On GPUs
 at most `per_gpu` workers serve every calculation and session of a program on those
 GPUs, whose work queues on the device anyway; without GPUs, at most as many as fit side
 by side in the runner's threads at a call's threads. A call or session takes an idle
 worker of its pool, else starts one while the pool has room, else shares the worker with
 the fewest users, taking turns on it. A worker that dies or is killed for a timeout ends
 the sessions it hosts.
+
+**Thread pools.** Multithreaded BLAS gives different last bits at different thread counts,
+so the runner holds the numerical libraries loaded in a process (OpenBLAS, MKL, BLIS,
+FlexiBLAS and the OpenMP runtimes, as `threadpoolctl` finds them) at a calculation's
+threads around each call of its program: `compute`, `compute_batch`, a session's opening
+and each of its requests, in process and in workers alike. A calculation run alone thus
+gives the same numbers in process and in a worker, whatever the caller's environment and
+whichever call started a pooled worker.
+
+- A count that belongs to the calling thread (OpenMP's, MKL's, OpenBLAS's on OpenMP) is
+  set on the thread that calls the program and restored after.
+- A count that belongs to the process (OpenBLAS on its own threads, BLIS, FlexiBLAS) is
+  set, and on return the call gives back what it found: a subprogram holds its own
+  threads and its parent gets its own back. In process, calculations running at once
+  with different threads share these counts (the one started last holds them); for
+  bitwise reproducibility across mixed thread counts, use `isolation="process"`. Once no
+  calculation runs, every count is back where the caller had it.
+- A program may hold its own small linear algebra lower (qcopt runs its steps on one
+  thread), if it restores the counts around its subprograms' calls and before it returns.
+- A program's own session in this process (what `qccompute.session(inp)` hands back
+  unwrapped: a thread-safe program's, opened by the caller) is called directly, not
+  through the runner, so its requests run with the caller's counts: the program applies
+  `ctx.threads` to them itself, or the session runs in a worker. Subprograms' sessions
+  and those of programs that take turns are held.
 
 ## The store
 
@@ -423,9 +450,10 @@ with the failed output and the logs when it fails.
 
 ## Cost
 
-On one core, `qccompute.compute` adds about 7 µs to a direct call of a `FunctionProgram`
-with a `version` and about 10 µs for the toy program (finding it, planning it, its
-context, recording the execution and the identities); a `FunctionProgram` without a
+On one core, `qccompute.compute` adds about 10 µs to a direct call of a `FunctionProgram`
+with a `version` (finding it, planning it, its context, recording the execution and the
+identities, and about 2.4 µs of it holding numpy's OpenBLAS at the calculation's
+threads and giving the count back); a `FunctionProgram` without a
 `version` adds about 6 µs more, the digest of its functions that is its identity. The
 runner hands its plan on in `ctx.plan`, so a program need not plan twice. Through qccodec, a trivial external
 command takes about 0.26 ms more than launching it in a fresh directory by hand. A worker

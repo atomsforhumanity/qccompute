@@ -141,7 +141,9 @@ class Capabilities(QCDataBaseModel):
         batches: Whether it implements `BatchProgram.compute_batch`.
         in_process: Whether it may run in the runner's own process (it neither writes
             to the process's stdout/stderr file descriptors nor changes process-global
-            state); otherwise the runner uses a worker process.
+            state); otherwise the runner uses a worker process. Holding the BLAS and
+            OpenMP thread counts lower for its own work is allowed, when it restores
+            them around its subprograms' calls and before it returns.
         thread_safe: Whether separate calculations and sessions may run concurrently
             in threads of one process (the program releases the GIL and shares no
             mutable state); the runner then runs them side by side in threads instead
@@ -435,7 +437,10 @@ class RunContext:
         threads: CPU threads granted: what the input asks for (its ``threads``
             keyword, else ``plan.resources.threads``; all of them when that is
             None), at most the runner's. None: not
-            granted (a direct call).
+            granted (a direct call). While the program runs, the runner holds the
+            process's BLAS and OpenMP pools at this count (in this process, BLAS
+            counts are process-wide: calculations running at once with different
+            threads share them).
         gpus: Identifiers of the GPUs granted (as for ``CUDA_VISIBLE_DEVICES``:
             indices or UUIDs); `device_ordinals` gives this process's CUDA ordinals.
         memory_gib: Host memory granted (GiB). A calculation run alone (one input, a

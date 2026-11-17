@@ -93,6 +93,7 @@ from qcdata import (
 )
 
 from . import _wire
+from ._pools import hold_threads
 from .program import (
     BatchProgram,
     Program,
@@ -232,6 +233,7 @@ class Host:
         self.array_dir = array_dir
         self.connection: _Connection | None = None
         self.sessions: dict[str, Session] = {}
+        self._threads: dict[str, int | None] = {}  # each session's grant
         self._ids = itertools.count(1)
         self._subprograms = _ClientRunner(self)
         self.device_lost = False
@@ -309,16 +311,19 @@ class Host:
         if not isinstance(inp, ProgramInput):
             raise MessageError("a session opens from a ProgramInput")
         calctypes = msg.get("calctypes")
+        ctx = self._ctx(msg.get("ctx"))
         try:
-            session = self.program.open_session(
-                inp,
-                self._ctx(msg.get("ctx")),
-                frozenset(CalcType(c) for c in calctypes) if calctypes else None,
-            )
+            with hold_threads(ctx.threads):
+                session = self.program.open_session(
+                    inp,
+                    ctx,
+                    frozenset(CalcType(c) for c in calctypes) if calctypes else None,
+                )
         except ProgramError as e:
             raise MessageError.of(e) from None
         key = f"s{next(self._ids)}"
         self.sessions[key] = session
+        self._threads[key] = ctx.threads
         return {"session": key, "program_version": session.program_version}
 
     def op_compute(self, msg: dict[str, Any]) -> Any:
@@ -331,15 +336,16 @@ class Host:
         fields = ("positions", "calctype", "accuracy", "lineage", "outputs", "seed")
         r = _request({k: msg[k] for k in (*fields, "commit") if k in msg})
         try:
-            frame = session.compute(
-                r.positions,
-                r.calctype,
-                accuracy=r.accuracy,
-                lineage=r.lineage,
-                outputs=r.outputs,
-                seed=r.seed,
-                commit=r.commit,
-            )
+            with hold_threads(self._threads.get(msg["session"])):
+                frame = session.compute(
+                    r.positions,
+                    r.calctype,
+                    accuracy=r.accuracy,
+                    lineage=r.lineage,
+                    outputs=r.outputs,
+                    seed=r.seed,
+                    commit=r.commit,
+                )
         except ProgramError as e:
             frame = e.frame or failed_frame(
                 self._structure(session, r), e, self.program.name
@@ -353,7 +359,8 @@ class Host:
         ctx = self._ctx(msg.get("ctx"))
         if isinstance(self.program, BatchProgram):
             try:
-                outs = list(self.program.compute_batch(inputs, ctx))  # type: ignore[arg-type]
+                with hold_threads(ctx.threads):
+                    outs = list(self.program.compute_batch(inputs, ctx))  # type: ignore[arg-type]
             except MessageError:  # the message refused (a client's subprogram call)
                 raise
             except Exception as e:  # noqa: BLE001 - a bug: every input fails with it
@@ -369,7 +376,8 @@ class Host:
     ) -> ProgramOutput[Any, Any]:
         """One output, failed or not: a ProgramError or a bug becomes a failed output."""
         try:
-            return self.program.compute(inp, ctx)  # type: ignore[arg-type]
+            with hold_threads(ctx.threads):
+                return self.program.compute(inp, ctx)  # type: ignore[arg-type]
         except MessageError:  # the message refused (a client's subprogram call)
             raise
         except Exception as e:  # noqa: BLE001 - failures are results on the wire
@@ -381,10 +389,10 @@ class Host:
         """A session's frames for many requests, in order."""
         session = self._session(msg)
         frames: list[Frame]
+        requests = [_request(r) for r in msg.get("requests") or []]
         try:
-            frames = session.compute_many(
-                [_request(r) for r in msg.get("requests") or []]
-            )
+            with hold_threads(self._threads.get(msg["session"])):
+                frames = session.compute_many(requests)
         except ProgramErrors as group:  # every frame, in order
             frames = group.results
         for frame in frames:
@@ -428,6 +436,7 @@ class Host:
     def op_close(self, msg: dict[str, Any]) -> None:
         """Close a session."""
         self._session(msg)
+        self._threads.pop(msg["session"], None)
         self.sessions.pop(msg["session"]).close()
 
     def close_all(self) -> None:
@@ -438,6 +447,7 @@ class Host:
             except Exception as e:  # noqa: BLE001 - closing at exit: report, go on
                 print(f"qccompute.serve: closing a session: {e}", file=sys.stderr)
         self.sessions.clear()
+        self._threads.clear()
 
     def _input(self, msg: dict[str, Any]) -> ProgramInput | FileInput:
         try:

@@ -57,8 +57,10 @@ command line prints and its worker sends. `numerics` takes the spec it would run
 input, or a subprogram's `ProgramSpec`), so a program of several methods can give each
 its own identity: a numerics epoch, an executable's sha256, a model's checksum.
 
-`qccompute.program.FunctionProgram(name, energy_gradient, hessian=None)` is the smallest
-complete program: functions of the positions, no settings, in process and thread-safe.
+`qccompute.program.FunctionProgram(name, energy_gradient, hessian=None, *, version=None)`
+is the smallest complete program: functions of the positions, no settings, in process and
+thread-safe. Its numerics identity is a digest of what the functions compute with (code,
+constants, defaults, closures, the globals they read), unless `version` names it.
 
 ## The context
 

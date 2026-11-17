@@ -823,6 +823,50 @@ def test_function_programs():
         )
 
 
+SCALE = 1.0
+
+
+def scaled(x):
+    return SCALE * float(np.sum(x**2)), 2 * SCALE * x
+
+
+def test_function_program_numerics_change_with_the_function():
+    """An edited function (or a value it reads) is new numerics: no stale store hit."""
+    from qccompute.program import FunctionProgram
+
+    global SCALE
+    store = FakeStore()
+    program = FunctionProgram("scaled", scaled)
+    register_program(program)
+    inp = toy_input("gradient", program="scaled").model_copy(update={"model": None})
+    first = qccompute.compute(inp, store=store)
+    assert qccompute.compute(inp, store=store) is first  # unchanged: reused
+    assert first.results.provenance.program_version == program.version()
+    assert program.version().startswith("fn-")
+    SCALE = 2.0
+    try:
+        second = qccompute.compute(inp, store=store)
+    finally:
+        SCALE = 1.0
+    assert second.results.energy == pytest.approx(2 * first.results.energy)
+    assert store.puts == 2
+
+    def make(k):
+        def f(x):
+            return k * float(np.sum(x**2)), 2 * k * x
+
+        return f
+
+    def numerics(*functions, **kw):
+        return FunctionProgram("f", *functions, **kw).numerics(inp)
+
+    assert numerics(make(1.0)) == numerics(make(1.0))  # stable
+    assert numerics(make(1.0)) != numerics(make(2.0))  # closures count
+    assert numerics(lambda x: (1.0, x)) != numerics(lambda x: (2.0, x))  # constants
+    assert numerics(make(1.0)) != numerics(make(1.0), lambda x: np.eye(x.size))
+    assert numerics(make(1.0), version="v2") == "v2"  # an explicit override
+
+
 def test_shares_pack_threads_and_gpus_and_memory_follows():
     from qccompute.runner import _Grant
 

@@ -55,11 +55,13 @@ Design: ``docs/design/program-interface.md``; names and units: qcdata's conventi
 from __future__ import annotations
 
 import functools
+import hashlib
 import shutil
 import tempfile
 import threading
 import time
 import traceback
+import types
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from importlib.metadata import EntryPoint, entry_points
 from pathlib import Path
@@ -1055,6 +1057,130 @@ def plan_of(program: Program, inp: ProgramInput) -> Plan:
 _EMPTY_PLAN = Plan(resolved=Resolved())
 
 
+class _FunctionDigest:
+    """A sha256 of what Python functions compute with, for their numerics identity.
+
+    It covers each function's bytecode and constants, its default arguments, the
+    values in its closure, and the module globals its code reads, recursing into the
+    Python functions among them (a helper the function calls). Plain data (numbers,
+    strings, containers, numpy arrays) counts by value; modules, classes and built-in
+    functions by name; any other object by its type and its attributes. The digest
+    changes when the code or any of these values does, and with the Python version,
+    whose bytecode differs.
+    """
+
+    def __init__(self) -> None:
+        self._sha = hashlib.sha256()
+        self._seen: set[int] = set()
+
+    def hexdigest(self) -> str:
+        return self._sha.hexdigest()
+
+    def _text(self, text: str) -> None:
+        self._sha.update(text.encode("utf-8", "backslashreplace") + b"\0")
+
+    def feed(self, value: Any, depth: int = 0) -> None:
+        """Add a value to the digest."""
+        if depth > 40:
+            self._text("<deep>")
+        elif value is None or isinstance(value, bool | int | float | complex | str):
+            self._text(f"{type(value).__name__}:{value!r}")
+        elif isinstance(value, bytes | bytearray):
+            self._text(f"bytes:{len(value)}")
+            self._sha.update(value)
+        elif isinstance(value, np.ndarray):
+            self._text(f"ndarray:{value.dtype.str}:{value.shape}")
+            if value.dtype.hasobject:
+                self.feed(value.tolist(), depth + 1)
+            else:
+                self._sha.update(np.ascontiguousarray(value).tobytes())
+        elif isinstance(value, np.generic):
+            self._text(f"{type(value).__name__}:{value!r}")
+        elif isinstance(value, types.CodeType):
+            self._text("code")
+            self._sha.update(value.co_code)
+            self._text(repr(value.co_names))
+            for constant in value.co_consts:
+                self.feed(constant, depth + 1)
+        elif isinstance(value, tuple | list):
+            self._text(f"{type(value).__name__}:{len(value)}")
+            for item in value:
+                self.feed(item, depth + 1)
+        elif isinstance(value, set | frozenset):
+            self._text(f"set:{len(value)}")
+            for item in sorted(_digest_of(v, depth + 1) for v in value):
+                self._text(item)
+        elif isinstance(value, Mapping):
+            self._text(f"mapping:{len(value)}")
+            for k, v in sorted(value.items(), key=lambda kv: repr(kv[0])):
+                self.feed(k, depth + 1)
+                self.feed(v, depth + 1)
+        elif id(value) in self._seen:
+            self._text("<seen>")
+        else:
+            self._seen.add(id(value))
+            self._object(value, depth)
+
+    def _object(self, value: Any, depth: int) -> None:
+        if isinstance(value, types.FunctionType):
+            self._text(f"function:{value.__qualname__}")
+            self.feed(value.__code__, depth + 1)
+            self.feed(value.__defaults__, depth + 1)
+            self.feed(value.__kwdefaults__, depth + 1)
+            for cell in value.__closure__ or ():
+                try:
+                    self.feed(cell.cell_contents, depth + 1)
+                except ValueError:  # an empty cell
+                    self._text("<empty>")
+            for name in sorted(_names(value.__code__)):
+                if name in value.__globals__:
+                    self._text(f"global:{name}")
+                    self.feed(value.__globals__[name], depth + 1)
+        elif isinstance(value, types.MethodType):
+            self.feed(value.__func__, depth + 1)
+            self.feed(value.__self__, depth + 1)
+        elif isinstance(value, functools.partial):
+            self._text("partial")
+            self.feed(value.func, depth + 1)
+            self.feed(value.args, depth + 1)
+            self.feed(value.keywords, depth + 1)
+        elif isinstance(value, types.ModuleType):
+            self._text(f"module:{value.__name__}")
+        elif isinstance(value, type):
+            self._text(f"class:{value.__module__}.{value.__qualname__}")
+        elif callable(value) and not hasattr(value, "__dict__"):  # built-in, ufunc
+            label = getattr(value, "__qualname__", None) or getattr(
+                value, "__name__", ""
+            )
+            self._text(f"builtin:{getattr(value, '__module__', None)}.{label}")
+        else:
+            kind = type(value)
+            self._text(f"object:{kind.__module__}.{kind.__qualname__}")
+            # A callable object's own code: its class's __call__.
+            calls = (vars(k)["__call__"] for k in kind.__mro__ if "__call__" in vars(k))
+            call = next(calls, None)
+            if isinstance(call, types.FunctionType):
+                self.feed(call, depth + 1)
+            attributes = getattr(value, "__dict__", None)
+            if isinstance(attributes, dict):
+                self.feed(attributes, depth + 1)
+
+
+def _names(code: types.CodeType) -> set[str]:
+    """The names a code object and the code nested in it read (globals among them)."""
+    names = set(code.co_names)
+    for constant in code.co_consts:
+        if isinstance(constant, types.CodeType):
+            names |= _names(constant)
+    return names
+
+
+def _digest_of(value: Any, depth: int = 0) -> str:
+    digest = _FunctionDigest()
+    digest.feed(value, depth)
+    return digest.hexdigest()
+
+
 class FunctionProgram:
     """A program made of Python functions of the positions.
 
@@ -1079,7 +1205,14 @@ class FunctionProgram:
             gradient (Eh/bohr, n_atoms x 3).
         hessian: Positions to the Hessian (Eh/bohr^2, 3 n_atoms x 3 n_atoms); without
             it the program computes energies and gradients only.
-        version: The program's version, for provenance and the store.
+        version: The program's version and numerics identity, for provenance and the
+            store. None: a digest of the functions (``fn-`` and 16 hex digits), taken
+            on each use, of their code, constants, defaults, closures and the module
+            globals they read, recursing into the Python functions they call. Editing
+            a function or a value it reads (an energy scale) changes it, so a store
+            never serves results of the old function. An object the functions use
+            that is not plain data (an ML model) counts by its type and attributes;
+            give ``version`` when that is not enough (a model's checksum).
     """
 
     _SCHEMA: dict[str, Any] = {
@@ -1094,7 +1227,7 @@ class FunctionProgram:
         energy_gradient: Callable[[np.ndarray], tuple[float, Any]],
         hessian: Callable[[np.ndarray], Any] | None = None,
         *,
-        version: str = "0",
+        version: str | None = None,
     ) -> None:
         """Make a program of the functions."""
         self.name = name
@@ -1113,8 +1246,21 @@ class FunctionProgram:
         return f"FunctionProgram({self.name!r})"
 
     def version(self) -> str:
-        """The version given."""
-        return self._version
+        """The version given, else the digest of the functions as they are now."""
+        if self._version is not None:
+            return self._version
+        return "fn-" + _digest_of((self._energy_gradient, self._hessian))[:16]
+
+    def numerics(self, spec: Any = None) -> str:
+        """The numerics identity: the version (by default the functions' digest).
+
+        Args:
+            spec: The input or subprogram spec; the functions are the same for all.
+
+        Returns:
+            The identity.
+        """
+        return self.version()
 
     def capabilities(self) -> Capabilities:
         """Energies and gradients (and Hessians with a Hessian function)."""
@@ -1165,7 +1311,7 @@ class FunctionProgram:
             self.plan(inp)
         assert inp.structure is not None
         x = np.asarray(inp.structure.geometry, dtype=float).reshape(-1, 3)
-        provenance = Provenance(program=self.name, program_version=self._version)
+        provenance = Provenance(program=self.name, program_version=self.version())
         try:
             energy, gradient = self._energy_gradient(x.copy())
             values: dict[str, Any] = {"energy": float(energy)}

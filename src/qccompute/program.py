@@ -515,9 +515,9 @@ class RunContext:
         self._scratch = scratch
         self._made = False
         self._runner = runner
-        # The input(s) whose subprogram tree names the programs ctx may run, set by a
-        # runner (several for a batch); None: no check. Their names, on first use.
-        self._calling: Sequence[ProgramInput | FileInput] | None = None
+        # The input whose subprogram tree names the programs ctx may run, set by a
+        # runner (a batch's inputs); None: no check. Their names, on first use.
+        self._calling: Any = None
         self._named: frozenset[str] | None = None
 
     def __repr__(self) -> str:
@@ -616,10 +616,13 @@ class RunContext:
         Raises:
             ProgramError: Kind ``input``, code ``unnamed_subprogram``.
         """
-        if self._calling is None:
+        calling = self._calling
+        if calling is None:
             return
         if self._named is None:
-            self._named = frozenset().union(*map(_program_names, self._calling))
+            one = isinstance(calling, ProgramSpec | FileInput)
+            listed = [calling] if one else calling
+            self._named = frozenset().union(*map(_program_names, listed))
         for inp in inputs:
             missing = _program_names(inp) - self._named
             if missing:

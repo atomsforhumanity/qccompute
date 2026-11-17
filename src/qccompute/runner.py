@@ -664,9 +664,12 @@ def _with_execution(
     without validating it again.
     """
     execution = out.execution
-    update = {
-        key: value for key, value in _host().items() if getattr(execution, key) is None
-    }
+    host = _host()
+    if execution.model_fields_set.isdisjoint(host):  # the usual case: none set
+        update = {**host, "identities": dict(identities)}
+    else:
+        update = {k: v for k, v in host.items() if getattr(execution, k) is None}
+        update["identities"] = dict(identities)
     if devices and not execution.devices:
         update["devices"] = _device_names(devices)
     if not batch:
@@ -677,7 +680,6 @@ def _with_execution(
             update["wall_time"] = round(wall_time, 6)
     if execution.threads is None:
         update["threads"] = threads
-    update["identities"] = dict(identities)
     out.__dict__["execution"] = execution.model_copy(update=update)
     return out
 
@@ -998,7 +1000,7 @@ class Runner:
             plan=plan,
             runner=self,
         )
-        ctx._calling = (inp,) if inp is not None else batch
+        ctx._calling = inp if inp is not None else batch
         if parent is not None:
             up = parent.progress
             if up is not None:
@@ -1918,13 +1920,7 @@ class Runner:
         threads, lists, devices, memory, timeout = grant
         if isinstance(inputs, ProgramInput):
             out, failure = self._execute(
-                inputs,
-                threads,
-                devices,
-                memory,
-                timeout,
-                parent=parent,
-                progress=progress,
+                inputs, threads, devices, memory, timeout, None, None, parent, progress
             )
             if failure is not None and raise_exc:
                 raise failure

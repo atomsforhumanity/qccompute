@@ -251,7 +251,9 @@ with a context, record the execution.
 environment: `hostname`, `host_cpu`, `host_mem_gib`, `cpu_model` (as the operating
 system names the CPU), `libc` (`glibc 2.39`) and `devices` (the granted GPUs' names, as
 `nvidia-smi` gives them), each read once per process and filled only where the program
-left it unset, so a program that knows better (one that ran elsewhere) sets its own.
+left it unset, so a program that knows better (one that ran elsewhere) sets its own. A
+program granted a GPU that ran on none (a CPU fallback) says `devices=[]`, which stays; a
+worker fills its program's `devices` the same way before the output crosses the pipe.
 The outputs of a batch ran together: each keeps a `wall_time` its program set (a
 lockstep batch knows when each task finished), else gets the batch's, and the batch's
 wall time is always `timings["batch"]`. One whose program left `threads` unset gets its

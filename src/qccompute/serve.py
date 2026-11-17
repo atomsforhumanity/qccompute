@@ -365,6 +365,7 @@ class Host:
                 raise
             except Exception as e:  # noqa: BLE001 - a bug: every input fails with it
                 outs = [_failed(i, e, self.program.name) for i in inputs]
+            outs = [_with_devices(out, ctx.gpus) for out in outs]
         else:
             outs = [self._compute(i, ctx) for i in inputs]
         for out in outs:
@@ -377,13 +378,14 @@ class Host:
         """One output, failed or not: a ProgramError or a bug becomes a failed output."""
         try:
             with hold_threads(ctx.threads):
-                return self.program.compute(inp, ctx)  # type: ignore[arg-type]
+                out = self.program.compute(inp, ctx)  # type: ignore[arg-type]
         except MessageError:  # the message refused (a client's subprogram call)
             raise
         except Exception as e:  # noqa: BLE001 - failures are results on the wire
-            return _failed(inp, e, self.program.name)
+            out = _failed(inp, e, self.program.name)
         finally:
             ctx.cleanup()
+        return _with_devices(out, ctx.gpus)
 
     def op_compute_many(self, msg: dict[str, Any]) -> Any:
         """A session's frames for many requests, in order."""
@@ -529,6 +531,23 @@ class Host:
             and out.error.code == "device_lost"
         ):
             self.device_lost = True
+
+
+def _with_devices(
+    out: ProgramOutput[Any, Any], gpus: tuple[str, ...]
+) -> ProgramOutput[Any, Any]:
+    """The output with its GPUs' names in ``execution.devices``, if the program left it unset.
+
+    As the runner does for a program in its own process; a worker does it before the
+    output crosses the wire, where every field arrives set. A program's explicit
+    ``devices=[]`` (it ran on no device) stays.
+    """
+    if gpus and "devices" not in out.execution.model_fields_set:
+        from .runner import _device_names
+
+        execution = out.execution.model_copy(update={"devices": _device_names(gpus)})
+        out.__dict__["execution"] = execution
+    return out
 
 
 def _failed(

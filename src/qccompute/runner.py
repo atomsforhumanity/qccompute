@@ -658,8 +658,9 @@ def _with_execution(
     it is the grant, and for an output of a batch its own part of it
     (`_Task.threads_of`), so ``wall_time * threads`` adds up across a batch's outputs
     to the batch's cost. The environment (host, CPU model, libc, and ``devices``: the
-    granted GPUs' names) fills each field the program left unset. The program's own
-    timings stay. ``identities`` are those of the programs that ran
+    granted GPUs' names) fills each field the program left unset; a program's explicit
+    ``devices=[]`` says it ran on no device (a CPU fallback) and stays. The program's
+    own timings stay. ``identities`` are those of the programs that ran
     (`Runner.identities`). The output is the caller's from here on, so it is updated
     in place; its `ExecutionInfo` is copied (a program may share one between outputs)
     without validating it again.
@@ -671,7 +672,7 @@ def _with_execution(
     else:
         update = {k: v for k, v in host.items() if getattr(execution, k) is None}
         update["identities"] = dict(identities)
-    if devices and not execution.devices:
+    if devices and "devices" not in execution.model_fields_set:
         update["devices"] = _device_names(devices)
     if not batch:
         update["wall_time"] = round(wall_time, 6)

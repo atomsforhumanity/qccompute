@@ -66,7 +66,7 @@ class Isolated(ToyProgram):
         out = super().compute(self._own(inp), ctx)
         extras = {
             "pid": os.getpid(),
-            "devices": os.environ["CUDA_VISIBLE_DEVICES"],
+            "devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
             "ordinals": ctx.device_ordinals() if ctx is not None else None,
         }
         results = out.results.model_copy(update={"extras": extras})
@@ -168,6 +168,24 @@ class IsolatedGPU(Isolated):
         return plan.model_copy(update={"resources": Resources(gpus=1)})
 
 
+class Fallback(IsolatedGPU):
+    """The isolated GPU toy; with ``fallback``, it ran on the CPU and says so."""
+
+    name = "fallback"
+
+    def _own(self, inp):
+        own = super()._own(inp)
+        keywords = {k: v for k, v in own.keywords.items() if k != "fallback"}
+        return own.model_copy(update={"keywords": keywords})
+
+    def compute(self, inp, ctx=None):
+        out = super().compute(inp, ctx)
+        if inp.keywords.get("fallback"):
+            execution = out.execution.model_copy(update={"devices": []})
+            out = out.model_copy(update={"execution": execution})
+        return out
+
+
 def blas_threads() -> int | None:
     """The thread count of this process's first BLAS library (numpy's), if any."""
     from threadpoolctl import threadpool_info
@@ -258,6 +276,7 @@ class Stray(Relay):
 
 
 device_lost = DeviceLost()
+fallback = Fallback()
 pools = Pools()
 stray = Stray()
 relay = Relay()

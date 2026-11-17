@@ -812,6 +812,27 @@ def test_outputs_record_the_environment(monkeypatch):
         assert out.execution.devices == ["7"]
 
 
+class FallbackHere(serve_programs.Fallback):
+    name = "fallback-here"
+
+    def capabilities(self):
+        return super().capabilities().model_copy(update={"in_process": True})
+
+
+@pytest.mark.parametrize("program", ["fallback-here", "fallback"])
+def test_a_program_that_ran_on_no_device_says_so(program):
+    """devices=[] stays: a GPU's name is filled only where the program left it unset."""
+    register_program(serve_programs.fallback)
+    register_program(FallbackHere())
+    with Runner(threads=2, gpus=["7"]) as runner:
+        on_cpu = runner.compute(toy_input(program=program, fallback=True))
+        on_gpu = runner.compute(toy_input(program=program))
+    assert on_cpu.execution.devices == []
+    assert on_gpu.execution.devices == ["7"]  # nvidia-smi does not list it
+    in_worker = program == "fallback"
+    assert (on_gpu.results.extras["pid"] != os.getpid()) is in_worker
+
+
 def test_warm_started_outputs_are_never_stored():
     class Warm(ToyProgram):
         name = "warm"

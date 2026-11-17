@@ -62,8 +62,8 @@ from .program import (
     SessionProgram,
     _cuda_visible_devices,
     _entry_points,
+    _gpu_row,
     _nvidia_smi_gpus,
-    _same_gpu,
     capabilities_of,
     failed_frame,
     find_program,
@@ -215,25 +215,30 @@ def visible_gpus() -> dict[str, float | None]:
         return {}
     if listed is None:
         _pci_bus_order()
-    rows = _nvidia_smi_gpus()
     if listed is None:
-        return {index: memory for index, _, memory in rows}
-
-    def memory(gpu: str) -> float | None:
-        for index, uuid, size in rows:
-            if gpu == index or _same_gpu(gpu, uuid):
-                return size
-        return None
-
-    return {gpu: memory(gpu) for gpu in listed}
+        return {row[0]: row[2] for row in _nvidia_smi_gpus()}
+    return {gpu: (row[2] if (row := _gpu_row(gpu)) else None) for gpu in listed}
 
 
-@overload
-def _host() -> tuple[str, int | None]: ...
-@overload
-def _host(memory: Literal[True]) -> tuple[str, int | None, float | None]: ...
-def _host(memory: bool = False) -> Any:
-    """This machine's name, logical CPU count and RAM, read once per process."""
+def _cpu_model() -> str | None:
+    """The CPU's model name as the operating system reports it, if it does."""
+    try:
+        with open("/proc/cpuinfo", encoding="utf-8", errors="replace") as f:
+            for line in f:
+                name, _, value = line.partition(":")
+                if name.strip() == "model name" and value.strip():
+                    return value.strip()
+    except OSError:
+        pass
+    return platform.processor() or None
+
+
+def _host() -> dict[str, Any]:
+    """This machine's environment for `ExecutionInfo`, read once per process.
+
+    Its name, logical CPU count, RAM (GiB), CPU model and C library (``glibc 2.39``);
+    each None when it cannot be read.
+    """
     global _HOST
     if _HOST is None:
         try:
@@ -242,11 +247,23 @@ def _host(memory: bool = False) -> Any:
             )
         except (AttributeError, ValueError, OSError):
             ram = None
-        _HOST = (platform.node(), os.cpu_count(), ram)
-    return _HOST if memory else _HOST[:2]
+        libc = " ".join(part for part in platform.libc_ver() if part)
+        _HOST = {
+            "hostname": platform.node() or None,
+            "host_cpu": os.cpu_count(),
+            "host_mem_gib": ram,
+            "cpu_model": _cpu_model(),
+            "libc": libc or None,
+        }
+    return _HOST
 
 
-_HOST: tuple[str, int | None, float | None] | None = None
+_HOST: dict[str, Any] | None = None
+
+
+def _device_names(devices: Sequence[str]) -> list[str]:
+    """The granted GPUs' names, as ``nvidia-smi`` gives them (else their identifiers)."""
+    return [row[3] if (row := _gpu_row(gpu)) else gpu for gpu in devices]
 
 
 # --------------------------------------------------------------------- the programs
@@ -467,12 +484,22 @@ def _subprogram_results(
 
 
 def _put(
-    store: Store, out: Output, tags: Sequence[str], meta: Mapping[str, Any] | None
+    store: Store,
+    key: str,
+    out: Output,
+    tags: Sequence[str],
+    meta: Mapping[str, Any] | None,
 ) -> None:
-    """Store a run, unless it was warm-started (its numbers depend on history)."""
+    """Store a run, unless it was warm-started (its numbers depend on history).
+
+    The output then names its run, ``execution.store_run = "<key>/<run>"``, as an
+    output read from the store does, so a fresh result can be cited exactly too. The
+    output's `ExecutionInfo` is the runner's own copy (`_with_execution`).
+    """
     if out.record.get("warm_start") is True:
         return
-    store.put(out, tags=tuple(tags), meta=meta)
+    run = store.put(out, tags=tuple(tags), meta=meta)
+    out.execution.__dict__["store_run"] = f"{key}/{run}"
 
 
 def _with_execution(
@@ -480,31 +507,40 @@ def _with_execution(
     wall_time: float,
     threads: int | None,
     identities: Mapping[str, str],
+    devices: Sequence[str] = (),
+    batch: bool = False,
 ) -> Output:
-    """The output with what the runner measured and the code that made it.
+    """The output with what the runner measured, where it ran and the code that made it.
 
-    ``wall_time`` is the call's: for an output of a batch, the whole batch's, since its
-    inputs ran together. ``threads`` stays the program's when it set it; else it is
-    the grant, and for an output of a batch its own part of it (`_Task.threads_of`),
-    so ``wall_time * threads`` adds up across a batch's outputs to the batch's cost.
-    The program's own timings stay. ``identities`` are those of the programs that ran
+    ``wall_time`` is the call's. For an output of a batch it is the whole batch's,
+    since its inputs ran together: it goes to ``timings["batch"]``, and to
+    ``wall_time`` only when the program left that unset (a lockstep batch knows when
+    each of its tasks finished). ``threads`` stays the program's when it set it; else
+    it is the grant, and for an output of a batch its own part of it
+    (`_Task.threads_of`), so ``wall_time * threads`` adds up across a batch's outputs
+    to the batch's cost. The environment (host, CPU model, libc, and ``devices``: the
+    granted GPUs' names) fills each field the program left unset. The program's own
+    timings stay. ``identities`` are those of the programs that ran
     (`Runner.identities`). The output is the caller's from here on, so it is updated
     in place; its `ExecutionInfo` is copied (a program may share one between outputs)
     without validating it again.
     """
-    hostname, host_cpu, host_mem = _host(True)
     execution = out.execution
-    new = execution.model_copy(
-        update={
-            "wall_time": round(wall_time, 6),
-            "hostname": hostname,
-            "host_cpu": host_cpu,
-            "host_mem_gib": host_mem,
-            "threads": execution.threads if execution.threads is not None else threads,
-            "identities": dict(identities),
-        }
-    )
-    out.__dict__["execution"] = new
+    update = {
+        key: value for key, value in _host().items() if getattr(execution, key) is None
+    }
+    if devices and not execution.devices:
+        update["devices"] = _device_names(devices)
+    if not batch:
+        update["wall_time"] = round(wall_time, 6)
+    else:
+        update["timings"] = {**execution.timings, "batch": round(wall_time, 6)}
+        if execution.wall_time is None:
+            update["wall_time"] = round(wall_time, 6)
+    if execution.threads is None:
+        update["threads"] = threads
+    update["identities"] = dict(identities)
+    out.__dict__["execution"] = execution.model_copy(update=update)
     return out
 
 
@@ -937,7 +973,9 @@ class Runner:
             ctx.cleanup()
             if worker is not None:
                 self._release(worker, devices)
-        out = _with_execution(out, time.perf_counter() - start, threads, identities)
+        out = _with_execution(
+            out, time.perf_counter() - start, threads, identities, devices
+        )
         if failure is not None:
             failure.output = out
         return out, failure
@@ -1032,7 +1070,7 @@ class Runner:
                 return hit, None if hit.success else _error(hit)
         out, failure = self._run(inp, self.threads, None, self._host_memory(), timeout)
         if store is not None:
-            _put(store, out, tags, meta)
+            _put(store, key, out, tags, meta)
         return out, failure
 
     # ------------------------------------------------------------------ public API
@@ -1248,12 +1286,13 @@ class Runner:
         threads, devices, memory, timeout = grant
         tasks: list[_Task] = []
         batches: dict[int, _Task] = {}
+        keys: dict[int, str] = {}
         for i, inp in enumerate(inputs):
             if store is not None:
-                key, hit = self._lookup(store, inp, rerun)
+                keys[i], hit = self._lookup(store, inp, rerun)
                 if hit is not None:
                     if tags:
-                        store.tag(key, *tags)
+                        store.tag(keys[i], *tags)
                     yield i, hit, None if hit.success else _error(hit)
                     continue
             try:
@@ -1261,7 +1300,7 @@ class Runner:
             except Exception as e:  # noqa: BLE001 - refused before running
                 out, failure = _refused(inp, e, self.identities(inp))
                 if store is not None:
-                    _put(store, out, tags, meta)
+                    _put(store, keys[i], out, tags, meta)
                 yield i, out, failure
                 continue
             wanted = _threads(inp, plan, threads)
@@ -1293,7 +1332,7 @@ class Runner:
         if len(tasks) == 1:  # nothing to run beside: no thread
             for item in run(0, tasks[0]):
                 if store is not None:
-                    _put(store, item[1], tags, meta)
+                    _put(store, keys[item[0]], item[1], tags, meta)
                 yield item
             return
         pool = ThreadPoolExecutor(max_workers=min(len(tasks), budget.threads))
@@ -1302,7 +1341,7 @@ class Runner:
             for future in as_completed(futures):
                 for item in future.result():
                     if store is not None:
-                        _put(store, item[1], tags, meta)
+                        _put(store, keys[item[0]], item[1], tags, meta)
                     yield item
         finally:
             pool.shutdown(wait=False, cancel_futures=True)
@@ -1359,7 +1398,9 @@ class Runner:
         for i, inp, out, part in zip(
             task.indices, task.inputs, outs, parts, strict=True
         ):
-            out = _with_execution(out, wall, part, self.identities(inp))
+            out = _with_execution(
+                out, wall, part, self.identities(inp), devices, batch=True
+            )
             yield i, out, None if out.success else _error(out)
 
     # ------------------------------------------------------------------ subprograms

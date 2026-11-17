@@ -164,8 +164,11 @@ is reused only when its identities are those of the programs that would run now;
 stored failure only when the input determines it (kind `input`, `unsupported` or
 `convergence`, or `program` with such a cause), never one of the machine or the moment
 (`resource`, `timeout`, `environment`, ...). `rerun=True` always runs, past a stored
-failure too; `tags` go onto every key, cache hits included. A store
-implements `key`, `get`, `put` and `tag` (`qccompute.runner.Store`); qcstore is one.
+failure too; `tags` go onto every key, cache hits included. Every output returned with a
+store names its run, computed or hit, in `execution.store_run` (`"<key>/<run>"`), so a
+network or a report can cite the exact run and read it back with
+`store.get(key, run=...)`. A store implements `key`, `get`, `put` and `tag`
+(`qccompute.runner.Store`); qcstore is one.
 
 ## Programs
 

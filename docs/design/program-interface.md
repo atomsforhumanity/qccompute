@@ -188,13 +188,19 @@ fails without running), place it (this process, or a worker process for programs
 `in_process=False` and for `isolation="process"`), call `compute` or `compute_batch`
 with a context, record the execution.
 
-**Execution.** The runner sets each output's `execution`: `wall_time` (the call's), the
-host, `identities`, and `threads` when the program left it unset (the threads granted).
-The outputs of a batch ran together, so each carries the whole batch's `wall_time`, and
-one whose program left `threads` unset gets its own input's part of the batch's grant:
-the threads it asked for, scaled down when the batch was capped (`max(1, asked × granted
-// total asked)`). So `wall_time × threads` adds up across a batch's outputs, and a
-store's runs, to what the batch cost, to rounding.
+**Execution.** The runner sets each output's `execution`: `wall_time` (the call's),
+`identities`, `threads` when the program left it unset (the threads granted), and the
+environment: `hostname`, `host_cpu`, `host_mem_gib`, `cpu_model` (as the operating
+system names the CPU), `libc` (`glibc 2.39`) and `devices` (the granted GPUs' names, as
+`nvidia-smi` gives them), each read once per process and filled only where the program
+left it unset, so a program that knows better (one that ran elsewhere) sets its own.
+The outputs of a batch ran together: each keeps a `wall_time` its program set (a
+lockstep batch knows when each task finished), else gets the batch's, and the batch's
+wall time is always `timings["batch"]`. One whose program left `threads` unset gets its
+own input's part of the batch's grant: the threads it asked for, scaled down when the
+batch was capped (`max(1, asked × granted // total asked)`). So `wall_time × threads`
+adds up across a batch's outputs, and a store's runs, to what the batch cost, to
+rounding.
 
 **Resources.** qc* never allocates machines, queues work or enforces limits: a
 dispatcher (a batch system, Kubernetes) gives the process its cores, memory and GPUs. A
@@ -270,7 +276,11 @@ that made it in `execution.identities`, with or without a store, so an output re
 says which code made it; a stored run keeps the ones it was made with. `rerun=True`
 always runs; `tags` go onto every key, cache hits included;
 `meta` goes with each run. An output whose record says `warm_start` true depends on
-history, not only on its input, and is never stored.
+history, not only on its input, and is never stored. Every output a runner returns with
+a store names its run, `execution.store_run = "<key>/<run>"`: a hit as the store marks
+it, a fresh run once it is stored. So a result is cited exactly, and read back later
+with `qcstore.Store.get(key, run=...)` even after a newer run became the preferred one.
+Concurrent misses of one key each compute, and the store keeps every run.
 
 The runner needs four methods of a store (`qccompute.runner.Store`): `key(inp)`,
 `get(key, identities)`, `put(output, tags=, meta=)` (which files the run under

@@ -286,8 +286,8 @@ def _cuda_visible_devices() -> list[str] | None:
 
 
 @functools.cache
-def _nvidia_smi_gpus() -> tuple[tuple[str, str, float | None], ...]:
-    """The NVIDIA GPUs ``nvidia-smi`` lists: index, UUID and memory (GiB, if known).
+def _nvidia_smi_gpus() -> tuple[tuple[str, str, float | None, str], ...]:
+    """The NVIDIA GPUs ``nvidia-smi`` lists: index, UUID, memory (GiB, if known), name.
 
     ``nvidia-smi`` numbers GPUs in PCI bus order, whatever ``CUDA_VISIBLE_DEVICES``
     says. Read once per process; empty when there is no ``nvidia-smi`` or it fails.
@@ -296,7 +296,7 @@ def _nvidia_smi_gpus() -> tuple[tuple[str, str, float | None], ...]:
         result = subprocess.run(
             [
                 "nvidia-smi",
-                "--query-gpu=index,uuid,memory.total",
+                "--query-gpu=index,uuid,memory.total,name",
                 "--format=csv,noheader,nounits",
             ],
             capture_output=True,
@@ -306,17 +306,25 @@ def _nvidia_smi_gpus() -> tuple[tuple[str, str, float | None], ...]:
         )
     except (OSError, subprocess.SubprocessError):
         return ()
-    rows: list[tuple[str, str, float | None]] = []
+    rows: list[tuple[str, str, float | None, str]] = []
     for line in result.stdout.splitlines():
-        fields = [f.strip() for f in line.split(",")]
-        if len(fields) != 3 or not fields[0]:
+        fields = [f.strip() for f in line.split(",", 3)]
+        if len(fields) != 4 or not fields[0]:
             continue
         try:
             memory = float(fields[2]) / 1024 if fields[2] else None
         except ValueError:
             memory = None
-        rows.append((fields[0], fields[1], memory))
+        rows.append((fields[0], fields[1], memory, fields[3]))
     return tuple(rows)
+
+
+def _gpu_row(gpu: str) -> tuple[str, str, float | None, str] | None:
+    """The ``nvidia-smi`` row of a GPU identifier (an index or a UUID), if it lists it."""
+    for row in _nvidia_smi_gpus():
+        if gpu == row[0] or _same_gpu(gpu, row[1]):
+            return row
+    return None
 
 
 def _same_gpu(a: str, b: str) -> bool:
@@ -338,7 +346,7 @@ def _ordinal(gpu: str, visible: list[str] | None) -> int | None:
     if gpu.isdigit():
         return int(gpu)
     rows = _nvidia_smi_gpus()
-    return next((int(i) for i, uuid, _ in rows if _same_gpu(gpu, uuid)), None)
+    return next((int(row[0]) for row in rows if _same_gpu(gpu, row[1])), None)
 
 
 class _Subprograms(Protocol):
@@ -866,7 +874,10 @@ class BatchProgram(Program, Protocol):
         divides it among the inputs (one thread each to N one-thread searches run
         side by side), and records in each output's ``execution.threads`` what that
         input used; left unset, the runner records the input's own part of the
-        grant. Every output carries the whole batch's ``wall_time``.
+        grant. Likewise ``execution.wall_time``: each input's own where the program
+        can tell (a lockstep batch knows when each task finished), else left unset,
+        and the runner records the whole batch's. The batch's wall time is always in
+        ``timings["batch"]`` (s).
 
         Returns:
             One output per input, in order; a failed calculation is a failed output

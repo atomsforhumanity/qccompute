@@ -196,7 +196,7 @@ class FakeStore:
         self.meta[key] = meta
         self.puts += 1
         self.tag(key, *tags)
-        return key
+        return f"run-{self.puts}"
 
     def tag(self, key, *tags):
         self.tags.setdefault(key, set()).update(tags)
@@ -566,8 +566,42 @@ def test_a_batch_output_reports_its_own_inputs_threads():
     assert [o.execution.threads for o in three] == [2, 2, 2]
     assert [o.execution.threads for o in capped] == [4, 2, 2]  # adds up to 8
     assert {o.execution.threads for o in many} == {1}  # at least 1 each
-    # Every output of a batch carries the whole batch's wall time.
+    # A program that cannot tell each input's wall time leaves the batch's (#60).
     assert len({o.execution.wall_time for o in capped}) == 1
+    assert {o.execution.timings["batch"] for o in capped} == {
+        capped[0].execution.wall_time
+    }
+
+
+def test_a_batch_output_keeps_its_own_wall_time():
+    """A lockstep batch knows when each task ended; the batch's is timings.batch (#60)."""
+
+    class Lockstep(ToyProgram):
+        name = "lockstep"
+
+        def compute_batch(self, inputs, ctx=None):
+            time.sleep(0.05)
+            toy = [i.model_copy(update={"program": "toy"}) for i in inputs]
+            outs = super().compute_batch(toy, ctx)
+            return [
+                o.model_copy(
+                    update={
+                        "input_data": i,
+                        "execution": o.execution.model_copy(
+                            update={"wall_time": 0.01 * (n + 1)}
+                        ),
+                    }
+                )
+                for n, (i, o) in enumerate(zip(inputs, outs, strict=True))
+            ]
+
+    register_program(Lockstep())
+    inputs = [toy_input(program="lockstep", epsilon=0.01 * (i + 1)) for i in range(3)]
+    outs = qccompute.compute(inputs)
+    assert [o.execution.wall_time for o in outs] == [0.01, 0.02, 0.03]
+    batch = {o.execution.timings["batch"] for o in outs}
+    assert len(batch) == 1 and batch.pop() >= 0.05
+    assert "batch" not in qccompute.compute(toy_input()).execution.timings
 
 
 # ------------------------------------------------------------------------- store
@@ -709,6 +743,66 @@ def test_every_output_says_which_code_made_it(isolated):
     assert store.runs[store.key(toy_input()), (("toy", version),)] is first
 
 
+def test_every_output_with_a_store_names_its_run():
+    """Computed or hit, so a result can be cited exactly (#57)."""
+    store = FakeStore()
+    out = qccompute.compute(toy_input(), store=store)
+    assert out.execution.store_run == f"{store.key(toy_input())}/run-1"
+    inputs = [toy_input(epsilon=0.02), toy_input(sigmaa=1.0), toy_input(fail="input")]
+    outs = qccompute.compute(inputs, store=store, raise_exc=False)
+    cited = [o.execution.store_run.rpartition("/") for o in outs]
+    assert [key for key, _, _ in cited] == [store.key(i) for i in inputs]
+    assert sorted(run for _, _, run in cited) == ["run-2", "run-3", "run-4"]
+    hit = qccompute.compute(toy_input(), store=store)
+    assert hit.execution.store_run == out.execution.store_run
+    assert qccompute.compute(toy_input()).execution.store_run is None  # no store
+
+
+def test_outputs_record_the_environment(monkeypatch):
+    """CPU model, libc and the granted GPUs' names beside the host (#58)."""
+    from qccompute import program
+    from qccompute.runner import _host
+
+    host = _host()
+    out = qccompute.compute(toy_input())
+    assert out.execution.hostname == host["hostname"]
+    assert out.execution.cpu_model == host["cpu_model"]
+    assert out.execution.libc == host["libc"]
+    assert out.execution.devices == []
+    if os.path.exists("/proc/cpuinfo"):
+        assert out.execution.cpu_model and out.execution.libc.startswith("glibc ")
+
+    class Elsewhere(ToyProgram):  # a program that knows better sets them itself
+        name = "elsewhere"
+
+        def plan(self, inp):
+            plan = super().plan(inp.model_copy(update={"program": "toy"}))
+            return plan.model_copy(update={"resources": Resources(gpus=1)})
+
+        def compute(self, inp, ctx=None):
+            out = super().compute(inp.model_copy(update={"program": "toy"}), ctx)
+            mine = {"cpu_model": "Other CPU", "devices": ["Other GPU"]}
+            if inp.keywords.get("epsilon") == 0.5:
+                mine = {}
+            execution = out.execution.model_copy(update=mine)
+            return out.model_copy(update={"input_data": inp, "execution": execution})
+
+    register_program(Elsewhere())
+    rows = (("0", "GPU-aaaa", 80.0, "NVIDIA A100"), ("1", "GPU-bbbb", 24.0, "L4"))
+    monkeypatch.setattr(program, "_nvidia_smi_gpus", lambda: rows)
+    with Runner(threads=2, gpus=["GPU-bbbb", "7"]) as runner:
+        set_by_program = runner.compute(toy_input(program="elsewhere"))
+        assert set_by_program.execution.cpu_model == "Other CPU"
+        assert set_by_program.execution.devices == ["Other GPU"]
+        assert set_by_program.execution.libc == host["libc"]
+        granted = runner.compute(toy_input(program="elsewhere", epsilon=0.5))
+        assert granted.execution.devices == ["L4"]
+        assert granted.execution.cpu_model == host["cpu_model"]
+    with Runner(threads=2, gpus=["7"]) as runner:  # a GPU nvidia-smi does not list
+        out = runner.compute(toy_input(program="elsewhere", epsilon=0.5))
+        assert out.execution.devices == ["7"]
+
+
 def test_warm_started_outputs_are_never_stored():
     class Warm(ToyProgram):
         name = "warm"
@@ -721,9 +815,10 @@ def test_warm_started_outputs_are_never_stored():
 
     register_program(Warm())
     store = FakeStore()
-    qccompute.compute(toy_input(program="warm"), store=store)
+    out = qccompute.compute(toy_input(program="warm"), store=store)
     qccompute.compute([toy_input(program="warm"), toy_input()], store=store)
     assert store.puts == 1  # only the toy's own run
+    assert out.execution.store_run is None
 
 
 # ---------------------------------------------------------------------- sessions

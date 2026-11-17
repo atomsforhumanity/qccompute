@@ -705,7 +705,7 @@ def test_device_ordinals_without_cuda_visible_devices(monkeypatch):
     from qccompute import program as module
 
     monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
-    rows = (("0", "GPU-aaaa-1111", 80.0), ("1", "GPU-bbbb-2222", 24.0))
+    rows = (("0", "GPU-aaaa-1111", 80.0, "A100"), ("1", "GPU-bbbb-2222", 24.0, "L4"))
     monkeypatch.setattr(module, "_nvidia_smi_gpus", lambda: rows)
     assert RunContext(gpus=["0", "3"]).device_ordinals() == [0, 3]
     assert RunContext(gpus=["GPU-bbbb"]).device_ordinals() == [1]
@@ -715,11 +715,13 @@ def test_device_ordinals_without_cuda_visible_devices(monkeypatch):
 
 def test_runner_numbers_gpus_as_nvidia_smi_does(monkeypatch):
     """GPUs listed by nvidia-smi: CUDA_DEVICE_ORDER=PCI_BUS_ID unless set (#49)."""
+    from qccompute import program
     from qccompute import runner as module
     from qccompute.runner import Runner, visible_gpus
 
-    rows = (("0", "GPU-aaaa-1111", 80.0), ("1", "GPU-bbbb-2222", None))
+    rows = (("0", "GPU-aaaa-1111", 80.0, "A100"), ("1", "GPU-bbbb-2222", None, "L4"))
     monkeypatch.setattr(module, "_nvidia_smi_gpus", lambda: rows)
+    monkeypatch.setattr(program, "_nvidia_smi_gpus", lambda: rows)
     monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
     monkeypatch.delenv("CUDA_DEVICE_ORDER", raising=False)
     assert visible_gpus() == {"0": 80.0, "1": None}

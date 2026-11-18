@@ -2,7 +2,7 @@
 
 - [File Input](file_input.md): run any command with its files and get every file it
   wrote back.
-- [Many calculations at once](many_calculations.md): lists, failures, `as_completed`, a
+- [Many calculations at once](many_calculations.md): lists, failures, outputs as they finish, a
   runner of your own.
 - [Dynamic workflows](dynamic_workflows.md): `submit` and futures, per reaction a
   transition-state search, its IRC and both ends, many reactions at once with no stage

@@ -4,7 +4,7 @@
 of Python functions of the positions (bohr): a model surface, an ML potential in a
 script, a teaching example. It runs in this process and is thread-safe, so lists run
 side by side and sessions work as for any other program. It takes the shared keywords
-`threads` (what it asks the runner for, 1 by default) and `accuracy` (recorded as met:
+`threads` (its thread count, which the runner holds its BLAS pools at) and `accuracy` (recorded as met:
 nothing converges). An exception from a function is a failed calculation of kind
 `internal`, with the function's traceback in the failed output; a `ProgramError` it
 raises is the calculation's own failure.

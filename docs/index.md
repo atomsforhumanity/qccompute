@@ -35,8 +35,9 @@ print(out.results.energy, out.results.gradient)
 
 qccompute finds the program by name (`ProgramInput.program`) among the installed programs
 (the `qccompute.programs` entry points) and those registered in this process with
-`qccompute.register_program`. It hands the calculation its share of the machine, runs it,
-and records the run in `out.execution` (wall time, host, threads).
+`qccompute.register_program`. It hands the calculation its thread count (the runner's
+whole count unless the input sets `threads`; see [Threads](threads.md)), runs it, and
+records the run in `out.execution` (wall time, host, threads).
 
 ## Failures raise
 
@@ -68,9 +69,9 @@ outputs = qccompute.compute([inp1, inp2, inp3])
 
 - Every input is planned first: an input its program refuses (an unknown keyword) fails at
   once, without running.
-- Calculations are packed into the runner's share of the machine by what their plans ask
-  for (threads, GPUs); a program that evaluates many inputs at once (a machine-learned
-  potential) gets its inputs together.
+- They share the runner's threads: each gets the count divided by the inputs that run
+  ([Threads](threads.md)). A program that evaluates many inputs at once (a
+  machine-learned potential) gets its inputs together.
 - Everything runs, then the failures are raised together as `qcdata.ProgramErrors` (an
   `ExceptionGroup` of `ProgramError`s). Its `results` holds every output in input order,
   so no result is lost:
@@ -84,7 +85,8 @@ except qcdata.ProgramErrors as errors:
     outputs = errors.results
 ```
 
-`Runner.as_completed(inputs)` yields outputs as they finish.
+For outputs as they finish, `submit` each input and use
+`concurrent.futures.as_completed` (see [Dynamic workflows](examples/dynamic_workflows.md)).
 
 ## Sessions: one molecule at many geometries
 
@@ -99,17 +101,15 @@ with qccompute.session(inp) as s:
     hessian = s.compute(new_positions, "hessian")
 ```
 
-Only a program with sessions of its own (`capabilities().sessions`) warm-starts: it
-hands back its own session object, so the numbers are exactly those of the program used
-directly. Any other program (most external programs, tblite, a `FunctionProgram`) gets a
+Only a program with sessions of its own (`capabilities().sessions`) warm-starts: you get
+its own session, behind a thin wrapper that counts each request's threads, so the numbers
+are exactly those of the program used directly. Any other program (most external programs, tblite, a `FunctionProgram`) gets a
 session over `compute`, which computes every request from scratch
 (`record["warm_start"]` is false): a convenience, not a speed-up. A failed request raises
 `ProgramError` and the session stays usable; `compute_many` runs every request, then
 raises `qcdata.ProgramErrors`, whose `results` holds every frame in request order. A
-session's threads are set when it opens, `qccompute.session(inp, threads=8)`, else what
-its input asks for: a program's own session splits them across the lineages it runs at
-once, and a session over `compute` runs `compute_many`'s requests side by side, as a
-list.
+session has one thread count (`qccompute.session(inp, threads=8)`, else as for a
+calculation), which its requests share and hold only while they run ([Threads](threads.md)).
 Lineages name separate histories in one session (both branches of an IRC), `seed`
 starts one from another, and `commit=False` reads a history without moving it; see
 [Sessions, lineages and seeds](examples/sessions.md).
@@ -117,39 +117,30 @@ starts one from another, and `commit=False` reads a history without moving it; s
 ## A share of the machine: the Runner
 
 `qccompute.compute` and `qccompute.session` are the methods of the default runner: every
-core this process may use (its CPU affinity and cgroup quota) and every visible GPU. It is
-made on first use and cannot be reconfigured.
-
-Each calculation gets the threads it asks for: its `threads` keyword, else what its
-program's plan says (1 unless the program states more; a program that scales, such as a
-DFT code, may ask for all of the runner's), at most the runner's. A 3-atom gradient does
-not get 128 threads because the machine has them; ask for more with
-`keywords={"threads": 8}`. Sessions and subprograms get threads the same way.
+core this process may use (its CPU affinity and cgroup quota, or `OMP_NUM_THREADS` if
+set) and every visible GPU. It is made on first use and cannot be reconfigured.
 
 A `Runner` of your own takes a share:
 
 ```python
-with qccompute.Runner(threads=16, gpus=["0"], per_gpu=2, isolation="process") as runner:
+with qccompute.Runner(threads=16, gpus=["0"], isolation="process") as runner:
     outputs = runner.compute(inputs, timeout=3600)
 ```
 
-- `threads`, `gpus`: the share, and the most one calculation gets. Each calculation gets
-  its grant in a `qccompute.RunContext`. In a list, a calculation's share is the larger
-  of its share of the threads and its share of the GPUs; with `per_gpu=k`, k
-  calculations share each GPU and each counts as 1/k of it. A calculation gets the GPUs
-  its program's plan asks for, and `ctx.device_ordinals()` turns them into CUDA device
-  numbers in the program's process.
-- Memory is never scheduled. A calculation run alone gets all of the runner's memory; in
-  a list each gets its share; each gets 1/k of a GPU's memory. A `memory_gib` or
-  `device_memory_gib` keyword replaces these, at most what the runner (or, for a
-  subprogram, its parent) has.
+- `threads`: the runner's thread count, which its calculations share; it never runs more
+  at once ([Threads](threads.md)). `gpus`: the GPUs it may use, each by one calculation
+  at a time; a calculation gets the GPUs its program's plan asks for, and
+  `ctx.device_ordinals()` turns them into CUDA device numbers in the program's process.
+  Each calculation gets its threads, GPUs and memory in a `qccompute.RunContext`.
+- Memory is never scheduled: a calculation gets its share of the runner's, and a
+  `memory_gib` or `device_memory_gib` keyword replaces it ([Threads](threads.md#memory-and-gpus)).
 - `isolation`: `"auto"` runs programs in this process unless they cannot share it (they
   say `in_process=False`), which run in worker processes; `"process"` runs every program
   in a worker, so a crash ends only the worker.
 - Workers stay alive between calls, so a program keeps its state; close the runner (or use
   it as a context manager) to stop them. A program's workers serve its calls whatever
-  their threads, so a model loads once: on a GPU one worker per GPU (`per_gpu` of them),
-  which its calculations and sessions share; on the CPU as many as run side by side.
+  their threads, so a model loads once: on a GPU one worker per GPU, which its
+  calculations and sessions share; on the CPU as many as run side by side.
 
 The runner never changes a number by itself. A grant may change a program's own choices
 (a storage scheme picked from the memory granted), and the program records each one in
@@ -185,10 +176,10 @@ timing keeps its own decision state (see
 `qccompute.submit(inp)` (and `Runner.submit`) starts a calculation and returns a
 `concurrent.futures.Future` of its output, for workflows whose next step depends on the
 last: per reaction, the IRC starts as soon as its transition-state search ends, with no
-stage barriers. Submitted calculations share the runner's threads as a list's do,
-waiting highest `priority` first; a stored result resolves at once, and
-`future.cancel()` ends a calculation even while it runs. See
-[Dynamic workflows](examples/dynamic_workflows.md).
+stage barriers. Submitted calculations start in the order submitted, as the runner's
+threads allow: set `threads` (usually 1) on each to run many at once
+([Threads](threads.md)). A stored result resolves at once, and `future.cancel()` ends a
+calculation even while it runs. See [Dynamic workflows](examples/dynamic_workflows.md).
 
 A program that is not thread-safe (qcopt) runs one calculation at a time per process.
 The runner warns the first time one waits for its turn; `Runner(isolation="process")`
@@ -210,8 +201,8 @@ Each event is a small JSON object of the program's own, with `path` added: the p
 names from your input down to the one that emitted it, so a subprogram's events
 (`["neb", "qcopt"]`) arrive too. The callable may be called from several threads
 at once. Stored outputs emit nothing, and nothing is stored. A program in a worker
-process streams its events back. `submit`, `as_completed` and `session` take
-`progress=` too; to tell a list's inputs apart, submit each with its own callable.
+process streams its events back. `submit` and `session` take `progress=` too; to tell a
+list's inputs apart, submit each with its own callable.
 
 A submitted calculation can be stopped at its next step, keeping what it reached:
 
@@ -252,7 +243,7 @@ For models and scripts, `FunctionProgram` makes a program of plain functions:
 ```
 
 `qccompute.testing.check_program(program, inputs)` checks a program against the contract
-(schemas, plans, typed errors, the thread grant, sessions, batches);
+(schemas, plans, typed errors, the thread count, sessions, batches);
 `qccompute.testing.toy` is a complete example program.
 
 ## External programs
@@ -273,6 +264,6 @@ same `compute`, `plan` and sessions as the program in process. The runner uses t
 programs that cannot share a process and for `isolation="process"`.
 
 A program in a worker runs its subprograms back in your process: geomeTRIC's gradients
-can come from a `FunctionProgram` you registered in your script, and they share your
-runner's grant. Large arrays (Hessians, wavefunctions) cross between the processes as
+can come from a `FunctionProgram` you registered in your script, and they share the
+calculation's thread count. Large arrays (Hessians, wavefunctions) cross between the processes as
 `.npy` files rather than as text.

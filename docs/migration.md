@@ -22,10 +22,11 @@ out = qccompute.compute(inp, collect_files=True, print_logs=True, raise_exc=True
 out = qccompute.compute(inp)
 ```
 
-A calculation gets the threads it asks for: its `threads` keyword
-(`keywords={"threads": 8}`), else what its program's plan says (1 unless the program
-states more, or all of them for a program that plans `None`), at most the runner's. It no
-longer gets every core of the machine by default.
+A calculation runs with one thread count: its `threads` keyword
+(`keywords={"threads": 8}`), else the runner's whole count (every core this process may
+use, or `OMP_NUM_THREADS` if it is set). Nothing runs more threads at once than its
+runner has: to run many calculations at once, set `threads` (usually 1) on each, or run
+them as a list. See [Threads](threads.md).
 
 `compute` takes `store`, `timeout`, `rerun`, `tags`, `meta`, `raise_exc` and `progress`.
 The removed options:
@@ -41,7 +42,7 @@ The removed options:
 | `collect_wfn=`, `propagate_wfn=` | gone; a program's own session keeps its warm start between steps |
 | `options={"collect_rotamers": True}` (CREST) | the keyword `{"output": {"rotamers": True}}` |
 | `print_logs=`, `update_func=`, `update_interval=` | gone: logs arrive with the output; `progress=` receives the events programs emit while they run |
-| `max_workers=` | `qccompute.Runner(threads=...)` |
+| `max_workers=` | `qccompute.Runner(threads=...)`, and `threads` on each input |
 | `compute_args(...)` | build a `ProgramInput` |
 
 ## Failures
@@ -76,20 +77,30 @@ except qcdata.ProgramError as e:
 
 ## Lists
 
-`compute(list)` packs calculations by what each program's plan asks for, within the
-runner's threads and GPUs, instead of within `max_workers`. A program that evaluates
-many inputs at once gets them together; there is no `batch_size` or `batch_index` in
-`execution.extras` beyond what a program records, and the batch's wall time is
-`execution.timings["batch"]`. `Runner.as_completed` yields outputs as they finish, and
-`qccompute.submit(inp, priority=0)` returns a `concurrent.futures.Future` of one output,
-whose `cancel()` ends the calculation even while it runs.
+`compute(list)` shares the runner's threads among the inputs that run, instead of running
+`max_workers` at once. A program that evaluates many inputs at once gets them together;
+there is no `batch_size` or `batch_index` in `execution.extras` beyond what a program
+records, and the batch's wall time is `execution.timings["batch"]`.
+`qccompute.submit(inp)` returns a `concurrent.futures.Future` of one output, whose
+`cancel()` ends the calculation even while it runs; `concurrent.futures.as_completed`
+yields submitted futures as they finish. Submitted calculations start in the order
+submitted.
+
+## The runner
+
+| 0.22 | 0.23 |
+|---|---|
+| `compute(..., max_workers=)` | `qccompute.Runner(threads=, gpus=, isolation=)` |
+| a backend argument | gone: a runner runs on this machine |
+| GPUs shared between calculations | each GPU goes to one calculation at a time; machine-learned potentials batch many inputs in one call |
 
 ## Sessions
 
 `qccompute.session(spec, structure, threads=..., **compute_options)` is
 `qccompute.session(inp, calctypes=None, threads=None, progress=None)`: build the input
 with `ProgramInput.from_spec(spec, structure)`. `compute_many` now runs every request and then
-raises `qcdata.ProgramErrors` when any failed, with every frame in `results`.
+raises `qcdata.ProgramErrors` when any failed, with every frame in `results`. A session's
+requests share its thread count and hold it only while they run.
 
 ## Programs
 
@@ -105,8 +116,8 @@ raises `qcdata.ProgramErrors` when any failed, with every frame in `results`.
 | `compute_batch` | returns failures in place, refused inputs included |
 | `qccompute.get_program` | `qccompute.program.find_program` |
 | `qccompute.utils.available_programs` | `qccompute.program.available_programs` |
-| `check_program(..., children=...)` | register the subprograms; `check_program` also checks the thread grant |
-| the runner granted every core | `plan(inp).resources.threads` is what the runner grants when the input has no `threads` keyword (default 1): a program that wants more says how many, or `None` for all the runner (or parent grant) has |
+| `check_program(..., children=...)` | register the subprograms; `check_program` also checks the thread count |
+| thread counts from the caller | every program accepts the shared `threads` keyword and runs on `ctx.threads`, at most; it may use fewer where more don't help (its own cap). Plans state no threads (`Resources` has no `threads`) |
 
 A program may declare `numerics(spec)`, which a store uses to tell runs of different code
 apart; without it the version stands in. A `FunctionProgram`'s version and numerics are a

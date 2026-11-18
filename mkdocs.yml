@@ -104,6 +104,7 @@ nav:
   - Getting Started:
       - Welcome to QCCompute: index.md
       - Migrating from 0.22: migration.md
+      - Threads: threads.md
   - Programs:
       - Overview: programs/overview.md
       - Programs and sessions (API): api/program.md

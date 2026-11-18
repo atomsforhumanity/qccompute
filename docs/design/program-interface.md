@@ -46,7 +46,7 @@ The object implements `qccompute.program.Program`, structurally:
 | `capabilities()` | calctypes, methods with their calctypes, `sessions`, `batches`, `in_process`, `thread_safe`; a `Capabilities` or a plain mapping |
 | `settings_schema(calctype)` | the JSON Schema of `keywords` and of `resolved.settings` |
 | `record_schema(calctype)` | the JSON Schema of `ProgramOutput.record` |
-| `plan(inp)` | a dry run: validates (kind `input` with a did-you-mean for unknown keys), resolves every `"auto"`, and says what the calculation needs (`Resources`: threads, GPUs) |
+| `plan(inp)` | a dry run: validates (kind `input` with a did-you-mean for unknown keys), resolves every `"auto"`, and says what the calculation needs (`Resources`: GPUs; memory, informational) |
 | `compute(inp, ctx=None)` | runs the calculation; returns the successful output or raises `ProgramError` |
 | `numerics(spec)` (optional) | a string that changes whenever results for an unchanged input may change; the version by default |
 | `open_session(inp, ctx=None, calctypes=None)` (optional) | a session, usually the program's own session class |
@@ -75,18 +75,17 @@ unless `version` names it.
 ## The context
 
 `compute`'s second argument is a `RunContext`, which only a runner passes, and a runner
-always passes one. It carries the calculation's share of the machine and the way to run
-subprograms:
+always passes one. It carries the calculation's thread count, GPUs and memory and the way
+to run subprograms:
 
-- `threads`, `gpus`: the grant. The threads are what the input asks for (its `threads`
-  keyword, else `plan.resources.threads`: 1 unless the program says more, and None for
-  all there is), at most the runner's (or, for a subprogram, the parent's grant). A program uses the
-  smaller of its own request and the grant, or the grant when it requested nothing; a
-  capped request is a `resource_capped` warning. The GPUs are as many as its plan asks
-  for (`plan.resources.gpus`), of the runner's or the parent's: a program whose
-  subprograms use GPUs plans theirs and passes them on. While the program runs, the
-  runner holds the process's BLAS and OpenMP pools at its threads, or at one thread
-  when its input names subprograms, whose grant it is (below, **Thread pools**).
+- `threads`: the calculation's thread count: its `threads` keyword, else its caller's
+  whole count (1 when it is given GPUs), as [Threads](../threads.md) explains. The program
+  uses at most that many; a larger request of its own is a `resource_capped` warning.
+  `gpus`: as many whole GPUs as its plan asks for (`plan.resources.gpus`), of the
+  runner's or the parent's: a program whose subprograms use GPUs plans theirs and passes
+  them on. While the program runs, the runner holds the process's BLAS and OpenMP pools
+  at its threads, or at one thread when its input names subprograms (below, **Thread
+  pools**).
 - `device_ordinals()`: the granted GPUs as this process's CUDA device ordinals, so every
   program maps a grant alike. `gpus` names them as `CUDA_VISIBLE_DEVICES` does (indices
   or `GPU-`/`MIG-` UUIDs). When the process's `CUDA_VISIBLE_DEVICES` is set, a GPU's
@@ -120,7 +119,7 @@ subprograms:
   timeout, a cancel) leaves no scratch behind. `QCCOMPUTE_KEEP_SCRATCH=1` keeps every
   one, for debugging; a killed worker's failure then names where its scratch is.
 - `compute(inputs, raise_exc=True)` and `session(spec, structure, threads=, calctypes=)`:
-  subprograms, within the grant. They run only programs the calculation's input names,
+  subprograms, under the calculation's thread count. They run only programs the calculation's input names,
   its own and its subprograms' recursively, and every program a subprogram's input
   names must be among them; another is refused (kind `input`, code
   `unnamed_subprogram`), so a run's identities cover every program it used. The
@@ -141,7 +140,7 @@ the program records each one in `resolved`.
 
 ## Progress
 
-`submit`, `compute`, `as_completed` and `session` take `progress=`, a callable that
+`submit`, `compute` and `session` take `progress=`, a callable that
 receives small JSON events while calculations run. Programs choose what to emit (qcopt:
 one event per step); the runner only delivers them, and nothing is stored.
 
@@ -235,43 +234,40 @@ with program.Session(inp) as s:            # every calctype the method supports
   (default true) makes a success the lineage's history.
 - `compute_many` runs requests of one lineage in order, each reading its lineage's
   history as it stands at its place; requests of different lineages may run
-  concurrently, within the session's grant, which is set when it opens
-  (`session(inp, threads=)`, else what its input or plan asks for): the program splits
-  it across lineages. A path method that evaluates 13 images at once opens its session
-  with `threads=13`.
+  concurrently, sharing the session's thread count (`ctx.threads` when it opened): the
+  program gives each the count divided by those it runs at once.
 - A failed request raises `ProgramError` with its failed frame; the session and its other
   lineages go on, and the lineage's history is untouched.
 - Sessions may be called from several threads; the runner serializes those of programs
   that are not thread-safe.
 
-`qccompute.session(inp)` hands back the program's own session in process, so the numbers
-are exactly those of the program used directly. A program in a worker gets a
-`WorkerSession` over the pipe, with the same methods. A program without sessions gets a
-`ComputeSession`: one stateless calculation per request (`warm_start` false), placed
-like any other calculation (in this process, or in the program's workers). Its
-`compute_many` runs as a list does: each request gets the threads it asks for, and they
-run side by side within the sum of their threads, at most the session's `threads=` or
-else the runner's (or the parent's grant). Thirteen one-thread path images on eight
-threads run eight at a time.
+`qccompute.session(inp)` hands back the program's own session in process, behind a thin
+wrapper that counts each request's threads, so the numbers are exactly those of the
+program used directly. A program in a worker gets a `WorkerSession` over the pipe, with
+the same methods. A program without sessions gets a `ComputeSession`: one stateless
+calculation per request (`warm_start` false), placed like any other calculation (in this
+process, or in the program's workers). Its `compute_many` runs as a list does, sharing
+the session's count: thirteen path images on eight threads run eight at a time. A
+session holds no threads while it is idle; each request takes its count while it runs
+([Threads](../threads.md)).
 
 ## The runner
 
-`Runner(threads=None, gpus="auto", backend="local", isolation="auto", per_gpu=1)` with
-`submit` (one input; returns a `concurrent.futures.Future` of its output), `compute`
-(one input or a list), `as_completed` and `session`. Every call takes the same options:
+`Runner(threads=None, gpus="auto", isolation="auto")` with `submit` (one input; returns
+a `concurrent.futures.Future` of its output), `compute` (one input or a list) and
+`session`; `concurrent.futures.as_completed` serves submitted futures. Every call takes
+the same options:
 `store`, `timeout`, `rerun`, `tags`, `meta`, `raise_exc` (not `submit`: its future
 raises) and `progress`. `qccompute.compute`, `qccompute.submit` and `qccompute.session`
 are the methods of the default runner: this machine (every core this process may use,
-every visible GPU), made on first use, never reconfigured.
+or `OMP_NUM_THREADS`, and every visible GPU), made on first use, never reconfigured.
 
 `submit` is for workflows whose next calculation depends on the last (per reaction, a
 transition-state search, the IRC from its saddle, then both ends), many at once with no
 stage barriers. A stored output, or an input its program refuses, resolves the future
-before `submit` returns; the others are planned at once and wait in the runner's queue:
-highest `priority` first (default 0), then in the order submitted. The head of the queue
-starts as soon as it fits in the runner's threads and GPUs, packed as a list's
-calculations are; running calculations are never displaced, and `compute` calls take
-their own share, as before. `future.cancel()` cancels a calculation whether it waits or
+before `submit` returns; the others are planned at once and start in the order
+submitted as the runner's threads and GPUs allow, sharing them with `compute` calls and
+sessions ([Threads](../threads.md)). `future.cancel()` cancels a calculation whether it waits or
 runs: one that waits never starts; one running in a worker process is killed with every
 process it started (below, **Workers**); one running in this process ends cooperatively,
 as for a timeout: `ctx.timeout` reads 0 for it and every subprogram, and it starts no
@@ -293,44 +289,32 @@ worker fills its program's `devices` the same way before the output crosses the 
 The outputs of a batch ran together: each keeps a `wall_time` its program set (a
 lockstep batch knows when each task finished), else gets the batch's, and the batch's
 wall time is always `timings["batch"]`. One whose program left `threads` unset gets its
-own input's part of the batch's grant: the threads it asked for, scaled down when the
-batch was capped (`max(1, asked × granted // total asked)`). So `wall_time × threads`
+own input's part of the batch's threads: its own, scaled down when the batch was capped
+(`max(1, asked × granted // total asked)`). So `wall_time × threads`
 adds up across a batch's outputs, and a store's runs, to what the batch cost, to
 rounding.
 
-**Resources.** qc* never allocates machines, queues work or enforces limits: a
-dispatcher (a batch system, Kubernetes) gives the process its cores, memory and GPUs. A
-runner shares them out. Each calculation gets the threads it asks for (its `threads`
-keyword, else its plan's: 1 unless the program says more), at most the runner's; a
-session likewise, and a subprogram at most its parent's grant (or the share the parent
-gives a session with `threads=`). A program that scales with whatever it is given (a DFT
-code) plans `threads: None`: all of the runner's threads (all of the parent's grant for a
-subprogram), and in a list a full share, so it runs alone. The input's `threads` keyword
-still wins. Asking for nothing never means "the whole machine": a 3-atom tblite gradient
-ran in 1.2 ms on one thread and 221 ms (10 CPU-seconds) with 46. A list's calculations
-are admitted in input order while their shares sum to at most one; a calculation's share is
-the larger of its share of the threads and its share of the GPUs, where each of k
-calculations on one GPU counts as 1/k of it. The inputs of a list that go to a program
-with batches are one calculation of the list: it asks for the sum of their threads, at
-most the runner's (or the parent's grant), and for the most GPUs any of them asks for;
-the program divides its grant among them.
+**Resources.** qc* never allocates machines or decides what runs when: a dispatcher (a
+batch system, Kubernetes) gives the process its cores, memory and GPUs, and workflows
+choose what to run. A runner gives each calculation one thread count and never runs more
+than its own count at once; whatever holds a count (the runner, a running calculation, a
+session) never has more than it running under it. [Threads](../threads.md) has the rules
+and the recipes. GPUs are whole: each goes to one calculation at a time. The inputs of a
+list that go to a program with batches are one calculation of the list, with the sum of
+their threads and the most GPUs any of them asks for; the program divides them.
 
 **Memory.** There are no memory estimates and no memory scheduling: a plan's
 `memory_gib` and `device_memory_gib` are informational, recorded and never scheduled.
 What the runner grants, in `ctx`:
 
-- *Host memory.* A calculation run alone (one input, a session) gets all of the
-  runner's memory; a subprogram run alone, all of its parent's grant (a session opened
-  with `threads=` gets the part of it those threads are of the parent's). In a list,
-  each calculation, and each batch, gets its share of the list's memory: the runner's,
-  or the parent's grant.
-- *GPU memory.* 1/k of each granted GPU with `per_gpu=k`, at most a subprogram's
-  parent's GPU grant.
-- *Keywords.* The input's `memory_gib` or `device_memory_gib` replaces either: at most
-  the runner's memory or the GPU's at the top level, at most the parent's grant for a
-  subprogram, since a parent's grant holds its children. A batch's single `ctx` gets the
-  shares, not its inputs' keywords. Like `threads`, these resource keywords are what a
-  calculation asks for, and they are left out of its key.
+- *Host memory.* A calculation's share of its caller's: of the runner's for a top-level
+  calculation or session (its threads' share or its GPUs', whichever is larger), of its
+  parent's for a subprogram, of its session's for a request.
+- *GPU memory.* Each granted GPU's, at most a subprogram's parent's.
+- *Keywords.* The input's `memory_gib` or `device_memory_gib` replaces either, at most
+  what its caller has. A batch's single `ctx` gets the shares, not its inputs' keywords.
+  Like `threads`, these resource keywords are what a calculation asks for, and they are
+  left out of its key.
 - Nothing is rounded: a keyword reaches the program as given, a share as computed, so a
   small grant is never zero and a keyword at the grant is never "capped" by rounding.
 
@@ -348,10 +332,10 @@ each. Each call's threads reach the program in `ctx.threads`, which it applies t
 call (a subprocess's `OMP_NUM_THREADS`, `torch.set_num_threads`); a worker's numerical
 libraries start with the threads of the call that started it (`OMP_NUM_THREADS` and the
 others, unless set), which sizes the pools they make when they load; each call's pools
-are then held at its own threads, as in process (**Thread pools**). On GPUs
-at most `per_gpu` workers serve every calculation and session of a program on those
-GPUs, whose work queues on the device anyway; without GPUs, at most as many as fit side
-by side in the runner's threads at a call's threads. A call or session takes an idle
+are then held at its own threads, as in process (**Thread pools**). On GPUs one
+worker serves every calculation and session of a program on those GPUs, whose work
+queues on the device anyway; without GPUs, at most as many as fit side by side in the
+runner's threads at a call's threads. A call or session takes an idle
 worker of its pool, else starts one while the pool has room, else shares the worker with
 the fewest users, taking turns on it. A worker that dies or is killed for a timeout ends
 the sessions it hosts.
@@ -373,21 +357,18 @@ whichever call started a pooled worker.
   bitwise reproducibility across mixed thread counts, use `isolation="process"`. Once no
   calculation runs, every count is back where the caller had it.
 - A calculation that runs subprograms (its input names some) holds its own pools at one
-  thread, and its grant goes to its subprograms, which hold theirs while they run. So the
-  threads in use, children included, stay within the grant: a parent's pools at the
-  whole grant kept threads busy beside its children, because an idle OpenBLAS thread
+  thread, and its count goes to its subprograms, which hold theirs while they run. So the
+  threads in use, children included, stay within the count: a parent's pools at the
+  whole count kept threads busy beside its children, because an idle OpenBLAS thread
   spins for about 0.1 s after each call. On 8 threads, a qcopt optimizer's own steps
   woke 7 such threads between gradients that axtb computed on all 8: 15-16 runnable
   threads on 8 cores, and 38 submitted TS searches, IRCs and end minimizations took
   80-140 s instead of 24-26 s.
-- A program may hold its own linear algebra at other counts while it works (up to its
-  grant for heavy work of its own between its subprograms' calls), if it restores the
-  counts around its subprograms' calls and before it returns.
-- A program's own session in this process (what `qccompute.session(inp)` hands back
-  unwrapped: a thread-safe program's, opened by the caller) is called directly, not
-  through the runner, so its requests run with the caller's counts: the program applies
-  `ctx.threads` to them itself, or the session runs in a worker. Subprograms' sessions
-  and those of programs that take turns are held.
+- A parent may raise its own pools up to its count for heavy linear algebra of its own,
+  only while none of its subprograms runs, lowering them again before the next one
+  starts and before it returns.
+- A session's requests are held at its count, in process (the runner's wrapper around
+  the program's own session) and in workers.
 
 ## The store
 
@@ -460,7 +441,7 @@ between calls. `qccompute.worker.Worker` is its client.
   0.85 s and a 28 MB line.
 - **Subprograms run in the worker when they can, else in the client:** with
   `calls: true`, a subprogram call of the worker's program (`ctx.compute`,
-  `ctx.session`) runs in the worker itself, within the calculation's grant, when it can
+  `ctx.session`) runs in the worker itself, under the calculation's thread count, when it can
   run there exactly as the client would run it: every program its input names is found
   in the worker with the identities the client gave for the calculation (the wire
   context's `identities`), may run in process, and its plan uses no GPU. So qcopt's
@@ -470,8 +451,9 @@ between calls. `qccompute.worker.Worker` is its client.
   comes back to the client as a call line, `{"call", "op", ...}` with the ops above,
   which the client answers in any order (`{"call", "ok", "result"}`) while the message
   is in flight: a program registered only in the client, one that needs a worker of its
-  own, a GPU calculation. A nested worker is started by the client, never by a worker.
-  Either way the grant, the time left, a stop, progress (paths compose: the worker's
+  own, a GPU calculation; such a call takes its threads from the calculation's count in
+  the worker before it goes. A nested worker is started by the client, never by a worker.
+  Either way the count, the time left, a stop, progress (paths compose: the worker's
   `["axtb"]` under the client's `["qcopt"]`) and the check that the input names the
   program apply alike. Without `calls`, subprograms run in the worker's own default
   runner. A list of subprograms runs in the worker only if all of it can.
@@ -505,9 +487,10 @@ encodes the input, runs the command in the context's scratch directory with its 
 captured and the context's deadline, decodes what it wrote, and raises `ProgramError`
 with the failed output and the logs when it fails.
 
-- An input that requests threads (ORCA `pal`, Psi4 `-n`, CREST `threads`) runs with its
-  request; one that requests none runs with the grant, through `OMP_NUM_THREADS` and the
-  other numerical libraries' variables. A GPU program sees its granted GPUs in
+- An input that requests threads (`threads`, or the program's own: ORCA `pal`, Psi4
+  `-n`, CREST `threads`) runs with its request; one that requests none runs with the
+  calculation's count (xtb with 1, its own cap), through the program's own setting or
+  `OMP_NUM_THREADS` and the other numerical libraries' variables. A GPU program sees its granted GPUs in
   `CUDA_VISIBLE_DEVICES`.
 - Codecs that call a Python library take over the process's output streams and working
   directory while they run, so they are `in_process=False` and run in workers.
@@ -535,6 +518,6 @@ worker about 0.15 s plus the program's own imports, once.
 `qccompute.testing.check_program(program, inputs)` runs a program's own small inputs and
 checks the contract: schemas that validate, plans that reproduce themselves from
 `resolved.settings`, unknown keys refused with kind `input` by `plan` and `compute`, the
-thread grant honoured, standard fields in atomic-unit shapes, energy components that add
+thread count honoured, standard fields in atomic-unit shapes, energy components that add
 up, and for sessions and batches, agreement with plain computes, refusal of other
 calctypes, and a session that survives a failed request.

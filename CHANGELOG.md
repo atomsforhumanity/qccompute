@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [unreleased]
 
+### Fixed
+
+- A calculation whose input names subprograms gets its caller's whole count when it sets no `threads`, even when its plan asks for GPUs for those subprograms. Before, it got 1 thread, as a calculation running on the GPU does, and its children's `threads` keywords were lowered to 1 without a word.
+- A `threads` keyword above the caller's count is lowered to the count with a `RuntimeWarning` that says where the count comes from. The [Threads](https://qccompute.docs.afh.org/next/threads/) page now says that `OMP_NUM_THREADS` caps top-level keywords too, and how to keep NumPy on one thread without capping calculations.
+
 ## [0.23.0rc1] - 2026-11-18
 
 The release candidate: these are the final interfaces; only bug fixes follow before 0.23.0.

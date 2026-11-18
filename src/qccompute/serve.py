@@ -771,9 +771,9 @@ class _ClientRunner:
         """The threads a subprogram sent to the client gets there, as the client sizes it.
 
         Its ``threads`` keyword, else ``default`` (1 when its plan, found here, asks for
-        GPUs and the calculation has some).
+        GPUs, the calculation has some, and it names no subprograms).
         """
-        from .runner import _threads
+        from .runner import _threads, _unasked
 
         gpus = 0
         program = find_program(inp.program) if isinstance(inp, ProgramInput) else None
@@ -783,7 +783,7 @@ class _ClientRunner:
             except ProgramError:  # the client refuses it too
                 pass
         assert ctx.threads is not None
-        return _threads(inp, ctx.threads, 1 if gpus else default)
+        return _threads(inp, ctx.threads, _unasked(inp, gpus, default))
 
     def _subcompute(self, inputs: Any, ctx: RunContext, raise_exc: bool) -> Any:
         from .runner import _children, _error, _subprogram_results, default_runner

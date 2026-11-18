@@ -535,7 +535,7 @@ class RunContext:
     Attributes:
         threads: The calculation's thread count: its ``threads`` keyword, else its
             caller's whole count (a runner's, a parent's, a session's), or 1 for a
-            calculation given GPUs (the docs' Threads page). The program uses at most
+            calculation that runs on GPUs (the docs' Threads page). The program uses at most
             this many, fewer where more don't help. Its subprograms run under it: never
             more of them at once than it holds, and a list of them shares it. None: no
             runner (a direct call). While the program runs, the runner holds the

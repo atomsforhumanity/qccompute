@@ -244,7 +244,8 @@ def test_threads_are_the_keyword_else_the_callers_whole_count():
     with Runner(threads=4) as runner:
         runner.compute(toy_input(program="rec"))  # nothing asked: the runner's count
         runner.compute(toy_input(program="rec", threads=2))  # the keyword
-        runner.compute(toy_input(program="rec", threads=64))  # at most the runner's
+        with pytest.warns(RuntimeWarning, match="threads=64 and runs on 4"):
+            runner.compute(toy_input(program="rec", threads=64))  # at most the runner's
     assert [c.threads for c in recording.contexts] == [4, 2, 4]
     assert all(c.plan is not None for c in recording.contexts)  # handed on
     plain = NoSessions("plain")
@@ -2792,6 +2793,20 @@ def test_memory_reaches_the_program_unrounded():
     assert granted[2:] == [0.004 / 8] * 8  # 0.0005 each
 
 
+def test_a_threads_keyword_above_the_count_is_lowered_with_a_warning(monkeypatch):
+    """The count caps a keyword at top level too, and says so (OMP_NUM_THREADS=1)."""
+    recording = Recording("rec")
+    register_program(recording)
+    monkeypatch.setenv("OMP_NUM_THREADS", "1")
+    with Runner(gpus=()) as runner:
+        with pytest.warns(RuntimeWarning, match=r"threads=8 and runs on 1.*OPENBLAS"):
+            runner.compute(toy_input(program="rec", threads=8))
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            runner.compute(toy_input(program="rec", threads=1))
+    assert [c.threads for c in recording.contexts] == [1, 1]
+
+
 def test_gpus_come_from_the_plan():
     """A calculation gets the GPUs its plan asks for (#40); no capability says (a4)."""
 
@@ -2834,10 +2849,16 @@ def test_gpus_come_from_the_plan():
         runner.compute([toy_input(program="one-gpu", epsilon=e) for e in (0.1, 0.2)])
         assert sorted(c.gpus for c in one.contexts) == [("0",), ("1",)]
         assert one.most == 2
-        # A parent passes its grant on to its children
+        # A parent passes its grant on to its children. It runs no GPU work itself, so
+        # it gets the whole count, and a child's own threads hold under it.
         del one.contexts[:]
-        runner.compute(fd_input("one-gpu").model_copy(update={"program": "gpu-parent"}))
+        parent = fd_input("one-gpu", threads=3).model_copy(
+            update={"program": "gpu-parent"}
+        )
+        out = runner.compute(parent)
         assert {c.gpus for c in one.contexts} == {("0",)}
+        assert out.execution.threads == 4
+        assert one.contexts[-1].threads == 3  # the center point: its keyword
         del one.contexts[:]
         runner.compute(fd_input("one-gpu"))  # a parent that plans none has none
         assert {c.gpus for c in one.contexts} == {()}

@@ -570,12 +570,35 @@ def _threads(inp: Input, count: int, default: int) -> int:
     """A calculation's thread count: its ``threads`` keyword, at most ``count``.
 
     Without the keyword it is ``default``: the caller's whole count, its part of it in
-    a list, or 1 for a calculation given GPUs.
+    a list, or 1 for a calculation that runs on GPUs (`_unasked`). A keyword above
+    ``count`` is lowered to it, with a warning (once per message).
     """
     asked = inp.keywords.get("threads") if isinstance(inp, ProgramInput) else None
     if isinstance(asked, bool) or not isinstance(asked, int) or asked < 1:
         return default
-    return min(asked, count)
+    if asked > count:
+        warnings.warn(
+            f"A calculation asks for threads={asked} and runs on {count}, all its "
+            "caller has. A top-level calculation's caller is the runner: "
+            "Runner(threads=), else OMP_NUM_THREADS, else this process's cores; a "
+            "subprogram's is its parent. To keep NumPy on one thread without capping "
+            "calculations, set OPENBLAS_NUM_THREADS or MKL_NUM_THREADS instead of "
+            "OMP_NUM_THREADS.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        return count
+    return asked
+
+
+def _unasked(inp: object, gpus: int, whole: int) -> int:
+    """A calculation's threads without a ``threads`` keyword: ``whole``, or 1 on GPUs.
+
+    A calculation given GPUs runs on them and gets 1 thread, unless its input names
+    subprograms: then its plan asks for their GPUs, its threads are theirs, and it gets
+    ``whole``.
+    """
+    return 1 if gpus and not getattr(inp, "subprograms", None) else whole
 
 
 def _children(ctx: RunContext) -> Count:
@@ -1282,7 +1305,7 @@ class Runner:
         except Exception as e:  # noqa: BLE001 - refused before running
             return _refused(inp, e, self.identities(inp))
         gpus = self._gpus_of(holder, plan)
-        threads = _threads(inp, holder.threads, 1 if gpus else holder.threads)
+        threads = _threads(inp, holder.threads, _unasked(inp, gpus, holder.threads))
         return self._execute(
             inp, threads, gpus, holder, timeout, plan, entry, parent, progress
         )
@@ -1549,7 +1572,7 @@ class Runner:
             return _resolved(out, failure)
         holder = self._top()
         gpus = self._gpus_of(holder, plan)
-        threads = _threads(inp, holder.threads, 1 if gpus else holder.threads)
+        threads = _threads(inp, holder.threads, _unasked(inp, gpus, holder.threads))
         task = _Task(0, inp, entry, plan, threads, gpus)
         control = _Control()
         future = _Future(control)
@@ -1723,7 +1746,7 @@ class Runner:
         batches: dict[int, _Task] = {}
         for i, inp, entry, plan in planned:
             gpus = self._gpus_of(holder, plan)
-            wanted = 1 if gpus else share
+            wanted = _unasked(inp, gpus, share)
             if not shared:
                 wanted = _threads(inp, count, wanted)
             if entry.caps.batches and isinstance(entry.program, BatchProgram):
@@ -1930,7 +1953,9 @@ class Runner:
         if threads is not None:
             count = max(1, min(threads, outer.threads))
         else:
-            count = _threads(inp, outer.threads, 1 if granted else outer.threads)
+            count = _threads(
+                inp, outer.threads, _unasked(inp, len(granted), outer.threads)
+            )
         memory = outer.memory
         if memory is not None:
             memory *= min(1.0, count / outer.threads)

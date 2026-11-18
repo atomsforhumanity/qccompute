@@ -10,9 +10,15 @@ want many calculations at once.
   caller's whole count:
   - at top level, the runner's: `Runner(threads=...)`, else `OMP_NUM_THREADS` if it is
     set, else the CPUs this process may use (its affinity, capped by any cgroup quota);
-  - for a subprogram or a session request, its parent's or its session's count. A
-    `threads` keyword never takes more than that.
-- A calculation given GPUs and no `threads` gets 1.
+  - for a subprogram or a session request, its parent's or its session's count.
+- A `threads` keyword never takes more than the caller's count, at top level too. The
+  runner lowers it to the count and warns. So a script that sets `OMP_NUM_THREADS=1`
+  to keep NumPy on one thread runs every calculation on one thread. Set
+  `OPENBLAS_NUM_THREADS` or `MKL_NUM_THREADS` for NumPy instead, or pass
+  `Runner(threads=...)`.
+- A calculation that runs on GPUs and sets no `threads` gets 1. A parent whose plan
+  asks for GPUs only for its subprograms (its input names subprograms) gets its
+  caller's whole count like any other calculation, and its children their share of it.
 - The program uses at most that many threads, and fewer where more don't help: that
   cap is the program's own (qccodec's xtb runs on one thread unless asked). Programs
   don't suggest thread counts to the runner.

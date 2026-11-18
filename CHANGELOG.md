@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [unreleased]
 
+## [0.23.0rc1] - 2026-11-18
+
+The release candidate: these are the final interfaces; only bug fixes follow before 0.23.0.
+
+### Changed
+
+- **Breaking:** one thread count per calculation: its `threads` keyword, else its caller's whole count (`Runner(threads=)`, else `OMP_NUM_THREADS`, else the usable CPUs; a parent's or a session's for subprograms and requests). A calculation given GPUs and no `threads` gets 1. The [Threads](https://qccompute.docs.afh.org/next/threads/) page is the one place this is explained.
+- **Breaking:** lists, a session's `compute_many` and requests on one session share the count; store hits don't count. A batch program gets the whole list in one call with the sum of its inputs' shares.
+- **Breaking:** nothing runs more threads at once than the count it runs under (the runner's, a calculation's, a session's); extra work waits, first come first served. Calls from several threads, `submit`, lists and sessions all share the runner's count; an idle open session holds nothing. A top-level call from a thread that is running a calculation raises `RuntimeError` at once. The runner warns once when calculations that each take its whole count wait.
+- Waiting calculations can be cancelled or stopped; timeouts count from when a calculation starts.
+- **Breaking:** memory follows a calculation's share of its holder (all of it at the whole count); GPUs are given out whole.
+- `qccompute.session` returns the program's own session behind a thin wrapper that counts its requests' threads; the numbers are exactly the program's.
+- The `qccodec` extra requires qccodec 0.22.0a7.
+
+### Removed
+
+- **Breaking:** `Resources.threads`: programs no longer suggest thread counts, and a plan that sets it is refused.
+- **Breaking:** `Runner(backend=)`, `Runner(per_gpu=)`, `Runner.as_completed` (use `concurrent.futures.as_completed` over `submit` futures, or `compute(list)`) and `submit(priority=)`. `Runner`'s positional arguments are `(threads, gpus, isolation)`.
+
+### Fixed
+
+- Requests of a thread-safe program's own session opened at top level hold the BLAS and OpenMP pools at its count.
+- A request of a subprogram's session gets the parent's time left when it starts, not at the session's opening.
+
 ## [0.23.0a7] - 2026-11-17
 
 ### Added

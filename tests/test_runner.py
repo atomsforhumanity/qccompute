@@ -7,12 +7,19 @@ import sys
 import threading
 import time
 import warnings
-from concurrent.futures import FIRST_COMPLETED, CancelledError, Future, wait
+from concurrent.futures import (
+    FIRST_COMPLETED,
+    CancelledError,
+    Future,
+    as_completed,
+    wait,
+)
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pytest
+from pydantic import ValidationError
 from qcdata import (
     CalcType,
     ErrorKind,
@@ -227,111 +234,39 @@ def test_one_input_runs_in_process_with_the_threads_it_asks_for():
     assert out.results.hessian.shape == (9, 9)
     assert out.results.gradient.shape == (3, 3)
     assert out.execution.wall_time is not None and out.execution.hostname
-    assert out.execution.threads == 1  # the toy's plan asks for 1, not the machine
+    assert out.execution.threads == default_runner().threads  # the whole count
     assert "total" in out.execution.timings
 
 
-def test_a_plan_may_ask_for_every_thread():
-    """Resources(threads=None): all of the runner's threads, or of the parent's grant."""
-    spans: list[tuple[str, float, float]] = []
-
-    class Asks(NoSessions):
-        def __init__(self, name, threads):
-            super().__init__(name)
-            self._asks = threads
-
-        def plan(self, inp):
-            plan = super().plan(inp.model_copy(update={"program": "toy"}))
-            return plan.model_copy(update={"resources": Resources(threads=self._asks)})
-
-        def compute(self, inp, ctx=None):
-            start = time.perf_counter()
-            out = super().compute(inp, ctx)
-            spans.append((self.name, start, time.perf_counter()))
-            return out
-
-    every, one = Asks("every", None), Asks("one", 1)
-    register_program(every)
-    register_program(one)
-    with Runner(threads=4) as runner:
-        runner.compute(toy_input(program="every"))  # a single input: all 4
-        runner.compute(toy_input(program="every", threads=2))  # the keyword wins
-        with runner.session(toy_input(program="every")) as s:  # a session: all 4
-            s.compute()
-        assert [c.threads for c in every.contexts] == [4, 2, 4]
-        # In a list it is a full share: it runs alone, the 1-thread ones side by side.
-        spans.clear()
-        inputs = [toy_input(program="one", epsilon=0.01 * (i + 1)) for i in range(6)]
-        inputs.insert(3, toy_input(program="every"))
-        assert all(o.success for o in runner.compute(inputs))
-        assert one.most > 1
-        (_, start, end), *_ = (span for span in spans if span[0] == "every")
-        others = [span for span in spans if span[0] == "one"]
-        assert all(e <= start or s >= end for _, s, e in others)
-
-    class Parent(FiniteDifference):
-        """Asks for 3 threads; its subprogram asks for all of them."""
-
-        name = "parent3"
-
-        def plan(self, inp):
-            return Plan(resolved=Resolved(), resources=Resources(threads=3))
-
-        def compute(self, inp, ctx=None):
-            child = inp.subprograms[0]
-            ctx.compute(ProgramInput.from_spec(child, inp.structure))
-            with ctx.session(child, inp.structure) as session:
-                session.compute()
-            return super().compute(inp, ctx)
-
-    register_program(Parent())
-    del every.contexts[:]
-    with Runner(threads=8) as runner:
-        runner.compute(fd_input("every").model_copy(update={"program": "parent3"}))
-    # compute and session get the parent's whole grant; fd's own session asks for 1
-    assert [c.threads for c in every.contexts][:2] == [3, 3]
-
-
-def test_threads_come_from_the_keyword_else_the_plan_capped_at_the_runner():
-    class Planned(Recording):
-        def plan(self, inp):
-            plan = super().plan(inp.model_copy(update={"program": "toy"}))
-            return plan.model_copy(update={"resources": Resources(threads=3)})
-
+def test_threads_are_the_keyword_else_the_callers_whole_count():
     recording = Recording("rec")
-    planned = Planned("planned")
     register_program(recording)
-    register_program(planned)
     with Runner(threads=4) as runner:
-        runner.compute(toy_input(program="rec"))  # nothing asked: 1
+        runner.compute(toy_input(program="rec"))  # nothing asked: the runner's count
         runner.compute(toy_input(program="rec", threads=2))  # the keyword
-        runner.compute(toy_input(program="rec", threads=64))  # capped at the runner
-        runner.compute(toy_input(program="planned"))  # the plan
-        runner.compute(toy_input(program="planned", threads=1))  # the keyword wins
-        with runner.session(toy_input(program="rec")) as s:  # sessions alike
-            s.compute()
-        with runner.session(toy_input(program="planned")) as s:
-            s.compute()
-    assert [c.threads for c in recording.contexts] == [1, 2, 4]
-    assert [c.threads for c in planned.contexts] == [3, 1]
+        runner.compute(toy_input(program="rec", threads=64))  # at most the runner's
+    assert [c.threads for c in recording.contexts] == [4, 2, 4]
     assert all(c.plan is not None for c in recording.contexts)  # handed on
     plain = NoSessions("plain")
     register_program(plain)
-    with Runner(threads=4) as runner, runner.session(toy_input(program="plain")) as s:
-        s.compute_many([Request(), Request()])
-    assert [c.threads for c in plain.contexts] == [1, 1]
+    with Runner(threads=4) as runner:
+        with runner.session(toy_input(program="plain")) as s:  # a session: the count
+            s.compute()
+            s.compute_many([Request(), Request()])  # its requests share it
+        with runner.session(toy_input(program="plain"), threads=3) as s:
+            s.compute()
+        with runner.session(toy_input(program="plain", threads=1)) as s:
+            s.compute()
+    assert [c.threads for c in plain.contexts] == [4, 2, 2, 3, 1]
     with pytest.raises(ProgramError) as e:  # refused by its plan, without running
         Runner(threads=4).compute(toy_input(program="rec", sigmaa=1.0))
     assert e.value.error.code == "unknown_key" and len(recording.contexts) == 3
     assert e.value.output.execution.wall_time == 0.0
 
     class Parent(FiniteDifference):
-        """Asks for 4 threads; its subprograms ask for their own."""
+        """Runs its subprogram once, in a session, and in a session of 3 threads."""
 
         name = "parent"
-
-        def plan(self, inp):
-            return Plan(resolved=Resolved(), resources=Resources(threads=4))
 
         def compute(self, inp, ctx=None):
             child = inp.subprograms[0]
@@ -344,10 +279,29 @@ def test_threads_come_from_the_keyword_else_the_plan_capped_at_the_runner():
 
     register_program(Parent())
     del plain.contexts[:]
+    parent = fd_input("plain").model_copy(update={"program": "parent"})
     with Runner(threads=8) as runner:
-        runner.compute(fd_input("plain").model_copy(update={"program": "parent"}))
-    # compute and session ask for 1; the parent's split gives 3; fd's session 1
-    assert [c.threads for c in plain.contexts][:3] == [1, 1, 3]
+        runner.compute(parent)
+        assert [c.threads for c in plain.contexts][:3] == [8, 8, 3]
+        del plain.contexts[:]
+        runner.compute(parent.model_copy(update={"keywords": {"threads": 2}}))
+        assert [c.threads for c in plain.contexts][:3] == [2, 2, 2]  # never more
+    with pytest.raises(ValidationError):  # programs don't suggest threads
+        Resources(threads=2)  # type: ignore[call-arg]
+
+
+def test_the_default_count_is_omp_num_threads_else_the_cores(monkeypatch):
+    from qccompute.runner import default_threads, usable_cores
+
+    monkeypatch.setenv("OMP_NUM_THREADS", "3")
+    assert default_threads() == 3 and Runner().threads == 3
+    monkeypatch.setenv("OMP_NUM_THREADS", "2,1")  # nested levels: the outer one
+    assert default_threads() == 2
+    for unset in ("", "0", "many"):
+        monkeypatch.setenv("OMP_NUM_THREADS", unset)
+        assert default_threads() == usable_cores()
+    monkeypatch.delenv("OMP_NUM_THREADS")
+    assert Runner().threads == usable_cores() and Runner(threads=5).threads == 5
 
 
 def test_failures_raise_program_errors_with_the_output():
@@ -399,8 +353,6 @@ def test_the_default_runner_is_one_and_made_on_first_use():
     assert qccompute.default_runner is default_runner  # exported
     assert default_runner() is default_runner()
     assert default_runner().isolation == "auto"
-    with pytest.raises(ValueError, match="backend"):
-        Runner(backend="slurm")  # type: ignore[arg-type]
     with pytest.raises(ValueError, match="isolation"):
         Runner(isolation="thread")  # type: ignore[arg-type]
 
@@ -470,21 +422,15 @@ def test_list_failures_are_one_group_holding_every_output():
         assert len(group.results) == 2  # type: ignore[attr-defined]
 
 
-def test_as_completed_yields_successes_then_raises_the_group():
-    runner = Runner(threads=2)
-    inputs = [toy_input(epsilon=0.01 * (i + 1)) for i in range(4)]
-    seen = sorted(o.input_data.keywords["epsilon"] for o in runner.as_completed(inputs))
+def test_outputs_as_they_finish_come_from_submitted_futures():
+    """``concurrent.futures.as_completed`` over `submit` (no runner method of its own)."""
+    assert not hasattr(Runner, "as_completed")
+    with Runner(threads=2) as runner:
+        inputs = [toy_input(epsilon=0.01 * (i + 1), threads=1) for i in range(4)]
+        futures = [runner.submit(i) for i in inputs]
+        done = [f.result() for f in as_completed(futures)]
+    seen = sorted(o.input_data.keywords["epsilon"] for o in done)
     assert seen == [0.01, 0.02, 0.03, 0.04]
-    yielded = []
-    with pytest.raises(ProgramErrors) as e:
-        for out in runner.as_completed([toy_input(), toy_input(fail="input")]):
-            yielded.append(out)
-    assert len(yielded) == 1 and yielded[0].success
-    assert len(e.value.results) == 2
-    every = list(
-        runner.as_completed([toy_input(), toy_input(fail="input")], raise_exc=False)
-    )
-    assert sorted(o.success for o in every) == [False, True]
 
 
 def test_batch_programs_get_their_inputs_together():
@@ -511,7 +457,7 @@ def test_batch_programs_get_their_inputs_together():
 
 
 def test_a_batch_gets_the_threads_of_its_inputs_together():
-    """N 1-thread inputs as one batch get N threads, at most the runner's (#39)."""
+    """A batch gets its inputs' shares of the list's count together (#39)."""
     granted = []
 
     class Batching(ToyProgram):
@@ -534,12 +480,12 @@ def test_a_batch_gets_the_threads_of_its_inputs_together():
         ]
 
     with Runner(threads=8) as runner:
-        runner.compute(batch(8))  # each asks for 1
-        runner.compute(batch(3))
-        runner.compute(batch(20))  # at most the runner's
-        runner.compute(batch(3, threads=2))  # the keyword, summed
-        runner.compute(batch(2) + [toy_input(), toy_input()])  # beside other tasks
-    assert granted == [(8, 8), (3, 3), (20, 8), (3, 6), (2, 2)]
+        runner.compute(batch(8))  # 1 each
+        runner.compute(batch(3))  # 2 each
+        runner.compute(batch(20))  # 1 each, at most the runner's in all
+        runner.compute(batch(3, threads=1))  # the keyword, summed
+        runner.compute(batch(2) + [toy_input(), toy_input()])  # four share 8
+    assert granted == [(8, 8), (3, 6), (20, 8), (3, 3), (2, 4)]
 
 
 def test_a_batch_output_reports_its_own_inputs_threads():
@@ -857,7 +803,8 @@ def test_warm_started_outputs_are_never_stored():
 
 def test_sessions_are_the_programs_own_in_process():
     with qccompute.session(toy_input()) as s:
-        assert type(s) is ToySession
+        assert type(s._session) is ToySession  # behind a wrapper that counts threads
+        assert s.lineages() == []  # the program's own extras come through
         r = s.compute(np.asarray(ARGON3.geometry)).results
         assert r.gradient.shape == (3, 3)
     register_program(NoSessions("plain"))
@@ -964,7 +911,9 @@ def test_sessions_may_be_called_from_threads(thread_safe):
 
     program = NoSessions(f"exclusive-{thread_safe}", thread_safe)
     register_program(program)
-    sessions = [qccompute.session(toy_input(program=program.name)) for _ in range(4)]
+    runner = Runner(threads=4)
+    one = toy_input(program=program.name)
+    sessions = [runner.session(one, threads=1) for _ in range(4)]
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         with ThreadPoolExecutor(4) as pool:
@@ -976,7 +925,7 @@ def test_sessions_may_be_called_from_threads(thread_safe):
 
 
 def test_a_sessions_compute_many_runs_its_requests_side_by_side():
-    """The sum of their threads, capped as for a list (#54): 13 images at once."""
+    """They share the session's count, as a list does: 13 images, 8 at a time."""
     program = NoSessions("images")
     register_program(program)
     x = np.asarray(ARGON3.geometry)
@@ -989,14 +938,14 @@ def test_a_sessions_compute_many_runs_its_requests_side_by_side():
         assert all(f.success for f in frames)
         program.most = 0
         with runner.session(toy_input(program="images"), threads=3) as s:
-            s.compute_many(images)  # the session's own grant caps them
+            s.compute_many(images)  # the session's own count caps them
         assert program.most == 3
         program.most = 0
         with runner.session(toy_input(program="images", threads=2)) as s:
-            s.compute_many(images)  # 2 threads each: 4 at once
+            s.compute_many(images)  # its keyword is the session's count: 2 at once
             s.compute()
-        assert program.most == 4 and program.contexts[-1].threads == 2
-        # A native session's grant is set at open, for the program to split.
+        assert program.most == 2 and program.contexts[-1].threads == 2
+        # A native session's count is set at open, for the program to split.
         opened = []
 
         class Opening(ToyProgram):
@@ -1011,7 +960,7 @@ def test_a_sessions_compute_many_runs_its_requests_side_by_side():
         runner.session(toy_input(program="opening"), threads=13).close()
         runner.session(toy_input(program="opening")).close()
         runner.session(toy_input(program="opening", threads=4)).close()
-        assert opened == [8, 1, 4]
+        assert opened == [8, 8, 4]  # threads, else the keyword, else the count
     with pytest.raises(ValueError):
         Runner(threads=2).session(toy_input(), threads=0)
 
@@ -1067,12 +1016,23 @@ def test_submit_returns_a_future_of_the_output():
 
 
 def test_submitted_calculations_share_the_runners_threads():
-    """Packed as a list's, admitted in the order submitted."""
+    """Each takes its count; they start in the order submitted as threads free up."""
     recording = Recording("rec")
     register_program(recording)
     with Runner(threads=4) as runner:
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            whole = [
+                runner.submit(toy_input(program="rec", epsilon=0.01 * (i + 1)))
+                for i in range(4)
+            ]
+            assert all(f.result(timeout=10).success for f in whole)
+        assert recording.most == 1  # each takes all 4 threads: one at a time
+        named = [w for w in caught if "Set threads" in str(w.message)]
+        assert len(named) == 1  # once per runner, naming the way out
+        recording.most = 0
         futures = [
-            runner.submit(toy_input(program="rec", epsilon=0.01 * (i + 1)))
+            runner.submit(toy_input(program="rec", threads=1, epsilon=0.01 * (i + 1)))
             for i in range(12)
         ]
         assert all(f.result(timeout=10).success for f in futures)
@@ -1280,26 +1240,27 @@ class Gated(ToyProgram):
         return super().compute(own, ctx).model_copy(update={"input_data": inp})
 
 
-def test_submitted_calculations_wait_by_priority_then_in_order():
-    """Higher priority first, first submitted first within one (#74)."""
+def test_submitted_calculations_start_in_the_order_submitted():
+    """First come, first served: no priorities."""
     gated = Gated()
     register_program(gated)
-    with Runner(threads=1) as runner:
+    with Runner(threads=2) as runner:
         first = runner.submit(toy_input(program="gated", epsilon=0.9))
         while not gated.order:
             time.sleep(0.01)
         submitted = [
-            runner.submit(toy_input(program="gated", epsilon=e), priority=p)
-            for e, p in [(0.1, 0), (0.2, 0), (0.3, 2), (0.4, 1), (0.5, 2), (0.6, -1)]
+            runner.submit(toy_input(program="gated", epsilon=e))
+            for e in (0.1, 0.2, 0.3, 0.4, 0.5, 0.6)
         ]
+        time.sleep(0.05)  # the first waits for the runner's threads, the rest behind
         assert submitted[1].cancel()  # waiting: it never runs
         assert not first.cancelled() and not submitted[0].running()
         gated.gate.set()
         assert all(f.result(timeout=10).success for f in [first, *submitted[2:]])
         assert submitted[0].result(timeout=10).success
-    assert gated.order == [0.9, 0.3, 0.5, 0.4, 0.1, 0.6]
-    with pytest.raises(ValueError):
-        Runner().submit(toy_input(), priority="high")
+    assert gated.order == [0.9, 0.1, 0.3, 0.4, 0.5, 0.6]
+    with pytest.raises(TypeError):
+        Runner().submit(toy_input(), priority=1)  # type: ignore[call-arg]
 
 
 def test_closing_a_runner_cancels_what_waits():
@@ -1403,7 +1364,10 @@ def test_dynamic_workflows_need_no_stage_barriers():
 
     def step(stage, reaction, seconds):
         return toy_input(
-            program="serial", epsilon=0.01 + reaction / 100 + stage / 10, sleep=seconds
+            program="serial",
+            epsilon=0.01 + reaction / 100 + stage / 10,
+            sleep=seconds,
+            threads=1,
         )
 
     stages = {0: [0.05, 0.6], 1: [0.05, 0.05]}  # per reaction: search, IRC
@@ -1431,7 +1395,9 @@ def test_waiting_on_a_programs_lock_warns_once_and_names_the_way_out():
     from concurrent.futures import ThreadPoolExecutor
 
     register_program(serve_programs.serial)
-    inputs = [toy_input(program="serial", epsilon=e, sleep=0.1) for e in (1, 2, 3)]
+    inputs = [
+        toy_input(program="serial", epsilon=e, sleep=0.1, threads=1) for e in (1, 2, 3)
+    ]
     with Runner(threads=3) as runner:
         with pytest.warns(RuntimeWarning, match="isolation='process'") as caught:
             with ThreadPoolExecutor(3) as pool:
@@ -1449,6 +1415,292 @@ def test_waiting_on_a_programs_lock_warns_once_and_names_the_way_out():
             with ThreadPoolExecutor(3) as pool:
                 outs = list(pool.map(runner.compute, inputs))
         assert len({o.results.extras["pid"] for o in outs}) > 1
+
+
+# ---------------------------------------------------------------------- the guard
+
+
+class Busy(ToyProgram):
+    """The toy, busy a while in each calculation and session request, adding up the
+    threads of those running at once (``most``: the sum at its peak)."""
+
+    def __init__(self, name: str = "busy"):
+        self.name = name
+        self.lock = threading.Lock()
+        self.running = 0
+        self.most = 0
+        self.seen: list[int] = []
+
+    def capabilities(self):
+        caps = super().capabilities()
+        return caps.model_copy(update={"thread_safe": True, "batches": False})
+
+    def busy(self, threads: int) -> None:
+        with self.lock:
+            self.running += threads
+            self.most = max(self.most, self.running)
+            self.seen.append(threads)
+        time.sleep(0.05)
+        with self.lock:
+            self.running -= threads
+
+    def compute(self, inp, ctx=None):
+        self.busy(ctx.threads)
+        own = inp.model_copy(update={"program": "toy"})
+        return super().compute(own, ctx).model_copy(update={"input_data": inp})
+
+    def open_session(self, inp, ctx=None, calctypes=None):
+        program = self
+
+        class Counted(ToySession):
+            def compute(self, *args, **kwargs):
+                program.busy(ctx.threads)
+                return super().compute(*args, **kwargs)
+
+        own = inp.model_copy(update={"program": "toy"})
+        return Counted(own, calctypes=calctypes, ctx=ctx)
+
+
+class Fan(ToyProgram):
+    """Runs its subprogram four times at once from its own threads, then a session of
+    it four times at once, splitting nothing: the runner holds them to its count."""
+
+    name = "fan"
+
+    def capabilities(self):
+        caps = super().capabilities()
+        return caps.model_copy(update={"sessions": False, "batches": False})
+
+    def plan(self, inp):
+        return super().plan(
+            inp.model_copy(update={"program": "toy", "subprograms": []})
+        )
+
+    def compute(self, inp, ctx=None):
+        from concurrent.futures import ThreadPoolExecutor
+
+        spec = inp.subprograms[0]
+        child = ProgramInput.from_spec(spec, inp.structure)
+        sessions = [ctx.session(spec, inp.structure) for _ in range(4)]
+        with ThreadPoolExecutor(4) as pool:
+            assert all(
+                o.success for o in pool.map(lambda _: ctx.compute(child), "1234")
+            )
+            assert all(f.success for f in pool.map(lambda s: s.compute(), sessions))
+        for s in sessions:
+            s.close()
+        own = inp.model_copy(update={"program": "toy", "subprograms": []})
+        return super().compute(own, ctx).model_copy(update={"input_data": inp})
+
+
+def fan_input(**child_keywords: Any) -> ProgramInput:
+    child = {"program": "busy", "calctype": "gradient", "model": {"method": "lj"}}
+    return ProgramInput.model_validate(
+        toy_input(program="fan", threads=2).model_dump()
+        | {"subprograms": [child | {"keywords": child_keywords}]}
+    )
+
+
+def test_a_parent_running_children_side_by_side_never_exceeds_its_count():
+    busy = Busy()
+    register_program(busy)
+    register_program(Fan())
+    with Runner(threads=8) as runner:
+        assert runner.compute(fan_input()).success  # the parent's count: 2
+        assert busy.most == 2 and set(busy.seen) == {2}  # one at a time, 2 each
+        busy.most = 0
+        del busy.seen[:]
+        assert runner.compute(fan_input(threads=1)).success
+        assert busy.most == 2 and set(busy.seen) == {1}  # two at a time, 1 each
+
+
+def test_a_worker_parents_children_sent_to_its_client_count_against_it():
+    """Counted in the worker before they go, and run in the client (Busy is only here)."""
+    busy = Busy()
+    register_program(busy)
+    register_program(serve_programs.spread)
+    inp = fan_input().model_copy(update={"program": "spread"})
+    with Runner(threads=8) as runner:
+        out = runner.compute(inp)
+    assert out.results.extras["pid"] != os.getpid()
+    assert out.results.extras["threads"] == [2, 2, 2, 2]
+    assert busy.most == 2  # one at a time under the parent's 2
+
+
+def test_requests_on_one_session_from_several_threads_share_its_count():
+    from concurrent.futures import ThreadPoolExecutor
+
+    busy = Busy()
+    register_program(busy)
+    plain = NoSessions("plain")
+    register_program(plain)
+    with Runner(threads=8) as runner:
+        with runner.session(toy_input(program="busy"), threads=2) as s:
+            with ThreadPoolExecutor(6) as pool:
+                frames = list(pool.map(lambda _: s.compute(), range(6)))
+        assert all(f.success for f in frames)
+        assert busy.most == 2 and set(busy.seen) == {2}  # in turn, never 12 threads
+        with runner.session(toy_input(program="plain"), threads=2) as s:
+            with ThreadPoolExecutor(6) as pool:
+                frames = list(pool.map(lambda _: s.compute(), range(6)))
+        assert all(f.success for f in frames)
+        assert plain.most == 1 and {c.threads for c in plain.contexts} == {2}
+
+
+def test_open_sessions_hold_no_threads_so_workflows_do_not_hang():
+    """A pool of N chains on N threads, each holding a session open beside top-level
+    calls, and a whole-count session held open while submitted work is waited on."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    busy = Busy()
+    register_program(busy)
+    with Runner(threads=4) as runner:
+
+        def chain(i: int) -> bool:
+            one = toy_input(program="busy", threads=1, epsilon=0.01 * (i + 1))
+            with runner.session(one, threads=1) as s:
+                s.compute()
+                done = runner.compute(one).success  # while the session is open
+                runner.compute([one, one])
+                s.compute()
+            return done
+
+        with ThreadPoolExecutor(4) as pool:
+            chains = [pool.submit(chain, i) for i in range(4)]
+            assert all(c.result(timeout=30) for c in chains)  # no hang
+        with runner.session(toy_input(program="busy")) as s:  # all four threads
+            s.compute()
+            futures = [runner.submit(toy_input(program="busy")) for _ in range(3)]
+            assert all(f.result(timeout=30).success for f in futures)
+            s.compute()
+
+
+def test_a_top_level_call_from_a_thread_holding_threads_fails_at_once():
+    seen: list[str] = []
+
+    class Inner(ToyProgram):  # calls a runner itself, inside its calculation
+        name = "inner"
+
+        def compute(self, inp, ctx=None):
+            calls = (
+                lambda: runner.compute(toy_input()),
+                lambda: runner.submit(toy_input()),
+                lambda: qccompute.compute(toy_input()),
+            )
+            for call in calls:
+                try:
+                    call()
+                except RuntimeError as e:
+                    seen.append(str(e))
+            own = inp.model_copy(update={"program": "toy"})
+            return super().compute(own, ctx).model_copy(update={"input_data": inp})
+
+    register_program(Inner())
+    with Runner(threads=2) as runner:
+        start = time.perf_counter()
+        assert runner.compute(toy_input(program="inner")).success
+        assert time.perf_counter() - start < 5  # at once, no waiting
+        with runner.session(toy_input()) as s:
+            s.compute()  # from a thread that holds nothing: fine
+    assert len(seen) == 3 and all("ctx.compute" in m for m in seen)
+
+
+def test_waiting_work_can_be_cancelled_or_stopped():
+    gated = Gated()
+    register_program(gated)
+    with Runner(threads=2) as runner:
+        first = runner.submit(toy_input(program="gated", epsilon=0.9))
+        while not gated.order:
+            time.sleep(0.01)
+        waiting = runner.submit(toy_input(program="gated", epsilon=0.1))
+        stopped = runner.submit(toy_input(program="gated", epsilon=0.2))
+        time.sleep(0.1)
+        assert not waiting.running() and waiting.cancel()  # waiting for threads
+        assert runner.stop(stopped)
+        with pytest.raises(ProgramError) as e:
+            stopped.result(timeout=10)
+        assert e.value.error.kind is ErrorKind.stopped
+        gated.gate.set()
+        assert first.result(timeout=10).success
+    assert gated.order == [0.9]  # neither ran
+    # A count's waiter, alone: a cancel or a stop of its caller ends the wait.
+    from qccompute._count import Count
+    from qccompute.program import _Control
+
+    for end, kind in ((_Control.cancel, ErrorKind.timeout), (_Control.stop, "stopped")):
+        count = Count(1)
+        count.take(1)
+        control = _Control()
+        failed: list[ProgramError] = []
+
+        def wait(count=count, control=control, failed=failed):
+            try:
+                count.take(1, 0, control)
+            except ProgramError as e:
+                failed.append(e)
+
+        waiter = threading.Thread(target=wait)
+        waiter.start()
+        time.sleep(0.05)
+        end(control)
+        waiter.join(1)
+        assert failed and failed[0].error.kind == kind and not control.waiting
+
+
+def test_a_timeout_counts_from_when_a_calculation_starts():
+    left: list[float | None] = []
+
+    class TimeLeft(Gated):
+        name = "time-left"
+
+        def compute(self, inp, ctx=None):
+            left.append(ctx.timeout)
+            return super().compute(inp, ctx)
+
+    gated = TimeLeft()
+    register_program(gated)
+    with Runner(threads=1) as runner:
+        first = runner.submit(toy_input(program="time-left", epsilon=0.9))
+        while not gated.order:
+            time.sleep(0.01)
+        late = runner.submit(toy_input(program="time-left", epsilon=0.1), timeout=1.0)
+        time.sleep(1.2)  # it waits longer than its timeout
+        gated.gate.set()
+        assert first.result(timeout=10).success and late.result(timeout=10).success
+    assert left[1] > 0.9  # its whole second, from when it started
+
+
+def test_a_store_hit_takes_no_threads():
+    gated = Gated()
+    register_program(gated)
+    store = FakeStore()
+    stored = toy_input(epsilon=0.3)
+    with Runner(threads=1) as runner:
+        runner.compute(stored, store=store)  # stored
+        first = runner.submit(toy_input(program="gated", epsilon=0.9))
+        while not gated.order:
+            time.sleep(0.01)
+        start = time.perf_counter()
+        assert runner.compute(stored, store=store).success  # the runner is full
+        assert runner.submit(stored, store=store).result(timeout=1).success
+        assert runner.compute([stored, stored], store=store)
+        assert time.perf_counter() - start < 1
+        gated.gate.set()
+        assert first.result(timeout=10).success
+
+
+def test_a_list_shares_its_count_among_the_inputs_that_run():
+    recording = Recording("rec")
+    register_program(recording)
+    store = FakeStore()
+    inputs = [toy_input(program="rec", epsilon=0.01 * (i + 1)) for i in range(8)]
+    with Runner(threads=8) as runner:
+        runner.compute(inputs[:4])  # four share 8: 2 each
+        runner.compute(inputs[4:6], store=store)
+        del recording.contexts[:]
+        runner.compute(inputs[4:7], store=store)  # two hits: the one that runs gets 8
+        runner.compute(inputs[:3])  # 8 // 3: 2 each
+    assert [c.threads for c in recording.contexts] == [8, 2, 2, 2]
 
 
 # ---------------------------------------------------------------------- progress
@@ -1484,12 +1736,9 @@ def test_progress_events_reach_the_caller_with_their_path():
         toy_input(program="stepper"), store=store, progress=events.append
     )
     assert events == [] and hit.success
-    # Lists and as_completed: every calculation's events, batches included.
+    # Lists: every calculation's events, batches included.
     inputs = [toy_input(program="stepper", epsilon=e) for e in (0.1, 0.2, 0.3)]
     qccompute.compute(inputs, progress=events.append)
-    assert len(events) == 9
-    del events[:]
-    list(qccompute.default_runner().as_completed(inputs, progress=events.append))
     assert len(events) == 9
     # A session's requests, its own or over compute.
     del events[:]
@@ -1739,7 +1988,7 @@ def test_a_worker_runs_subprograms_it_can_run_itself():
         assert extras["pid"] != os.getpid()
         assert extras["child"] == extras["pid"] == extras["session"]  # no hop back
         assert extras["identities"] == {"pools": serve_programs.pools.version()}
-        assert extras["threads"] == 1  # within the grant, as the client gives it
+        assert extras["threads"] == 4  # its parent's count, as the client gives it
         assert out.execution.identities == runner.identities(nest_input())
 
         class Other(serve_programs.Pools):  # another program under the same name
@@ -1786,7 +2035,7 @@ def test_subprogram_lists_and_their_failures():
         name = "fanout"
 
         def plan(self, inp):
-            return Plan(resolved=Resolved(), resources=Resources(threads=2))
+            return Plan(resolved=Resolved())
 
         def compute(self, inp, ctx=None):
             spec = inp.subprograms[0]
@@ -1823,8 +2072,8 @@ def test_subprogram_lists_and_their_failures():
     )
     with Runner(threads=2) as runner:
         assert runner.compute(inp).success
-        # The toy batches: the four children ask for 4 threads together, capped at
-        # the parent's 2, and the toy runs them one after another with both.
+        # The toy batches: the four children share the parent's 2, together in one
+        # call, and the toy runs them one after another with both.
         assert seen == [[2, 2, 2, 2]]
         failing = inp.model_copy(
             update={
@@ -1880,7 +2129,7 @@ def test_isolation_process_runs_every_program_in_a_worker():
         out = runner.compute(toy_input(threads=2))
         assert out.success and out.execution.threads == 2
         with runner.session(toy_input()) as s:
-            assert type(s).__name__ == "WorkerSession"
+            assert type(s._session).__name__ == "WorkerSession"
             assert s.compute().success
 
 
@@ -1967,7 +2216,7 @@ def test_subprograms_of_worker_programs_run_in_the_client():
         assert out.results.energy == pytest.approx(k * np.sum(ARGON3.geometry**2))
         assert np.array_equal(out.results.gradient, 2 * k * ARGON3.geometry)
         assert out.results.extras["list"] == [True, True]
-        assert out.results.extras["threads"] == 1  # what the child asks for
+        assert out.results.extras["threads"] == 4  # the relay's count
         # A program with sessions of its own opens one here: warm-started
         toy = {"program": "toy", "calctype": "gradient", "model": {"method": "lj"}}
         assert runner.compute(relay_input(toy)).results.extras["warm"] == [False, True]
@@ -2050,7 +2299,7 @@ def test_a_calculation_holds_blas_at_its_threads_and_gives_the_counts_back(pools
     """In process, the pools follow each call's grant, and come back after (#66)."""
     outside = blas_threads()
     with Runner(threads=4) as runner:
-        assert runner.compute(toy_input(program="pools")).results.extras["blas"] == 1
+        assert runner.compute(toy_input(program="pools")).results.extras["blas"] == 4
         three = runner.compute(toy_input(program="pools", threads=3))
         assert three.results.extras["blas"] == 3
         assert blas_threads() == outside
@@ -2073,7 +2322,7 @@ def test_a_pooled_worker_holds_each_calls_threads(pools):
         assert [o.results.extras["blas"] for o in batch] == [3, 3, 3]
         with runner.session(toy_input(program="pools", threads=2)) as s:
             assert s.compute().record["blas"] == 2
-        assert runner.compute(toy_input(program="pools")).results.extras["blas"] == 1
+        assert runner.compute(toy_input(program="pools")).results.extras["blas"] == 4
 
 
 class Pinning(ToyProgram):
@@ -2082,8 +2331,9 @@ class Pinning(ToyProgram):
     name = "pinning"
 
     def plan(self, inp):
-        own = inp.model_copy(update={"program": "toy", "subprograms": []})
-        return super().plan(own).model_copy(update={"resources": Resources(threads=4)})
+        return super().plan(
+            inp.model_copy(update={"program": "toy", "subprograms": []})
+        )
 
     def compute(self, inp, ctx=None):
         from threadpoolctl import threadpool_limits
@@ -2111,7 +2361,7 @@ def test_a_subprogram_holds_its_own_threads_and_gives_its_parent_its_back(pools)
     outside = blas_threads()
     child = {"program": "pools", "calctype": "gradient", "model": {"method": "lj"}}
     inp = ProgramInput.model_validate(
-        toy_input(program="pinning").model_dump()
+        toy_input(program="pinning", threads=4).model_dump()
         | {"subprograms": [child | {"keywords": {"threads": 3}}]}
     )
     with Runner(threads=8) as runner:
@@ -2216,7 +2466,7 @@ def test_programs_with_subprograms_called_directly_go_to_the_default_runner():
     assert "register_program" in e.value.error.message
     register_program(fd)
     out = fd.compute(fd_input())
-    assert out.success and out.execution.threads == 1  # what fd's plan asks for
+    assert out.success and out.execution.threads == default_runner().threads
 
 
 def test_the_runner_attaches_the_output_a_program_raised_without():
@@ -2395,39 +2645,27 @@ def test_function_program_numerics_change_with_the_function():
     assert numerics(make(1.0), version="v2") == "v2"  # an explicit override
 
 
-def test_shares_pack_threads_and_gpus_and_memory_follows():
-    from qccompute.runner import _Grant
+def test_counts_hand_out_threads_and_whole_gpus_in_turn_and_memory_follows():
+    from qccompute._count import Count
 
-    budget = _Grant(8, ["0", "1"], per_gpu=2)
-    assert budget.share(2, 0) == 0.25
-    assert budget.share(1, 1) == 0.25  # half a GPU of two
-    assert budget.share(8, 1) == 1.0
-    for i in range(5):
-        budget.put(i, 1, 1 if i < 4 else 0)
-    held = [budget.take() for _ in range(4)]  # four quarter shares, in order
-    assert [h[0] for h in held] == [0, 1, 2, 3]
-    assert sorted(d for *_, devices, _ in held for d in devices) == ["0", "0", "1", "1"]
-    late = []
-    t = threading.Thread(target=lambda: late.append(budget.take()))
-    t.start()
-    t.join(0.1)
-    assert not late  # the shares already sum to 1
-    budget.release(*held[0][2:])
-    t.join(5)
-    assert late and late[0][0] == 4 and late[0][3] == 0.125
-    # Higher priority first, in order within a priority; a removed task never runs.
-    queue = _Grant(1, (), per_gpu=1)
-    entries = {
-        name: queue.put(name, 1, 0, p)
-        for name, p in [("a", 0), ("b", 1), ("c", 0), ("d", 1)]
-    }
-    assert queue.remove(entries["d"])
-    order = []
-    while (taken := queue.take()) is not None:
-        order.append(taken[0])
-        queue.release(taken[2], taken[3])
-    assert order == ["b", "a", "c"]
-    assert not queue.remove(entries["a"])  # admitted already
+    count = Count(8, ["0", "1"], memory=64.0)
+    assert count.share(2, ()) == 0.25 and count.share(1, ("0",)) == 0.5
+    held = [count.take(1, 1), count.take(1, 1)]  # a GPU each, whole
+    assert sorted(d for devices in held for d in devices) == ["0", "1"]
+    late: list[tuple[str, ...]] = []
+    waiting = threading.Thread(target=lambda: late.append(count.take(1, 1)))
+    waiting.start()
+    waiting.join(0.1)
+    assert not late  # no GPU free, though threads are
+    behind: list[tuple[str, ...]] = []
+    cpu = threading.Thread(target=lambda: behind.append(count.take(1)))
+    cpu.start()
+    cpu.join(0.1)
+    assert not behind  # first come, first served: it waits its turn
+    count.give(1, held[0])
+    waiting.join(5)
+    cpu.join(5)
+    assert late == [held[0]] and behind == [()]
 
     recording = Recording("rec")
     register_program(recording)
@@ -2461,7 +2699,7 @@ def test_memory_keywords_replace_the_share():
 
     memory = Memory("memory")
     register_program(memory)
-    with Runner(threads=4, gpus=["0", "1"], per_gpu=2) as runner:
+    with Runner(threads=4, gpus=["0", "1"]) as runner:
         runner._gpus = {"0": 40.0, "1": 40.0}  # as nvidia-smi would list them
         runner._memory = 64.0
         given = {"memory_gib": 30, "device_memory_gib": 32.5}
@@ -2469,8 +2707,9 @@ def test_memory_keywords_replace_the_share():
             [toy_input(program="memory", epsilon=e, **given) for e in (0.1, 0.2)]
             + [toy_input(program="memory", epsilon=e) for e in (0.3, 0.4)]
         )
+        # A GPU each, whole: half the runner's memory follows it.
         granted = sorted((c.memory_gib, c.device_memory_gib) for c in memory.contexts)
-        assert granted == [(16.0, 20.0), (16.0, 20.0), (30.0, 32.5), (30.0, 32.5)]
+        assert granted == [(30.0, 32.5), (30.0, 32.5), (32.0, 40.0), (32.0, 40.0)]
         del memory.contexts[:]
         # At most what the runner has: the machine's memory, the GPU's.
         too_much = {"memory_gib": 100, "device_memory_gib": 100}
@@ -2479,7 +2718,7 @@ def test_memory_keywords_replace_the_share():
             s.compute()
         assert [(c.memory_gib, c.device_memory_gib) for c in memory.contexts] == [
             (64.0, 40.0),
-            (8.0, 20.0),
+            (8.0, 40.0),
         ]
 
     # A subprogram's keywords are capped at its parent's grant, which holds them.
@@ -2495,7 +2734,7 @@ def test_memory_keywords_replace_the_share():
 
         def plan(self, inp):
             plan = super().plan(self._toy(inp))
-            return plan.model_copy(update={"resources": Resources(threads=2, gpus=1)})
+            return plan.model_copy(update={"resources": Resources(gpus=1)})
 
         def compute(self, inp, ctx=None):
             child = self._toy(inp).model_copy(update={"program": "memory"})
@@ -2511,10 +2750,10 @@ def test_memory_keywords_replace_the_share():
     register_program(Parent())
     del memory.contexts[:]
     child = {"program": "memory", "calctype": "gradient", "model": {"method": "lj"}}
-    with Runner(threads=4, gpus=["0", "1"], per_gpu=2) as runner:
+    with Runner(threads=4, gpus=["0", "1"]) as runner:
         runner._gpus = {"0": 40.0, "1": 40.0}
         runner._memory = 64.0
-        # Each parent: half the threads, so 32 GiB, and 20 GiB of its GPU.
+        # Each parent: a GPU of two, so 32 GiB, and its GPU's 40 GiB.
         runner.compute(
             [
                 toy_input(program="memory-parent", epsilon=e).model_copy(
@@ -2524,7 +2763,7 @@ def test_memory_keywords_replace_the_share():
             ]
         )
     granted = sorted((c.memory_gib, c.device_memory_gib) for c in memory.contexts)
-    assert granted == [(16.0, 20.0)] * 4 + [(32.0, 20.0)] * 2
+    assert granted == [(32.0, 30.0)] * 2 + [(32.0, 40.0)] * 4
 
 
 def test_memory_reaches_the_program_unrounded():
@@ -2585,6 +2824,11 @@ def test_gpus_come_from_the_plan():
             s.compute()
         assert [c.gpus for c in one.contexts] == [("0",), ("0",)]
         assert [c.gpus for c in none.contexts] == [()]
+        # Given a GPU and no threads, 1 thread; on the CPU, the whole count.
+        assert [c.threads for c in one.contexts] == [1, 1]
+        assert [c.threads for c in none.contexts] == [4]
+        runner.compute(toy_input(program="one-gpu", threads=3))
+        assert one.contexts[-1].threads == 3
         # A list packs by them: two one-GPU calculations side by side, a GPU each
         del one.contexts[:]
         runner.compute([toy_input(program="one-gpu", epsilon=e) for e in (0.1, 0.2)])
@@ -2600,13 +2844,14 @@ def test_gpus_come_from_the_plan():
 
 
 def test_workers_with_gpus_are_shared_by_sessions_and_calls():
-    """per_gpu workers per program and GPUs; without GPUs, as many as fit."""
+    """One worker per program and GPUs; without GPUs, as many as fit."""
     register_program(serve_programs.isolated_gpu)
     register_program(serve_programs.isolated)
     gpu = "isolated-gpu"
 
     def pids(runner, program, n):
-        sessions = [runner.session(toy_input(program=program)) for _ in range(n)]
+        one = toy_input(program=program)
+        sessions = [runner.session(one, threads=1) for _ in range(n)]
         seen = [s.compute().record["pid"] for s in sessions]
         return sessions, seen
 
@@ -2621,11 +2866,6 @@ def test_workers_with_gpus_are_shared_by_sessions_and_calls():
         assert out.results.extras["devices"] == "7"  # it sees its grant
         assert out.results.extras["ordinals"] == [0]  # as CUDA device 0 (#49)
         assert [s.compute().success for s in sessions] == [True] * 3
-        for s in sessions:
-            s.close()
-    with Runner(threads=4, gpus=["7"], per_gpu=2) as runner:
-        sessions, seen = pids(runner, gpu, 3)
-        assert len(set(seen)) == 2  # two calculations may share the GPU
         for s in sessions:
             s.close()
     # Without GPUs: a worker per session, as many as fit side by side, then shared.
@@ -2650,7 +2890,7 @@ def test_workers_without_gpus_serve_calls_of_any_threads():
         one = runner.compute(toy_input(program="isolated", threads=1))
     assert len({o.results.extras["pid"] for o in [*three, *two, one]}) == 1
     # Each call's threads reach the worker in its ctx.
-    assert [o.execution.threads for o in [*three, *two, one]] == [3, 3, 3, 2, 2, 1]
+    assert [o.execution.threads for o in [*three, *two, one]] == [3, 3, 3, 4, 4, 1]
 
 
 def test_subprograms_start_only_within_the_calculations_time():

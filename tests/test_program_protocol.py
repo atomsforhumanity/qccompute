@@ -595,7 +595,7 @@ def test_capabilities_and_plans_may_be_plain_mappings():
         def plan(self, inp):
             return {
                 "resolved": {"settings": {"sigma": 6.0}},
-                "resources": {"threads": 2},
+                "resources": {"gpus": 0, "memory_gib": 2.0},
                 "record": {"placement": "cpu"},
             }
 
@@ -604,7 +604,7 @@ def test_capabilities_and_plans_may_be_plain_mappings():
     assert caps.calctypes == {CalcType.energy, CalcType.gradient}
     assert caps.methods == {"lj": {CalcType.energy}}
     plan = plan_of(plain, toy_input())
-    assert plan.resources.threads == 2 and plan.record == {"placement": "cpu"}
+    assert plan.resources.memory_gib == 2.0 and plan.record == {"placement": "cpu"}
     assert plan.resolved.settings == {"sigma": 6.0}
 
 

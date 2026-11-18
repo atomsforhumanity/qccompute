@@ -152,9 +152,10 @@ class Capabilities(QCDataBaseModel):
         batches: Whether it implements `BatchProgram.compute_batch`.
         in_process: Whether it may run in the runner's own process (it neither writes
             to the process's stdout/stderr file descriptors nor changes process-global
-            state); otherwise the runner uses a worker process. Holding the BLAS and
-            OpenMP thread counts at other values for its own work is allowed, when it
-            restores them around its subprograms' calls and before it returns.
+            state); otherwise the runner uses a worker process. A program whose input
+            names subprograms may raise its own BLAS and OpenMP pools (held at 1) up
+            to its thread count, only while none of its subprograms runs, restoring
+            them before it returns.
         thread_safe: Whether separate calculations and sessions may run concurrently
             in threads of one process (the program releases the GIL and shares no
             mutable state); the runner then runs them side by side in threads instead
@@ -173,31 +174,25 @@ class Capabilities(QCDataBaseModel):
 
 
 class Resources(QCDataBaseModel):
-    """What one calculation asks of the machine.
+    """What one calculation asks of the machine, besides threads.
 
-    The runner grants the threads and GPUs asked for and packs lists by them. Memory
-    is informational: the runner records it in the plan and never schedules,
-    packs or caps by it (qc* makes no memory estimates). What memory a calculation is
-    granted is in `RunContext`: ``memory_gib`` and ``device_memory_gib``.
+    Programs don't suggest thread counts: a calculation's threads are its ``threads``
+    keyword, else its caller's whole count (the docs' Threads page). The runner grants
+    the GPUs asked for, whole. Memory is informational: the runner records it in the
+    plan and never schedules or caps by it (qc* makes no memory estimates). What memory
+    a calculation is granted is in `RunContext`: ``memory_gib`` and
+    ``device_memory_gib``.
 
     Attributes:
-        threads: CPU threads the calculation asks for when its input has no
-            ``threads`` keyword: the runner grants this many, at most its own. The
-            default is 1. None asks for all the runner has (for a subprogram, all of
-            its parent's grant): for a program that scales with whatever it is given
-            (a DFT code). In a list such a calculation is a full share, so it runs
-            alone. A small molecule rarely gains from more than a few.
         memory_gib: Host memory the calculation expects to use (GiB), if known;
             informational, not scheduled.
         gpus: GPUs the calculation uses: the runner grants this many (a program
             whose subprograms use GPUs plans theirs). A program in a worker sees only
             those granted.
         device_memory_gib: Memory per GPU the calculation expects to use (GiB), if
-            known; informational, not scheduled (``per_gpu`` sets how many
-            calculations share a GPU).
+            known; informational, not scheduled.
     """
 
-    threads: int | None = 1
     memory_gib: float | None = None
     gpus: int = 0
     device_memory_gib: float | None = None
@@ -209,10 +204,9 @@ class Plan(QCDataBaseModel):
     Attributes:
         resolved: The settings with every ``"auto"`` replaced, and why; exactly what
             the run's `ProgramOutput.resolved` will hold.
-        resources: What the calculation needs; the runner grants its threads (unless
-            the input's ``threads`` keyword asks) and GPUs, and packs lists by them;
-            its memory is informational. A program with subprograms gives the largest
-            over its subprograms' plans.
+        resources: The GPUs the calculation needs, which the runner grants, and its
+            memory, informational. A program with subprograms gives the largest over
+            its subprograms' plans.
         warnings: What the program would warn about.
         record: The program's own detail of the plan (a placement, arithmetic
             and memory plan), shaped like a run's record.
@@ -441,14 +435,17 @@ class _Control:
     (`RunContext.stop_requested`); cancelling reads to it as its time running out
     (`RunContext.timeout` is 0). Each request calls its registered callbacks once:
     the runner registers what carries it further (a worker's stop file, a worker's
-    process tree, a place in the queue). In a worker, the stop request of the message
-    in flight is a file its client creates (``stop_file``).
+    process tree). In a worker, the stop request of the message in flight is a file its
+    client creates (``stop_file``). Work waiting for threads is woken by either request
+    (``waiting``: the counts it waits in).
     """
 
     __slots__ = (
         "cancelled",
         "stopping",
+        "started",
         "stop_file",
+        "waiting",
         "_lock",
         "_on_cancel",
         "_on_stop",
@@ -458,7 +455,9 @@ class _Control:
     def __init__(self, stop_file: str | None = None) -> None:
         self.cancelled = False
         self.stopping = False
+        self.started = False  # it took its threads
         self.stop_file = stop_file
+        self.waiting: list[Any] = []
         self._lock = threading.Lock()
         self._on_cancel: list[Callable[[], object]] = []
         self._on_stop: list[Callable[[], object]] = []
@@ -486,6 +485,8 @@ class _Control:
             callbacks, self._on_stop = self._on_stop, []
         for callback in callbacks:
             callback()
+        for count in list(self.waiting):
+            count.wake()
 
     def on_cancel(self, callback: Callable[[], object]) -> None:
         """Call ``callback`` when the calculation is cancelled (now, if it is)."""
@@ -504,6 +505,8 @@ class _Control:
             callbacks, self._on_cancel = self._on_cancel, []
         for callback in callbacks:
             callback()
+        for count in list(self.waiting):
+            count.wake()
 
 
 class _Subprograms(Protocol):
@@ -521,42 +524,33 @@ class _Subprograms(Protocol):
 
 
 class RunContext:
-    """What a runner gives one calculation: its share of the machine and its subprograms.
+    """What a runner gives one calculation: its threads, GPUs, memory and subprograms.
 
     Runners make it and always pass one to `Program.compute`; a program reads its
-    fields. In a list, a calculation's share of its runner is the larger of its share
-    of the threads and its share of the GPUs (with k calculations per GPU, each counts
-    1/k of a GPU). The resource keywords ``threads``, ``memory_gib`` and
-    ``device_memory_gib`` are what a calculation asks for, and the runner grants
-    them, at most what it has (for a subprogram, what its parent was granted).
-
-    A program uses the smaller of its own request (a resource keyword) and the grant,
-    or the grant when it requested nothing; a request capped by the grant is a
+    fields. The resource keywords ``threads``, ``memory_gib`` and ``device_memory_gib``
+    are what a calculation asks for, and the runner grants them, at most what its
+    caller has. A program uses at most what it is given; a request capped by it is a
     ``resource_capped`` warning, not an error.
 
     Attributes:
-        threads: CPU threads granted: what the input asks for (its ``threads``
-            keyword, else ``plan.resources.threads``; all of them when that is
-            None), at most the runner's. None: not
-            granted (a direct call). While the program runs, the runner holds the
+        threads: The calculation's thread count: its ``threads`` keyword, else its
+            caller's whole count (a runner's, a parent's, a session's), or 1 for a
+            calculation given GPUs (the docs' Threads page). The program uses at most
+            this many, fewer where more don't help. Its subprograms run under it: never
+            more of them at once than it holds, and a list of them shares it. None: no
+            runner (a direct call). While the program runs, the runner holds the
             process's BLAS and OpenMP pools at this count (in this process, BLAS
-            counts are process-wide: calculations running at once with different
-            threads share them), or at one thread when the input names subprograms:
-            the grant is theirs, and they hold their own while they run.
-        gpus: Identifiers of the GPUs granted (as for ``CUDA_VISIBLE_DEVICES``:
+            counts are process-wide), or at one thread when the input names
+            subprograms.
+        gpus: Identifiers of the GPUs granted, whole (as for ``CUDA_VISIBLE_DEVICES``:
             indices or UUIDs); `device_ordinals` gives this process's CUDA ordinals.
-        memory_gib: Host memory granted (GiB). A calculation run alone (one input, a
-            session) gets all of the runner's memory, or as a subprogram all of its
-            parent's grant (a session opened with ``threads=`` gets the part of it
-            those threads are of the parent's). In a list, each calculation, and each
-            batch, gets its share of the list's memory. The input's ``memory_gib``
-            keyword replaces it, at most the runner's memory, or for a subprogram its
-            parent's grant. None: not known.
-        device_memory_gib: Memory granted on each GPU (GiB): 1/k of the GPU when k
-            calculations may share it (``per_gpu``), at most a subprogram's parent's
-            grant. The input's ``device_memory_gib`` keyword replaces it, at most the
-            GPU's memory or that grant. A batch gets the share. None: not known or no
-            GPU granted.
+        memory_gib: Host memory granted (GiB): the calculation's share of its
+            caller's (its threads' or its GPUs' share of the runner's, a parent's, a
+            session's). The input's ``memory_gib`` keyword replaces it, at most the
+            caller's. None: not known.
+        device_memory_gib: Memory granted on each GPU (GiB): the GPU's, at most a
+            subprogram's parent's. The input's ``device_memory_gib`` keyword replaces
+            it, at most that. None: not known or no GPU granted.
         plan: The runner's plan of this input, when it made one, so the program need
             not plan again; exactly what ``program.plan(input)``
             returned.
@@ -586,6 +580,7 @@ class RunContext:
         "_control",
         "_refusal",
         "_identities",
+        "_count",
     )
 
     def __init__(
@@ -604,7 +599,7 @@ class RunContext:
         """Create a context; runners do this, programs read it.
 
         Args:
-            threads: CPU threads granted.
+            threads: The calculation's thread count.
             gpus: GPU identifiers granted.
             memory_gib: Host memory granted (GiB).
             device_memory_gib: Memory granted on each GPU (GiB).
@@ -642,6 +637,8 @@ class RunContext:
         # would run for it, so the worker may run a subprogram itself only when its
         # own programs are exactly those (`qccompute.serve`).
         self._identities: dict[str, str] | None = None
+        # The count its subprograms run under (its own threads), made on first use.
+        self._count: Any = None
 
     def __repr__(self) -> str:
         """Show the grant."""
@@ -816,10 +813,11 @@ class RunContext:
     ) -> list[ProgramOutput[Any, Data]]: ...
 
     def compute(self, inputs: Any, /, *, raise_exc: bool = True) -> Any:
-        """Run subprograms within this calculation's grant, as ``Runner.compute`` does.
+        """Run subprograms under this calculation's thread count, as ``Runner.compute`` does.
 
-        Each gets the threads it asks for (its ``threads`` keyword, else its plan's),
-        at most the grant; a list runs side by side within the grant. Failures raise
+        One gets this calculation's threads unless it sets ``threads`` (at most these);
+        a list shares them, and never more run at once than this calculation holds,
+        however many threads of the program call. Failures raise
         as from ``qccompute.compute``: `qcdata.ProgramError` for one input,
         `qcdata.ProgramErrors` for a list; ``raise_exc=False`` returns them in place.
         A subprogram's failure that the program lets escape fails it with kind
@@ -859,16 +857,16 @@ class RunContext:
         threads: int | None = None,
         calctypes: Iterable[CalcType | str] | None = None,
     ) -> Session:
-        """Open a session of a subprogram under this calculation's grant.
+        """Open a session of a subprogram under this calculation's thread count.
 
         Args:
             spec: The subprogram's input, or its spec with ``structure``.
             structure: With a spec: the atoms, charge, multiplicity and first
                 geometry.
-            threads: This session's share of the grant (a program with 16 threads
-                running 8 tasks gives each session 2), which its host memory follows;
-                None: the threads the subprogram asks for (its ``threads`` keyword,
-                else its plan's), at most the grant.
+            threads: The session's thread count, at most this calculation's (a program
+                running 8 tasks side by side on 16 threads gives each session 2),
+                which its host memory follows; None: the input's ``threads`` keyword,
+                else this calculation's whole count. Its requests run under both.
             calctypes: The calctypes the session may run (see `session_calctypes`).
 
         Returns:
@@ -970,11 +968,10 @@ class Session(Protocol):
 
         Requests of one lineage run in list order, each reading the lineage's history
         as it stands at its place (`qcdata.Request.commit`); requests of different
-        lineages may run concurrently within the grant. The grant is the session's,
-        set when it opens (``threads=``, else the threads its input or plan asks
-        for), and the program splits it across the lineages it runs at once. The
-        results equal running the requests one at a time, each with the thread count
-        it got.
+        lineages may run concurrently. The requests share the session's thread count
+        (``ctx.threads`` when it opened): a program that runs several at once gives
+        each the count divided by those it runs, at least 1. The results equal running
+        the requests one at a time, each with the thread count it got.
 
         Every request runs, failed ones included; then, if any failed, the call
         raises one `qcdata.ProgramErrors` group holding each failure's
@@ -1154,12 +1151,12 @@ class BatchProgram(Program, Protocol):
     ) -> list[ProgramOutput[ProgramInput, Data]]:
         """Run many calculations together.
 
-        Under a runner, ``ctx`` is the batch's grant: the sum of its inputs' threads
-        (at most the runner's) and the most GPUs any of them asks for. The program
-        divides it among the inputs (one thread each to N one-thread searches run
-        side by side), and records in each output's ``execution.threads`` what that
-        input used; left unset, the runner records the input's own part of the
-        grant. Likewise ``execution.wall_time``: each input's own where the program
+        Under a runner, ``ctx`` is the batch's: the whole list in one call, with the
+        list's thread count (the sum of its inputs' shares) and the most GPUs any of
+        them asks for. The program divides the threads among the inputs (one each to
+        N one-thread searches run side by side), and records in each output's
+        ``execution.threads`` what that input used; left unset, the runner records the
+        input's own part. Likewise ``execution.wall_time``: each input's own where the program
         can tell (a lockstep batch knows when each task finished), else left unset,
         and the runner records the whole batch's. The batch's wall time is always in
         ``timings["batch"]`` (s).
@@ -1180,7 +1177,7 @@ class ComputeSession:
     computed by ``compute``: a runner's ``compute`` (one input raises
     `qcdata.ProgramError` on failure; a list with ``raise_exc=False`` returns failed
     outputs in place). A runner computes `compute_many`'s requests as a list, side
-    by side within the session's grant. It keeps no history: every request starts fresh
+    by side, sharing the session's thread count. It keeps no history: every request starts fresh
     (``warm_start`` false), so ``lineage``, ``seed`` and ``commit`` change nothing. A
     request's ``accuracy`` becomes the ``accuracy`` keyword of the input it computes,
     replacing the session input's own; the program records it as it records the
@@ -1569,9 +1566,8 @@ _ACCURACY_SCHEMA: dict[str, Any] = {
 _THREADS_SCHEMA: dict[str, Any] = {
     "type": "integer",
     "minimum": 1,
-    "default": 1,
-    "description": "CPU threads the calculation asks for; the runner grants them, at "
-    "most its own.",
+    "description": "The calculation's thread count, at most its caller's (without it: "
+    "the caller's whole count).",
     "x-tier": "common",
     "x-concern": "resource",
 }
@@ -1742,8 +1738,8 @@ class FunctionProgram:
     """A program made of Python functions of the positions.
 
     For a model surface, an ML potential in a script, or teaching: the smallest
-    complete program. Its keywords are the shared ``threads`` (what it asks the runner
-    for; 1 by default), the shared ``accuracy``, which it records as met, since the
+    complete program. Its keywords are the shared ``threads`` (its thread count; the
+    runner holds the BLAS pools at it), the shared ``accuracy``, which it records as met, since the
     functions converge nothing (``{"target", "thresholds": {}, "estimate"}`` with an
     estimate of 0.0 per target, as qcdata's conventions give), and the settings it
     declares; any other keyword is an ``unknown_key`` input error. It runs in process

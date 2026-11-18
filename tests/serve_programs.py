@@ -311,16 +311,13 @@ def runnable_threads(seconds: float) -> int:
 
 
 class Census(ToyProgram):
-    """The toy, asking for the whole grant (as a Hessian may) and counting while it runs
+    """The toy, on its caller's whole count (as a Hessian may be), counting while it runs
     the other runnable threads of its process: none should be its caller's."""
 
     name = "census"
 
     def plan(self, inp):
-        own = inp.model_copy(update={"program": "toy"})
-        return (
-            super().plan(own).model_copy(update={"resources": Resources(threads=None)})
-        )
+        return super().plan(inp.model_copy(update={"program": "toy"}))
 
     def compute(self, inp, ctx=None):
         extras = {
@@ -343,16 +340,14 @@ class OtherCensus(Census):
 
 
 class Orchestrator(ToyProgram):
-    """Like qcopt: asks for its child's threads (all of them), and between its child's
-    calls does linear algebra of its own, as an optimizer's step does."""
+    """Like qcopt: its children get its whole count, and between its child's calls it
+    does linear algebra of its own, as an optimizer's step does."""
 
     name = "orchestrator"
 
     def plan(self, inp):
         own = inp.model_copy(update={"program": "toy", "subprograms": []})
-        return (
-            super().plan(own).model_copy(update={"resources": Resources(threads=None)})
-        )
+        return super().plan(own)
 
     def compute(self, inp, ctx=None):
         start = time.monotonic()
@@ -387,7 +382,7 @@ class Relay(ToyProgram):
         return caps.model_copy(update={"in_process": False, "sessions": False})
 
     def plan(self, inp):
-        return Plan(resolved=Resolved(), resources=Resources(threads=2))
+        return Plan(resolved=Resolved())
 
     def compute(self, inp, ctx=None):
         if ctx is None:
@@ -437,9 +432,9 @@ class Nest(ToyProgram):
         return caps.model_copy(update={"in_process": False, "sessions": False})
 
     def plan(self, inp):
-        own = inp.model_copy(update={"program": "toy", "subprograms": []})
-        plan = super().plan(own)
-        return plan.model_copy(update={"resources": Resources(threads=2)})
+        return super().plan(
+            inp.model_copy(update={"program": "toy", "subprograms": []})
+        )
 
     def compute(self, inp, ctx=None):
         spec = inp.subprograms[0]
@@ -476,6 +471,35 @@ class Swallow(Stray):
         return ToyProgram.compute(self, own, ctx).model_copy(update={"input_data": inp})
 
 
+class Spread(ToyProgram):
+    """In a worker of its own, runs its subprogram four times at once from its own
+    threads, without splitting its count: the runner holds them to it."""
+
+    name = "spread"
+
+    def capabilities(self):
+        caps = super().capabilities()
+        return caps.model_copy(update={"in_process": False, "sessions": False})
+
+    def plan(self, inp):
+        return super().plan(
+            inp.model_copy(update={"program": "toy", "subprograms": []})
+        )
+
+    def compute(self, inp, ctx=None):
+        from concurrent.futures import ThreadPoolExecutor
+
+        child = ProgramInput.from_spec(inp.subprograms[0], inp.structure)
+        with ThreadPoolExecutor(4) as pool:
+            outs = list(pool.map(lambda _: ctx.compute(child), range(4)))
+        own = inp.model_copy(update={"program": "toy", "subprograms": []})
+        out = super().compute(own, ctx)
+        extras = {"pid": os.getpid(), "threads": [o.execution.threads for o in outs]}
+        results = out.results.model_copy(update={"extras": extras})
+        return out.model_copy(update={"input_data": inp, "results": results})
+
+
+spread = Spread()
 device_lost = DeviceLost()
 swallow = Swallow()
 stepping = Stepping()

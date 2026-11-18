@@ -50,7 +50,6 @@ from ..program import (
     _ACCURACY_SCHEMA,
     Capabilities,
     Plan,
-    Resources,
     RunContext,
     _accuracy_met,
     check_session_calctype,
@@ -200,7 +199,6 @@ def _resolve(spec: ProgramInput | ProgramSpec) -> Plan:
         settings["accuracy"] = record["accuracy"]["target"]
     return Plan(
         resolved=Resolved(settings=settings, reasons=reasons, deferred=deferred),
-        resources=Resources(threads=1 if threads == "auto" else threads),
         record=record,
     )
 

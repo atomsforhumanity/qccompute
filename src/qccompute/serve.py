@@ -107,6 +107,7 @@ from qcdata import (
 )
 
 from . import _wire
+from ._count import Count, holding
 from ._pools import hold_threads, own_threads
 from .program import (
     BatchProgram,
@@ -293,7 +294,8 @@ class Host:
         if key == "id":
             self._message = mid
         try:
-            result = _wire.dump(self.handle(msg), self.array_dir)
+            with holding():  # the message runs on its caller's threads
+                result = _wire.dump(self.handle(msg), self.array_dir)
             try:
                 return _wire.encode({key: mid, "ok": True, "result": result})
             except ValueError:
@@ -714,12 +716,14 @@ class _Connection:
 class _ClientRunner:
     """A worker program's subprograms: run here when they can, else by the client.
 
-    With ``calls``, a subprogram runs in this process's default runner, within the
-    calculation's grant, when it can run here exactly as the client would run it
+    With ``calls``, a subprogram runs in this process's default runner, under the
+    calculation's count, when it can run here exactly as the client would run it
     (`_here`); every other runs in the client, whose runner finds it (programs
-    registered there included) and runs it within its grant. Without ``calls``, they
-    all run here. Either way the context's grant, time left, stop, progress and the
-    check that the input names the program apply alike.
+    registered there included) and runs it. A call sent to the client takes its threads
+    from the calculation's count here first, so the subprograms run here and there
+    never exceed it together. Without ``calls``, they all run here. Either way the
+    context's count, time left, stop, progress and the check that the input names the
+    program apply alike.
     """
 
     def __init__(self, host: Host) -> None:
@@ -762,22 +766,58 @@ class _ClientRunner:
                 return False
         return True
 
+    @staticmethod
+    def _wanted(inp: Any, ctx: RunContext, default: int) -> int:
+        """The threads a subprogram sent to the client gets there, as the client sizes it.
+
+        Its ``threads`` keyword, else ``default`` (1 when its plan, found here, asks for
+        GPUs and the calculation has some).
+        """
+        from .runner import _threads
+
+        gpus = 0
+        program = find_program(inp.program) if isinstance(inp, ProgramInput) else None
+        if program is not None and ctx.gpus:
+            try:
+                gpus = plan_of(program, inp).resources.gpus
+            except ProgramError:  # the client refuses it too
+                pass
+        assert ctx.threads is not None
+        return _threads(inp, ctx.threads, 1 if gpus else default)
+
     def _subcompute(self, inputs: Any, ctx: RunContext, raise_exc: bool) -> Any:
-        from .runner import _error, _subprogram_results, default_runner
+        from .runner import _children, _error, _subprogram_results, default_runner
+        from .runner import _refused as _before
 
         one = isinstance(inputs, ProgramInput | FileInput)
-        if not one:
-            inputs = list(inputs)
+        listed = [inputs] if one else list(inputs)
         connection = self._connection()
-        if connection is None or self._here([inputs] if one else inputs, ctx):
+        if connection is None or self._here(listed, ctx):
             return default_runner()._subcompute(inputs, ctx, raise_exc)
         directory = self._host.array_dir
-        if one:
-            wire = [connection.ask("compute", input=self._dump(inputs))]
-        else:
-            wire = connection.ask(
-                "compute_batch", inputs=[self._dump(i) for i in inputs]
-            )
+        count = _children(ctx) if ctx.threads is not None else None
+        threads = 0
+        if count is not None:
+            share = count.threads if one else max(1, count.threads // len(listed))
+            asked = [self._wanted(i, ctx, share) for i in listed]
+            threads = min(count.threads, sum(asked))
+            try:
+                count.take(threads, 0, ctx._control)
+            except ProgramError as e:  # cancelled or stopped while it waited
+                failed = [_before(i, e, {}) for i in listed]
+                return _subprogram_results(inputs if one else listed, failed, raise_exc)
+        if not one:
+            inputs = listed
+        try:
+            if one:
+                wire = [connection.ask("compute", input=self._dump(inputs))]
+            else:
+                wire = connection.ask(
+                    "compute_batch", inputs=[self._dump(i) for i in inputs]
+                )
+        finally:
+            if count is not None:
+                count.give(threads)
         outputs = [_wire.load(ProgramOutput, r, directory) for r in wire]
         results = [(o, None if o.success else _error(o)) for o in outputs]
         return _subprogram_results(inputs, results, raise_exc)
@@ -789,12 +829,17 @@ class _ClientRunner:
         threads: int | None,
         ctx: RunContext,
     ) -> Session:
-        from .runner import _Guarded, default_runner
+        from .runner import _children, _Guarded, default_runner
         from .worker import WorkerSession
 
         connection = self._connection()
         if connection is None or self._here([inp], ctx):
             return default_runner()._subsession(inp, calctypes, threads, ctx)
+        count = None  # its requests take the session's threads here first
+        if ctx.threads is not None:
+            outer = _children(ctx)
+            n = self._wanted(inp, ctx, outer.threads) if threads is None else threads
+            count = Count(max(1, min(n, outer.threads)), (), None, outer)
         reply = connection.ask(
             "open",
             input=self._dump(inp),
@@ -807,7 +852,7 @@ class _ClientRunner:
         session = WorkerSession(
             peer, reply["session"], inp, str(reply.get("program_version") or "")
         )
-        return _Guarded(session, None, ctx)
+        return _Guarded(session, None, ctx, None, count)
 
     def _dump(self, inp: ProgramInput | FileInput) -> Any:
         return _wire.dump(inp, self._host.array_dir)

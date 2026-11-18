@@ -1353,7 +1353,7 @@ wheels = [
 
 [[package]]
 name = "qccodec"
-version = "0.22.0a7"
+version = "0.22.0rc1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "packaging" },
@@ -1363,9 +1363,9 @@ dependencies = [
     { name = "threadpoolctl" },
     { name = "tomli-w" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/83/f6/e4a1abc25013c01029d8f69ed141af285db937ac1e1f5aaa622edb53c5bc/qccodec-0.22.0a7.tar.gz", hash = "sha256:0524ee086130c12a4f774e7f02bd993af6c738afabca2bd191b0d605366ffe65", size = 1311900, upload-time = "2026-11-18T00:27:31.597Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/71/0c/a38d43ba96d3acaa8cea3de30ce3f85ef315ef1317a792cdb5acfa4d0821/qccodec-0.22.0rc1.tar.gz", hash = "sha256:fac53124cc940d2ead008a1e15b72e1dc47aea3417edf68aef5a0c6124ee4d6e", size = 1333789, upload-time = "2026-11-18T01:39:08.433Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b8/75/8e5099dff9145f8619aa768df707075dae362c95872ec44119abac3c8c54/qccodec-0.22.0a7-py3-none-any.whl", hash = "sha256:7f32dfc20c0ac1977c97be794e223eb56cbd19c196e0dc490c86ee831b415760", size = 161900, upload-time = "2026-11-18T00:27:30.193Z" },
+    { url = "https://files.pythonhosted.org/packages/bc/d5/ace4cd15a8818a51090e788dd80382f9ddf46a1a90293a28c94f9a3eef2a/qccodec-0.22.0rc1-py3-none-any.whl", hash = "sha256:6e3d7c53ee7a357153d2aa07a9b25a20383f22654acafc6873f23d5768d54385", size = 161995, upload-time = "2026-11-18T01:39:06.998Z" },
 ]
 
 [[package]]
@@ -1412,7 +1412,7 @@ docs = [
 [package.metadata]
 requires-dist = [
     { name = "jsonschema", marker = "extra == 'testing'", specifier = ">=4.18" },
-    { name = "qccodec", marker = "extra == 'qccodec'", specifier = ">=0.22.0a7" },
+    { name = "qccodec", marker = "extra == 'qccodec'", specifier = ">=0.22.0rc1" },
     { name = "qcdata", specifier = ">=0.24.0a8" },
     { name = "threadpoolctl", specifier = ">=3.1" },
 ]

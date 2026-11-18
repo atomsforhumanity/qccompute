@@ -2,50 +2,54 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
          <loc>https://qccompute.docs.afh.org/next/</loc>
-         <lastmod>2026-11-17</lastmod>
+         <lastmod>2026-11-18</lastmod>
     </url>
     <url>
          <loc>https://qccompute.docs.afh.org/next/migration/</loc>
-         <lastmod>2026-11-17</lastmod>
+         <lastmod>2026-11-18</lastmod>
+    </url>
+    <url>
+         <loc>https://qccompute.docs.afh.org/next/threads/</loc>
+         <lastmod>2026-11-18</lastmod>
     </url>
     <url>
          <loc>https://qccompute.docs.afh.org/next/api/program/</loc>
-         <lastmod>2026-11-17</lastmod>
+         <lastmod>2026-11-18</lastmod>
     </url>
     <url>
          <loc>https://qccompute.docs.afh.org/next/api/runner/</loc>
-         <lastmod>2026-11-17</lastmod>
+         <lastmod>2026-11-18</lastmod>
     </url>
     <url>
          <loc>https://qccompute.docs.afh.org/next/design/program-interface/</loc>
-         <lastmod>2026-11-17</lastmod>
+         <lastmod>2026-11-18</lastmod>
     </url>
     <url>
          <loc>https://qccompute.docs.afh.org/next/examples/dynamic_workflows/</loc>
-         <lastmod>2026-11-17</lastmod>
+         <lastmod>2026-11-18</lastmod>
     </url>
     <url>
          <loc>https://qccompute.docs.afh.org/next/examples/file_input/</loc>
-         <lastmod>2026-11-17</lastmod>
+         <lastmod>2026-11-18</lastmod>
     </url>
     <url>
          <loc>https://qccompute.docs.afh.org/next/examples/function_program/</loc>
-         <lastmod>2026-11-17</lastmod>
+         <lastmod>2026-11-18</lastmod>
     </url>
     <url>
          <loc>https://qccompute.docs.afh.org/next/examples/many_calculations/</loc>
-         <lastmod>2026-11-17</lastmod>
+         <lastmod>2026-11-18</lastmod>
     </url>
     <url>
          <loc>https://qccompute.docs.afh.org/next/examples/overview/</loc>
-         <lastmod>2026-11-17</lastmod>
+         <lastmod>2026-11-18</lastmod>
     </url>
     <url>
          <loc>https://qccompute.docs.afh.org/next/examples/sessions/</loc>
-         <lastmod>2026-11-17</lastmod>
+         <lastmod>2026-11-18</lastmod>
     </url>
     <url>
          <loc>https://qccompute.docs.afh.org/next/programs/overview/</loc>
-         <lastmod>2026-11-17</lastmod>
+         <lastmod>2026-11-18</lastmod>
     </url>
 </urlset>

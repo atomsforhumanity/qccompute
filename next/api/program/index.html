@@ -435,6 +435,28 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../threads/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Threads
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -2038,9 +2060,9 @@ it.</p>
 
             <details class="quote">
               <summary>Source code in <code>src/qccompute/program.py</code></summary>
-              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1069</span>
-<span class="normal">1070</span>
-<span class="normal">1071</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">version</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1066</span>
+<span class="normal">1067</span>
+<span class="normal">1068</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">version</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;The program&#39;s version.&quot;&quot;&quot;</span>
     <span class="o">...</span>
 </code></pre></div></td></tr></table></div>
@@ -2064,9 +2086,9 @@ it.</p>
 
             <details class="quote">
               <summary>Source code in <code>src/qccompute/program.py</code></summary>
-              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1073</span>
-<span class="normal">1074</span>
-<span class="normal">1075</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">capabilities</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Capabilities</span> <span class="o">|</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1070</span>
+<span class="normal">1071</span>
+<span class="normal">1072</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">capabilities</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Capabilities</span> <span class="o">|</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;What the program can do and how it may be run (a mapping is validated).&quot;&quot;&quot;</span>
     <span class="o">...</span>
 </code></pre></div></td></tr></table></div>
@@ -2093,14 +2115,14 @@ it.</p>
 
             <details class="quote">
               <summary>Source code in <code>src/qccompute/program.py</code></summary>
-              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1077</span>
+              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1074</span>
+<span class="normal">1075</span>
+<span class="normal">1076</span>
+<span class="normal">1077</span>
 <span class="normal">1078</span>
 <span class="normal">1079</span>
 <span class="normal">1080</span>
-<span class="normal">1081</span>
-<span class="normal">1082</span>
-<span class="normal">1083</span>
-<span class="normal">1084</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">settings_schema</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">calctype</span><span class="p">:</span> <span class="n">CalcType</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+<span class="normal">1081</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">settings_schema</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">calctype</span><span class="p">:</span> <span class="n">CalcType</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;The JSON Schema of ``keywords`` (and of ``resolved.settings``) for a calctype.</span>
 
 <span class="sd">    Every key carries ``x-unit``, ``x-tier`` (common, expert), ``x-concern``</span>
@@ -2129,9 +2151,9 @@ it.</p>
 
             <details class="quote">
               <summary>Source code in <code>src/qccompute/program.py</code></summary>
-              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1086</span>
-<span class="normal">1087</span>
-<span class="normal">1088</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">record_schema</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">calctype</span><span class="p">:</span> <span class="n">CalcType</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1083</span>
+<span class="normal">1084</span>
+<span class="normal">1085</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">record_schema</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">calctype</span><span class="p">:</span> <span class="n">CalcType</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;The JSON Schema of ``ProgramOutput.record`` for a calctype.&quot;&quot;&quot;</span>
     <span class="o">...</span>
 </code></pre></div></td></tr></table></div>
@@ -2181,17 +2203,17 @@ with a did-you-mean suggestion for unknown keys.</p>
 
             <details class="quote">
               <summary>Source code in <code>src/qccompute/program.py</code></summary>
-              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1090</span>
+              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1087</span>
+<span class="normal">1088</span>
+<span class="normal">1089</span>
+<span class="normal">1090</span>
 <span class="normal">1091</span>
 <span class="normal">1092</span>
 <span class="normal">1093</span>
 <span class="normal">1094</span>
 <span class="normal">1095</span>
 <span class="normal">1096</span>
-<span class="normal">1097</span>
-<span class="normal">1098</span>
-<span class="normal">1099</span>
-<span class="normal">1100</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">plan</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">inp</span><span class="p">:</span> <span class="n">ProgramInput</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Plan</span> <span class="o">|</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+<span class="normal">1097</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">plan</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">inp</span><span class="p">:</span> <span class="n">ProgramInput</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Plan</span> <span class="o">|</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Validate an input and resolve its settings without running it.</span>
 
 <span class="sd">    A mapping is validated as a `Plan`: ``resolved`` (a `qcdata.Resolved`),</span>
@@ -2315,7 +2337,10 @@ whole failed output (<code>output</code>).</p>
 
             <details class="quote">
               <summary>Source code in <code>src/qccompute/program.py</code></summary>
-              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1102</span>
+              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1099</span>
+<span class="normal">1100</span>
+<span class="normal">1101</span>
+<span class="normal">1102</span>
 <span class="normal">1103</span>
 <span class="normal">1104</span>
 <span class="normal">1105</span>
@@ -2330,10 +2355,7 @@ whole failed output (<code>output</code>).</p>
 <span class="normal">1114</span>
 <span class="normal">1115</span>
 <span class="normal">1116</span>
-<span class="normal">1117</span>
-<span class="normal">1118</span>
-<span class="normal">1119</span>
-<span class="normal">1120</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">compute</span><span class="p">(</span>
+<span class="normal">1117</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">compute</span><span class="p">(</span>
     <span class="bp">self</span><span class="p">,</span> <span class="n">inp</span><span class="p">:</span> <span class="n">ProgramInput</span><span class="p">,</span> <span class="n">ctx</span><span class="p">:</span> <span class="n">RunContext</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ProgramOutput</span><span class="p">[</span><span class="n">ProgramInput</span><span class="p">,</span> <span class="n">Data</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Run a calculation.</span>
@@ -2439,7 +2461,10 @@ another type.</p>
 
             <details class="quote">
               <summary>Source code in <code>src/qccompute/program.py</code></summary>
-              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1127</span>
+              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1124</span>
+<span class="normal">1125</span>
+<span class="normal">1126</span>
+<span class="normal">1127</span>
 <span class="normal">1128</span>
 <span class="normal">1129</span>
 <span class="normal">1130</span>
@@ -2454,10 +2479,7 @@ another type.</p>
 <span class="normal">1139</span>
 <span class="normal">1140</span>
 <span class="normal">1141</span>
-<span class="normal">1142</span>
-<span class="normal">1143</span>
-<span class="normal">1144</span>
-<span class="normal">1145</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">open_session</span><span class="p">(</span>
+<span class="normal">1142</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">open_session</span><span class="p">(</span>
     <span class="bp">self</span><span class="p">,</span>
     <span class="n">inp</span><span class="p">:</span> <span class="n">ProgramInput</span><span class="p">,</span>
     <span class="n">ctx</span><span class="p">:</span> <span class="n">RunContext</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
@@ -2531,12 +2553,12 @@ another type.</p>
     <div class="doc doc-contents ">
 
       <p>Run many calculations together.</p>
-<p>Under a runner, <code>ctx</code> is the batch's grant: the sum of its inputs' threads
-(at most the runner's) and the most GPUs any of them asks for. The program
-divides it among the inputs (one thread each to N one-thread searches run
-side by side), and records in each output's <code>execution.threads</code> what that
-input used; left unset, the runner records the input's own part of the
-grant. Likewise <code>execution.wall_time</code>: each input's own where the program
+<p>Under a runner, <code>ctx</code> is the batch's: the whole list in one call, with the
+list's thread count (the sum of its inputs' shares) and the most GPUs any of
+them asks for. The program divides the threads among the inputs (one each to
+N one-thread searches run side by side), and records in each output's
+<code>execution.threads</code> what that input used; left unset, the runner records the
+input's own part. Likewise <code>execution.wall_time</code>: each input's own where the program
 can tell (a lockstep batch knows when each task finished), else left unset,
 and the runner records the whole batch's. The batch's wall time is always in
 <code>timings["batch"]</code> (s).</p>
@@ -2596,7 +2618,10 @@ and the runner records the whole batch's. The batch's wall time is always in
 
             <details class="quote">
               <summary>Source code in <code>src/qccompute/program.py</code></summary>
-              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1152</span>
+              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1149</span>
+<span class="normal">1150</span>
+<span class="normal">1151</span>
+<span class="normal">1152</span>
 <span class="normal">1153</span>
 <span class="normal">1154</span>
 <span class="normal">1155</span>
@@ -2614,20 +2639,17 @@ and the runner records the whole batch's. The batch's wall time is always in
 <span class="normal">1167</span>
 <span class="normal">1168</span>
 <span class="normal">1169</span>
-<span class="normal">1170</span>
-<span class="normal">1171</span>
-<span class="normal">1172</span>
-<span class="normal">1173</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">compute_batch</span><span class="p">(</span>
+<span class="normal">1170</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">compute_batch</span><span class="p">(</span>
     <span class="bp">self</span><span class="p">,</span> <span class="n">inputs</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">ProgramInput</span><span class="p">],</span> <span class="n">ctx</span><span class="p">:</span> <span class="n">RunContext</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">ProgramOutput</span><span class="p">[</span><span class="n">ProgramInput</span><span class="p">,</span> <span class="n">Data</span><span class="p">]]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Run many calculations together.</span>
 
-<span class="sd">    Under a runner, ``ctx`` is the batch&#39;s grant: the sum of its inputs&#39; threads</span>
-<span class="sd">    (at most the runner&#39;s) and the most GPUs any of them asks for. The program</span>
-<span class="sd">    divides it among the inputs (one thread each to N one-thread searches run</span>
-<span class="sd">    side by side), and records in each output&#39;s ``execution.threads`` what that</span>
-<span class="sd">    input used; left unset, the runner records the input&#39;s own part of the</span>
-<span class="sd">    grant. Likewise ``execution.wall_time``: each input&#39;s own where the program</span>
+<span class="sd">    Under a runner, ``ctx`` is the batch&#39;s: the whole list in one call, with the</span>
+<span class="sd">    list&#39;s thread count (the sum of its inputs&#39; shares) and the most GPUs any of</span>
+<span class="sd">    them asks for. The program divides the threads among the inputs (one each to</span>
+<span class="sd">    N one-thread searches run side by side), and records in each output&#39;s</span>
+<span class="sd">    ``execution.threads`` what that input used; left unset, the runner records the</span>
+<span class="sd">    input&#39;s own part. Likewise ``execution.wall_time``: each input&#39;s own where the program</span>
 <span class="sd">    can tell (a lockstep batch knows when each task finished), else left unset,</span>
 <span class="sd">    and the runner records the whole batch&#39;s. The batch&#39;s wall time is always in</span>
 <span class="sd">    ``timings[&quot;batch&quot;]`` (s).</span>
@@ -2975,7 +2997,9 @@ needs a new session. A request may vary only how tightly it converges
 
             <details class="quote">
               <summary>Source code in <code>src/qccompute/program.py</code></summary>
-              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">938</span>
+              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">936</span>
+<span class="normal">937</span>
+<span class="normal">938</span>
 <span class="normal">939</span>
 <span class="normal">940</span>
 <span class="normal">941</span>
@@ -3001,9 +3025,7 @@ needs a new session. A request may vary only how tightly it converges
 <span class="normal">961</span>
 <span class="normal">962</span>
 <span class="normal">963</span>
-<span class="normal">964</span>
-<span class="normal">965</span>
-<span class="normal">966</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">compute</span><span class="p">(</span>
+<span class="normal">964</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">compute</span><span class="p">(</span>
     <span class="bp">self</span><span class="p">,</span>
     <span class="n">positions</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
     <span class="n">calctype</span><span class="p">:</span> <span class="n">CalcType</span> <span class="o">|</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
@@ -3052,11 +3074,10 @@ needs a new session. A request may vary only how tightly it converges
       <p>Evaluate many geometries (finite differences, path images, IRC branches).</p>
 <p>Requests of one lineage run in list order, each reading the lineage's history
 as it stands at its place (<code>qcdata.Request.commit</code>); requests of different
-lineages may run concurrently within the grant. The grant is the session's,
-set when it opens (<code>threads=</code>, else the threads its input or plan asks
-for), and the program splits it across the lineages it runs at once. The
-results equal running the requests one at a time, each with the thread count
-it got.</p>
+lineages may run concurrently. The requests share the session's thread count
+(<code>ctx.threads</code> when it opened): a program that runs several at once gives
+each the count divided by those it runs, at least 1. The results equal running
+the requests one at a time, each with the thread count it got.</p>
 <p>Every request runs, failed ones included; then, if any failed, the call
 raises one <code>qcdata.ProgramErrors</code> group holding each failure's
 <code>qcdata.ProgramError</code> and every frame in request order (failed frames in
@@ -3139,7 +3160,9 @@ place).</p>
 
             <details class="quote">
               <summary>Source code in <code>src/qccompute/program.py</code></summary>
-              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">968</span>
+              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">966</span>
+<span class="normal">967</span>
+<span class="normal">968</span>
 <span class="normal">969</span>
 <span class="normal">970</span>
 <span class="normal">971</span>
@@ -3161,19 +3184,15 @@ place).</p>
 <span class="normal">987</span>
 <span class="normal">988</span>
 <span class="normal">989</span>
-<span class="normal">990</span>
-<span class="normal">991</span>
-<span class="normal">992</span>
-<span class="normal">993</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">compute_many</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">requests</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">Request</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">Frame</span><span class="p">]:</span>
+<span class="normal">990</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">compute_many</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">requests</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">Request</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">Frame</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Evaluate many geometries (finite differences, path images, IRC branches).</span>
 
 <span class="sd">    Requests of one lineage run in list order, each reading the lineage&#39;s history</span>
 <span class="sd">    as it stands at its place (`qcdata.Request.commit`); requests of different</span>
-<span class="sd">    lineages may run concurrently within the grant. The grant is the session&#39;s,</span>
-<span class="sd">    set when it opens (``threads=``, else the threads its input or plan asks</span>
-<span class="sd">    for), and the program splits it across the lineages it runs at once. The</span>
-<span class="sd">    results equal running the requests one at a time, each with the thread count</span>
-<span class="sd">    it got.</span>
+<span class="sd">    lineages may run concurrently. The requests share the session&#39;s thread count</span>
+<span class="sd">    (``ctx.threads`` when it opened): a program that runs several at once gives</span>
+<span class="sd">    each the count divided by those it runs, at least 1. The results equal running</span>
+<span class="sd">    the requests one at a time, each with the thread count it got.</span>
 
 <span class="sd">    Every request runs, failed ones included; then, if any failed, the call</span>
 <span class="sd">    raises one `qcdata.ProgramErrors` group holding each failure&#39;s</span>
@@ -3240,13 +3259,13 @@ place).</p>
 
             <details class="quote">
               <summary>Source code in <code>src/qccompute/program.py</code></summary>
-              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 995</span>
-<span class="normal"> 996</span>
-<span class="normal"> 997</span>
-<span class="normal"> 998</span>
-<span class="normal"> 999</span>
-<span class="normal">1000</span>
-<span class="normal">1001</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">reset</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lineage</span><span class="p">:</span> <span class="n">Lineage</span> <span class="o">=</span> <span class="o">...</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">992</span>
+<span class="normal">993</span>
+<span class="normal">994</span>
+<span class="normal">995</span>
+<span class="normal">996</span>
+<span class="normal">997</span>
+<span class="normal">998</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">reset</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lineage</span><span class="p">:</span> <span class="n">Lineage</span> <span class="o">=</span> <span class="o">...</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Drop warm-start and extrapolation history, after a large jump or a failure.</span>
 
 <span class="sd">    Args:</span>
@@ -3274,9 +3293,9 @@ place).</p>
 
             <details class="quote">
               <summary>Source code in <code>src/qccompute/program.py</code></summary>
-              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1003</span>
-<span class="normal">1004</span>
-<span class="normal">1005</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">plan</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Plan</span><span class="p">:</span>
+              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1000</span>
+<span class="normal">1001</span>
+<span class="normal">1002</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">plan</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Plan</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;The settings pinned for the session&#39;s lifetime, its resources and record.&quot;&quot;&quot;</span>
     <span class="o">...</span>
 </code></pre></div></td></tr></table></div>
@@ -3300,9 +3319,9 @@ place).</p>
 
             <details class="quote">
               <summary>Source code in <code>src/qccompute/program.py</code></summary>
-              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1007</span>
-<span class="normal">1008</span>
-<span class="normal">1009</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">close</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1004</span>
+<span class="normal">1005</span>
+<span class="normal">1006</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">close</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Release the session&#39;s resources.&quot;&quot;&quot;</span>
     <span class="o">...</span>
 </code></pre></div></td></tr></table></div>
@@ -3332,15 +3351,11 @@ place).</p>
     <div class="doc doc-contents first">
 
 
-      <p>What a runner gives one calculation: its share of the machine and its subprograms.</p>
+      <p>What a runner gives one calculation: its threads, GPUs, memory and subprograms.</p>
 <p>Runners make it and always pass one to <code>Program.compute</code>; a program reads its
-fields. In a list, a calculation's share of its runner is the larger of its share
-of the threads and its share of the GPUs (with k calculations per GPU, each counts
-1/k of a GPU). The resource keywords <code>threads</code>, <code>memory_gib</code> and
-<code>device_memory_gib</code> are what a calculation asks for, and the runner grants
-them, at most what it has (for a subprogram, what its parent was granted).</p>
-<p>A program uses the smaller of its own request (a resource keyword) and the grant,
-or the grant when it requested nothing; a request capped by the grant is a
+fields. The resource keywords <code>threads</code>, <code>memory_gib</code> and <code>device_memory_gib</code>
+are what a calculation asks for, and the runner grants them, at most what its
+caller has. A program uses at most what it is given; a request capped by it is a
 <code>resource_capped</code> warning, not an error.</p>
 
 
@@ -3360,14 +3375,15 @@ or the grant when it requested nothing; a request capped by the grant is a
             </td>
             <td>
               <div class="doc-md-description">
-                <p>CPU threads granted: what the input asks for (its <code>threads</code>
-keyword, else <code>plan.resources.threads</code>; all of them when that is
-None), at most the runner's. None: not
-granted (a direct call). While the program runs, the runner holds the
+                <p>The calculation's thread count: its <code>threads</code> keyword, else its
+caller's whole count (a runner's, a parent's, a session's), or 1 for a
+calculation given GPUs (the docs' Threads page). The program uses at most
+this many, fewer where more don't help. Its subprograms run under it: never
+more of them at once than it holds, and a list of them shares it. None: no
+runner (a direct call). While the program runs, the runner holds the
 process's BLAS and OpenMP pools at this count (in this process, BLAS
-counts are process-wide: calculations running at once with different
-threads share them), or at one thread when the input names subprograms:
-the grant is theirs, and they hold their own while they run.</p>
+counts are process-wide), or at one thread when the input names
+subprograms.</p>
               </div>
             </td>
           </tr>
@@ -3378,7 +3394,7 @@ the grant is theirs, and they hold their own while they run.</p>
             </td>
             <td>
               <div class="doc-md-description">
-                <p>Identifiers of the GPUs granted (as for <code>CUDA_VISIBLE_DEVICES</code>:
+                <p>Identifiers of the GPUs granted, whole (as for <code>CUDA_VISIBLE_DEVICES</code>:
 indices or UUIDs); <code>device_ordinals</code> gives this process's CUDA ordinals.</p>
               </div>
             </td>
@@ -3389,13 +3405,10 @@ indices or UUIDs); <code>device_ordinals</code> gives this process's CUDA ordina
             </td>
             <td>
               <div class="doc-md-description">
-                <p>Host memory granted (GiB). A calculation run alone (one input, a
-session) gets all of the runner's memory, or as a subprogram all of its
-parent's grant (a session opened with <code>threads=</code> gets the part of it
-those threads are of the parent's). In a list, each calculation, and each
-batch, gets its share of the list's memory. The input's <code>memory_gib</code>
-keyword replaces it, at most the runner's memory, or for a subprogram its
-parent's grant. None: not known.</p>
+                <p>Host memory granted (GiB): the calculation's share of its
+caller's (its threads' or its GPUs' share of the runner's, a parent's, a
+session's). The input's <code>memory_gib</code> keyword replaces it, at most the
+caller's. None: not known.</p>
               </div>
             </td>
           </tr>
@@ -3405,11 +3418,9 @@ parent's grant. None: not known.</p>
             </td>
             <td>
               <div class="doc-md-description">
-                <p>Memory granted on each GPU (GiB): 1/k of the GPU when k
-calculations may share it (<code>per_gpu</code>), at most a subprogram's parent's
-grant. The input's <code>device_memory_gib</code> keyword replaces it, at most the
-GPU's memory or that grant. A batch gets the share. None: not known or no
-GPU granted.</p>
+                <p>Memory granted on each GPU (GiB): the GPU's, at most a
+subprogram's parent's. The input's <code>device_memory_gib</code> keyword replaces
+it, at most that. None: not known or no GPU granted.</p>
               </div>
             </td>
           </tr>
@@ -3464,7 +3475,7 @@ from several threads. Nothing is stored.</p>
             </td>
             <td>
               <div class="doc-md-description">
-                <p>CPU threads granted.</p>
+                <p>The calculation's thread count.</p>
               </div>
             </td>
             <td>
@@ -3590,7 +3601,12 @@ the default runner.</p>
 
                   <details class="quote">
                     <summary>Source code in <code>src/qccompute/program.py</code></summary>
-                    <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">591</span>
+                    <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">586</span>
+<span class="normal">587</span>
+<span class="normal">588</span>
+<span class="normal">589</span>
+<span class="normal">590</span>
+<span class="normal">591</span>
 <span class="normal">592</span>
 <span class="normal">593</span>
 <span class="normal">594</span>
@@ -3640,10 +3656,7 @@ the default runner.</p>
 <span class="normal">638</span>
 <span class="normal">639</span>
 <span class="normal">640</span>
-<span class="normal">641</span>
-<span class="normal">642</span>
-<span class="normal">643</span>
-<span class="normal">644</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+<span class="normal">641</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
     <span class="bp">self</span><span class="p">,</span>
     <span class="o">*</span><span class="p">,</span>
     <span class="n">threads</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
@@ -3659,7 +3672,7 @@ the default runner.</p>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Create a context; runners do this, programs read it.</span>
 
 <span class="sd">    Args:</span>
-<span class="sd">        threads: CPU threads granted.</span>
+<span class="sd">        threads: The calculation&#39;s thread count.</span>
 <span class="sd">        gpus: GPU identifiers granted.</span>
 <span class="sd">        memory_gib: Host memory granted (GiB).</span>
 <span class="sd">        device_memory_gib: Memory granted on each GPU (GiB).</span>
@@ -3697,6 +3710,8 @@ the default runner.</p>
     <span class="c1"># would run for it, so the worker may run a subprogram itself only when its</span>
     <span class="c1"># own programs are exactly those (`qccompute.serve`).</span>
     <span class="bp">self</span><span class="o">.</span><span class="n">_identities</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="c1"># The count its subprograms run under (its own threads), made on first use.</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_count</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="kc">None</span>
 </code></pre></div></td></tr></table></div>
                   </details>
 
@@ -3791,7 +3806,10 @@ a file's existence): call it every step.</p>
 
             <details class="quote">
               <summary>Source code in <code>src/qccompute/program.py</code></summary>
-              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">672</span>
+              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">669</span>
+<span class="normal">670</span>
+<span class="normal">671</span>
+<span class="normal">672</span>
 <span class="normal">673</span>
 <span class="normal">674</span>
 <span class="normal">675</span>
@@ -3802,10 +3820,7 @@ a file's existence): call it every step.</p>
 <span class="normal">680</span>
 <span class="normal">681</span>
 <span class="normal">682</span>
-<span class="normal">683</span>
-<span class="normal">684</span>
-<span class="normal">685</span>
-<span class="normal">686</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">stop_requested</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="normal">683</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">stop_requested</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Whether the caller asked this calculation to stop (``runner.stop(future)``).</span>
 
 <span class="sd">    A program that works in steps (an optimizer, a path search, a dynamics run)</span>
@@ -3902,7 +3917,10 @@ can see.</p>
 
             <details class="quote">
               <summary>Source code in <code>src/qccompute/program.py</code></summary>
-              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">688</span>
+              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">685</span>
+<span class="normal">686</span>
+<span class="normal">687</span>
+<span class="normal">688</span>
 <span class="normal">689</span>
 <span class="normal">690</span>
 <span class="normal">691</span>
@@ -3939,10 +3957,7 @@ can see.</p>
 <span class="normal">722</span>
 <span class="normal">723</span>
 <span class="normal">724</span>
-<span class="normal">725</span>
-<span class="normal">726</span>
-<span class="normal">727</span>
-<span class="normal">728</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">device_ordinals</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]:</span>
+<span class="normal">725</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">device_ordinals</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;The granted GPUs as CUDA device ordinals in this process, in grant order.</span>
 
 <span class="sd">    A program selects its devices with these (``torch.device(&quot;cuda&quot;, i)``,</span>
@@ -4005,16 +4020,16 @@ can see.</p>
 
             <details class="quote">
               <summary>Source code in <code>src/qccompute/program.py</code></summary>
-              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">747</span>
+              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">744</span>
+<span class="normal">745</span>
+<span class="normal">746</span>
+<span class="normal">747</span>
 <span class="normal">748</span>
 <span class="normal">749</span>
 <span class="normal">750</span>
 <span class="normal">751</span>
 <span class="normal">752</span>
-<span class="normal">753</span>
-<span class="normal">754</span>
-<span class="normal">755</span>
-<span class="normal">756</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">cleanup</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="normal">753</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">cleanup</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Remove the scratch directory if this context made it (runners call this).</span>
 
 <span class="sd">    Kept when ``QCCOMPUTE_KEEP_SCRATCH`` is set (`KEEP_SCRATCH`).</span>
@@ -4041,9 +4056,10 @@ can see.</p>
 
     <div class="doc doc-contents ">
 
-      <p>Run subprograms within this calculation's grant, as <code>Runner.compute</code> does.</p>
-<p>Each gets the threads it asks for (its <code>threads</code> keyword, else its plan's),
-at most the grant; a list runs side by side within the grant. Failures raise
+      <p>Run subprograms under this calculation's thread count, as <code>Runner.compute</code> does.</p>
+<p>One gets this calculation's threads unless it sets <code>threads</code> (at most these);
+a list shares them, and never more run at once than this calculation holds,
+however many threads of the program call. Failures raise
 as from <code>qccompute.compute</code>: <code>qcdata.ProgramError</code> for one input,
 <code>qcdata.ProgramErrors</code> for a list; <code>raise_exc=False</code> returns them in place.
 A subprogram's failure that the program lets escape fails it with kind
@@ -4156,7 +4172,10 @@ code <code>unnamed_subprogram</code>: the input does not name the program.</p>
 
             <details class="quote">
               <summary>Source code in <code>src/qccompute/program.py</code></summary>
-              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">818</span>
+              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">815</span>
+<span class="normal">816</span>
+<span class="normal">817</span>
+<span class="normal">818</span>
 <span class="normal">819</span>
 <span class="normal">820</span>
 <span class="normal">821</span>
@@ -4188,13 +4207,12 @@ code <code>unnamed_subprogram</code>: the input does not name the program.</p>
 <span class="normal">847</span>
 <span class="normal">848</span>
 <span class="normal">849</span>
-<span class="normal">850</span>
-<span class="normal">851</span>
-<span class="normal">852</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">compute</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">inputs</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="o">/</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">raise_exc</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Run subprograms within this calculation&#39;s grant, as ``Runner.compute`` does.</span>
+<span class="normal">850</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">compute</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">inputs</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="o">/</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">raise_exc</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Run subprograms under this calculation&#39;s thread count, as ``Runner.compute`` does.</span>
 
-<span class="sd">    Each gets the threads it asks for (its ``threads`` keyword, else its plan&#39;s),</span>
-<span class="sd">    at most the grant; a list runs side by side within the grant. Failures raise</span>
+<span class="sd">    One gets this calculation&#39;s threads unless it sets ``threads`` (at most these);</span>
+<span class="sd">    a list shares them, and never more run at once than this calculation holds,</span>
+<span class="sd">    however many threads of the program call. Failures raise</span>
 <span class="sd">    as from ``qccompute.compute``: `qcdata.ProgramError` for one input,</span>
 <span class="sd">    `qcdata.ProgramErrors` for a list; ``raise_exc=False`` returns them in place.</span>
 <span class="sd">    A subprogram&#39;s failure that the program lets escape fails it with kind</span>
@@ -4242,7 +4260,7 @@ code <code>unnamed_subprogram</code>: the input does not name the program.</p>
 
     <div class="doc doc-contents ">
 
-      <p>Open a session of a subprogram under this calculation's grant.</p>
+      <p>Open a session of a subprogram under this calculation's thread count.</p>
 
 
 <p><span class="doc-section-title">Parameters:</span></p>
@@ -4292,10 +4310,10 @@ geometry.</p>
             </td>
             <td>
               <div class="doc-md-description">
-                <p>This session's share of the grant (a program with 16 threads
-running 8 tasks gives each session 2), which its host memory follows;
-None: the threads the subprogram asks for (its <code>threads</code> keyword,
-else its plan's), at most the grant.</p>
+                <p>The session's thread count, at most this calculation's (a program
+running 8 tasks side by side on 16 threads gives each session 2),
+which its host memory follows; None: the input's <code>threads</code> keyword,
+else this calculation's whole count. Its requests run under both.</p>
               </div>
             </td>
             <td>
@@ -4389,7 +4407,9 @@ else its plan's), at most the grant.</p>
 
             <details class="quote">
               <summary>Source code in <code>src/qccompute/program.py</code></summary>
-              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">854</span>
+              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">852</span>
+<span class="normal">853</span>
+<span class="normal">854</span>
 <span class="normal">855</span>
 <span class="normal">856</span>
 <span class="normal">857</span>
@@ -4424,9 +4444,7 @@ else its plan's), at most the grant.</p>
 <span class="normal">886</span>
 <span class="normal">887</span>
 <span class="normal">888</span>
-<span class="normal">889</span>
-<span class="normal">890</span>
-<span class="normal">891</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">session</span><span class="p">(</span>
+<span class="normal">889</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">session</span><span class="p">(</span>
     <span class="bp">self</span><span class="p">,</span>
     <span class="n">spec</span><span class="p">:</span> <span class="n">ProgramInput</span> <span class="o">|</span> <span class="n">ProgramSpec</span><span class="p">,</span>
     <span class="n">structure</span><span class="p">:</span> <span class="n">Structure</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
@@ -4434,16 +4452,16 @@ else its plan's), at most the grant.</p>
     <span class="n">threads</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
     <span class="n">calctypes</span><span class="p">:</span> <span class="n">Iterable</span><span class="p">[</span><span class="n">CalcType</span> <span class="o">|</span> <span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Session</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Open a session of a subprogram under this calculation&#39;s grant.</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Open a session of a subprogram under this calculation&#39;s thread count.</span>
 
 <span class="sd">    Args:</span>
 <span class="sd">        spec: The subprogram&#39;s input, or its spec with ``structure``.</span>
 <span class="sd">        structure: With a spec: the atoms, charge, multiplicity and first</span>
 <span class="sd">            geometry.</span>
-<span class="sd">        threads: This session&#39;s share of the grant (a program with 16 threads</span>
-<span class="sd">            running 8 tasks gives each session 2), which its host memory follows;</span>
-<span class="sd">            None: the threads the subprogram asks for (its ``threads`` keyword,</span>
-<span class="sd">            else its plan&#39;s), at most the grant.</span>
+<span class="sd">        threads: The session&#39;s thread count, at most this calculation&#39;s (a program</span>
+<span class="sd">            running 8 tasks side by side on 16 threads gives each session 2),</span>
+<span class="sd">            which its host memory follows; None: the input&#39;s ``threads`` keyword,</span>
+<span class="sd">            else this calculation&#39;s whole count. Its requests run under both.</span>
 <span class="sd">        calctypes: The calctypes the session may run (see `session_calctypes`).</span>
 
 <span class="sd">    Returns:</span>
@@ -4559,9 +4577,10 @@ if it can list them (GFN-FF has no Hessian where GFN2 has one).</p>
               <div class="doc-md-description">
                 <p>Whether it may run in the runner's own process (it neither writes
 to the process's stdout/stderr file descriptors nor changes process-global
-state); otherwise the runner uses a worker process. Holding the BLAS and
-OpenMP thread counts at other values for its own work is allowed, when it
-restores them around its subprograms' calls and before it returns.</p>
+state); otherwise the runner uses a worker process. A program whose input
+names subprograms may raise its own BLAS and OpenMP pools (held at 1) up
+to its thread count, only while none of its subprograms runs, restoring
+them before it returns.</p>
               </div>
             </td>
           </tr>
@@ -4651,10 +4670,9 @@ the run's <code>ProgramOutput.resolved</code> will hold.</p>
             </td>
             <td>
               <div class="doc-md-description">
-                <p>What the calculation needs; the runner grants its threads (unless
-the input's <code>threads</code> keyword asks) and GPUs, and packs lists by them;
-its memory is informational. A program with subprograms gives the largest
-over its subprograms' plans.</p>
+                <p>The GPUs the calculation needs, which the runner grants, and its
+memory, informational. A program with subprograms gives the largest over
+its subprograms' plans.</p>
               </div>
             </td>
           </tr>
@@ -4719,11 +4737,13 @@ and memory plan), shaped like a run's record.</p>
     <div class="doc doc-contents first">
 
 
-      <p>What one calculation asks of the machine.</p>
-<p>The runner grants the threads and GPUs asked for and packs lists by them. Memory
-is informational: the runner records it in the plan and never schedules,
-packs or caps by it (qc* makes no memory estimates). What memory a calculation is
-granted is in <code>RunContext</code>: <code>memory_gib</code> and <code>device_memory_gib</code>.</p>
+      <p>What one calculation asks of the machine, besides threads.</p>
+<p>Programs don't suggest thread counts: a calculation's threads are its <code>threads</code>
+keyword, else its caller's whole count (the docs' Threads page). The runner grants
+the GPUs asked for, whole. Memory is informational: the runner records it in the
+plan and never schedules or caps by it (qc* makes no memory estimates). What memory
+a calculation is granted is in <code>RunContext</code>: <code>memory_gib</code> and
+<code>device_memory_gib</code>.</p>
 
 
 <p><span class="doc-section-title">Attributes:</span></p>
@@ -4736,22 +4756,6 @@ granted is in <code>RunContext</code>: <code>memory_gib</code> and <code>device_
         </tr>
       </thead>
       <tbody>
-          <tr class="doc-section-item">
-            <td><code><span title="qccompute.program.Resources.threads">threads</span></code></td>
-            <td>
-                  <code><span title="int">int</span> | None</code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>CPU threads the calculation asks for when its input has no
-<code>threads</code> keyword: the runner grants this many, at most its own. The
-default is 1. None asks for all the runner has (for a subprogram, all of
-its parent's grant): for a program that scales with whatever it is given
-(a DFT code). In a list such a calculation is a full share, so it runs
-alone. A small molecule rarely gains from more than a few.</p>
-              </div>
-            </td>
-          </tr>
           <tr class="doc-section-item">
             <td><code><span title="qccompute.program.Resources.memory_gib">memory_gib</span></code></td>
             <td>
@@ -4785,8 +4789,7 @@ those granted.</p>
             <td>
               <div class="doc-md-description">
                 <p>Memory per GPU the calculation expects to use (GiB), if
-known; informational, not scheduled (<code>per_gpu</code> sets how many
-calculations share a GPU).</p>
+known; informational, not scheduled.</p>
               </div>
             </td>
           </tr>
@@ -4829,8 +4832,8 @@ calculations share a GPU).</p>
 
       <p>A program made of Python functions of the positions.</p>
 <p>For a model surface, an ML potential in a script, or teaching: the smallest
-complete program. Its keywords are the shared <code>threads</code> (what it asks the runner
-for; 1 by default), the shared <code>accuracy</code>, which it records as met, since the
+complete program. Its keywords are the shared <code>threads</code> (its thread count; the
+runner holds the BLAS pools at it), the shared <code>accuracy</code>, which it records as met, since the
 functions converge nothing (<code>{"target", "thresholds": {}, "estimate"}</code> with an
 estimate of 0.0 per target, as qcdata's conventions give), and the settings it
 declares; any other keyword is an <code>unknown_key</code> input error. It runs in process
@@ -4990,7 +4993,11 @@ does not name; checking their values is the functions' (or
 
                   <details class="quote">
                     <summary>Source code in <code>src/qccompute/program.py</code></summary>
-                    <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1801</span>
+                    <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1797</span>
+<span class="normal">1798</span>
+<span class="normal">1799</span>
+<span class="normal">1800</span>
+<span class="normal">1801</span>
 <span class="normal">1802</span>
 <span class="normal">1803</span>
 <span class="normal">1804</span>
@@ -5030,11 +5037,7 @@ does not name; checking their values is the functions' (or
 <span class="normal">1838</span>
 <span class="normal">1839</span>
 <span class="normal">1840</span>
-<span class="normal">1841</span>
-<span class="normal">1842</span>
-<span class="normal">1843</span>
-<span class="normal">1844</span>
-<span class="normal">1845</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+<span class="normal">1841</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
     <span class="bp">self</span><span class="p">,</span>
     <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
     <span class="n">energy_gradient</span><span class="p">:</span> <span class="n">Callable</span><span class="p">[</span><span class="o">...</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="n">Any</span><span class="p">]],</span>
@@ -5109,11 +5112,11 @@ does not name; checking their values is the functions' (or
 
             <details class="quote">
               <summary>Source code in <code>src/qccompute/program.py</code></summary>
-              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1851</span>
-<span class="normal">1852</span>
-<span class="normal">1853</span>
-<span class="normal">1854</span>
-<span class="normal">1855</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">version</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1847</span>
+<span class="normal">1848</span>
+<span class="normal">1849</span>
+<span class="normal">1850</span>
+<span class="normal">1851</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">version</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;The version given, else the digest of the functions as they are now.&quot;&quot;&quot;</span>
     <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_version</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_version</span>
@@ -5191,16 +5194,16 @@ does not name; checking their values is the functions' (or
 
             <details class="quote">
               <summary>Source code in <code>src/qccompute/program.py</code></summary>
-              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1857</span>
+              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1853</span>
+<span class="normal">1854</span>
+<span class="normal">1855</span>
+<span class="normal">1856</span>
+<span class="normal">1857</span>
 <span class="normal">1858</span>
 <span class="normal">1859</span>
 <span class="normal">1860</span>
 <span class="normal">1861</span>
-<span class="normal">1862</span>
-<span class="normal">1863</span>
-<span class="normal">1864</span>
-<span class="normal">1865</span>
-<span class="normal">1866</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">numerics</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">spec</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="normal">1862</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">numerics</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">spec</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;The numerics identity: the version (by default the functions&#39; digest).</span>
 
 <span class="sd">    Args:</span>
@@ -5231,9 +5234,9 @@ does not name; checking their values is the functions' (or
 
             <details class="quote">
               <summary>Source code in <code>src/qccompute/program.py</code></summary>
-              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1868</span>
-<span class="normal">1869</span>
-<span class="normal">1870</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">capabilities</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Capabilities</span><span class="p">:</span>
+              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1864</span>
+<span class="normal">1865</span>
+<span class="normal">1866</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">capabilities</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Capabilities</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Energies and gradients (and Hessians with a Hessian function).&quot;&quot;&quot;</span>
     <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_caps</span>
 </code></pre></div></td></tr></table></div>
@@ -5257,9 +5260,9 @@ does not name; checking their values is the functions' (or
 
             <details class="quote">
               <summary>Source code in <code>src/qccompute/program.py</code></summary>
-              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1872</span>
-<span class="normal">1873</span>
-<span class="normal">1874</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">settings_schema</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">calctype</span><span class="p">:</span> <span class="n">CalcType</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1868</span>
+<span class="normal">1869</span>
+<span class="normal">1870</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">settings_schema</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">calctype</span><span class="p">:</span> <span class="n">CalcType</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;The settings declared, and the shared ``accuracy`` and ``threads``.&quot;&quot;&quot;</span>
     <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_schema</span>
 </code></pre></div></td></tr></table></div>
@@ -5283,9 +5286,9 @@ does not name; checking their values is the functions' (or
 
             <details class="quote">
               <summary>Source code in <code>src/qccompute/program.py</code></summary>
-              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1876</span>
-<span class="normal">1877</span>
-<span class="normal">1878</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">record_schema</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">calctype</span><span class="p">:</span> <span class="n">CalcType</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1872</span>
+<span class="normal">1873</span>
+<span class="normal">1874</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">record_schema</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">calctype</span><span class="p">:</span> <span class="n">CalcType</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;The shared ``accuracy``, when a target is given.&quot;&quot;&quot;</span>
     <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_RECORD_SCHEMA</span>
 </code></pre></div></td></tr></table></div>
@@ -5336,7 +5339,11 @@ no target; no structure) or <code>unsupported</code>.</p>
 
             <details class="quote">
               <summary>Source code in <code>src/qccompute/program.py</code></summary>
-              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1880</span>
+              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1876</span>
+<span class="normal">1877</span>
+<span class="normal">1878</span>
+<span class="normal">1879</span>
+<span class="normal">1880</span>
 <span class="normal">1881</span>
 <span class="normal">1882</span>
 <span class="normal">1883</span>
@@ -5371,11 +5378,7 @@ no target; no structure) or <code>unsupported</code>.</p>
 <span class="normal">1912</span>
 <span class="normal">1913</span>
 <span class="normal">1914</span>
-<span class="normal">1915</span>
-<span class="normal">1916</span>
-<span class="normal">1917</span>
-<span class="normal">1918</span>
-<span class="normal">1919</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">plan</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">inp</span><span class="p">:</span> <span class="n">ProgramInput</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Plan</span><span class="p">:</span>
+<span class="normal">1915</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">plan</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">inp</span><span class="p">:</span> <span class="n">ProgramInput</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Plan</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Check the input: a structure, a supported calctype, keywords it knows.</span>
 
 <span class="sd">    The resolved settings are the keywords given. An ``accuracy`` target is met:</span>
@@ -5460,7 +5463,11 @@ no target; no structure) or <code>unsupported</code>.</p>
 
             <details class="quote">
               <summary>Source code in <code>src/qccompute/program.py</code></summary>
-              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1921</span>
+              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1917</span>
+<span class="normal">1918</span>
+<span class="normal">1919</span>
+<span class="normal">1920</span>
+<span class="normal">1921</span>
 <span class="normal">1922</span>
 <span class="normal">1923</span>
 <span class="normal">1924</span>
@@ -5508,11 +5515,7 @@ no target; no structure) or <code>unsupported</code>.</p>
 <span class="normal">1966</span>
 <span class="normal">1967</span>
 <span class="normal">1968</span>
-<span class="normal">1969</span>
-<span class="normal">1970</span>
-<span class="normal">1971</span>
-<span class="normal">1972</span>
-<span class="normal">1973</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">compute</span><span class="p">(</span>
+<span class="normal">1969</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">compute</span><span class="p">(</span>
     <span class="bp">self</span><span class="p">,</span> <span class="n">inp</span><span class="p">:</span> <span class="n">ProgramInput</span><span class="p">,</span> <span class="n">ctx</span><span class="p">:</span> <span class="n">RunContext</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ProgramOutput</span><span class="p">[</span><span class="n">ProgramInput</span><span class="p">,</span> <span class="n">Data</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Evaluate the functions at the input&#39;s structure.</span>
@@ -5597,7 +5600,7 @@ no target; no structure) or <code>unsupported</code>.</p>
 computed by <code>compute</code>: a runner's <code>compute</code> (one input raises
 <code>qcdata.ProgramError</code> on failure; a list with <code>raise_exc=False</code> returns failed
 outputs in place). A runner computes <code>compute_many</code>'s requests as a list, side
-by side within the session's grant. It keeps no history: every request starts fresh
+by side, sharing the session's thread count. It keeps no history: every request starts fresh
 (<code>warm_start</code> false), so <code>lineage</code>, <code>seed</code> and <code>commit</code> change nothing. A
 request's <code>accuracy</code> becomes the <code>accuracy</code> keyword of the input it computes,
 replacing the session input's own; the program records it as it records the
@@ -5680,7 +5683,10 @@ session's from its opening.</p>
 
                   <details class="quote">
                     <summary>Source code in <code>src/qccompute/program.py</code></summary>
-                    <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1200</span>
+                    <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1197</span>
+<span class="normal">1198</span>
+<span class="normal">1199</span>
+<span class="normal">1200</span>
 <span class="normal">1201</span>
 <span class="normal">1202</span>
 <span class="normal">1203</span>
@@ -5694,10 +5700,7 @@ session's from its opening.</p>
 <span class="normal">1211</span>
 <span class="normal">1212</span>
 <span class="normal">1213</span>
-<span class="normal">1214</span>
-<span class="normal">1215</span>
-<span class="normal">1216</span>
-<span class="normal">1217</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+<span class="normal">1214</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
     <span class="bp">self</span><span class="p">,</span>
     <span class="n">compute</span><span class="p">:</span> <span class="n">Callable</span><span class="p">[</span><span class="o">...</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span>
     <span class="n">inp</span><span class="p">:</span> <span class="n">ProgramInput</span><span class="p">,</span>
@@ -5926,7 +5929,10 @@ targets the calctype's highest derivative); None: the input's own.</p>
 
             <details class="quote">
               <summary>Source code in <code>src/qccompute/program.py</code></summary>
-              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1279</span>
+              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1276</span>
+<span class="normal">1277</span>
+<span class="normal">1278</span>
+<span class="normal">1279</span>
 <span class="normal">1280</span>
 <span class="normal">1281</span>
 <span class="normal">1282</span>
@@ -5960,10 +5966,7 @@ targets the calctype's highest derivative); None: the input's own.</p>
 <span class="normal">1310</span>
 <span class="normal">1311</span>
 <span class="normal">1312</span>
-<span class="normal">1313</span>
-<span class="normal">1314</span>
-<span class="normal">1315</span>
-<span class="normal">1316</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">compute</span><span class="p">(</span>
+<span class="normal">1313</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">compute</span><span class="p">(</span>
     <span class="bp">self</span><span class="p">,</span>
     <span class="n">positions</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
     <span class="n">calctype</span><span class="p">:</span> <span class="n">CalcType</span> <span class="o">|</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
@@ -6097,7 +6100,10 @@ targets the calctype's highest derivative); None: the input's own.</p>
 
             <details class="quote">
               <summary>Source code in <code>src/qccompute/program.py</code></summary>
-              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1318</span>
+              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1315</span>
+<span class="normal">1316</span>
+<span class="normal">1317</span>
+<span class="normal">1318</span>
 <span class="normal">1319</span>
 <span class="normal">1320</span>
 <span class="normal">1321</span>
@@ -6142,10 +6148,7 @@ targets the calctype's highest derivative); None: the input's own.</p>
 <span class="normal">1360</span>
 <span class="normal">1361</span>
 <span class="normal">1362</span>
-<span class="normal">1363</span>
-<span class="normal">1364</span>
-<span class="normal">1365</span>
-<span class="normal">1366</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">compute_many</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">requests</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">Request</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">Frame</span><span class="p">]:</span>
+<span class="normal">1363</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">compute_many</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">requests</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">Request</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">Frame</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Evaluate many geometries in one call to compute.</span>
 
 <span class="sd">    Args:</span>
@@ -6215,8 +6218,8 @@ targets the calctype's highest derivative); None: the input's own.</p>
 
             <details class="quote">
               <summary>Source code in <code>src/qccompute/program.py</code></summary>
-              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1368</span>
-<span class="normal">1369</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">reset</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lineage</span><span class="p">:</span> <span class="n">Lineage</span> <span class="o">=</span> <span class="o">...</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1365</span>
+<span class="normal">1366</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">reset</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lineage</span><span class="p">:</span> <span class="n">Lineage</span> <span class="o">=</span> <span class="o">...</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Nothing to reset: a stateless session keeps no history.&quot;&quot;&quot;</span>
 </code></pre></div></td></tr></table></div>
             </details>
@@ -6239,9 +6242,9 @@ targets the calctype's highest derivative); None: the input's own.</p>
 
             <details class="quote">
               <summary>Source code in <code>src/qccompute/program.py</code></summary>
-              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1371</span>
-<span class="normal">1372</span>
-<span class="normal">1373</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">plan</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Plan</span><span class="p">:</span>
+              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1368</span>
+<span class="normal">1369</span>
+<span class="normal">1370</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">plan</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Plan</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Not known to a stateless session: the input&#39;s keywords, unresolved.&quot;&quot;&quot;</span>
     <span class="k">return</span> <span class="n">Plan</span><span class="p">(</span><span class="n">resolved</span><span class="o">=</span><span class="n">Resolved</span><span class="p">(</span><span class="n">settings</span><span class="o">=</span><span class="nb">dict</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_inp</span><span class="o">.</span><span class="n">keywords</span><span class="p">)))</span>
 </code></pre></div></td></tr></table></div>
@@ -6265,9 +6268,9 @@ targets the calctype's highest derivative); None: the input's own.</p>
 
             <details class="quote">
               <summary>Source code in <code>src/qccompute/program.py</code></summary>
-              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1375</span>
-<span class="normal">1376</span>
-<span class="normal">1377</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">close</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1372</span>
+<span class="normal">1373</span>
+<span class="normal">1374</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">close</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Close the session.&quot;&quot;&quot;</span>
     <span class="bp">self</span><span class="o">.</span><span class="n">_closed</span> <span class="o">=</span> <span class="kc">True</span>
 </code></pre></div></td></tr></table></div>
@@ -6360,7 +6363,10 @@ with kind <code>environment</code>, saying so.</p>
 
             <details class="quote">
               <summary>Source code in <code>src/qccompute/program.py</code></summary>
-              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1415</span>
+              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1412</span>
+<span class="normal">1413</span>
+<span class="normal">1414</span>
+<span class="normal">1415</span>
 <span class="normal">1416</span>
 <span class="normal">1417</span>
 <span class="normal">1418</span>
@@ -6378,10 +6384,7 @@ with kind <code>environment</code>, saying so.</p>
 <span class="normal">1430</span>
 <span class="normal">1431</span>
 <span class="normal">1432</span>
-<span class="normal">1433</span>
-<span class="normal">1434</span>
-<span class="normal">1435</span>
-<span class="normal">1436</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">register_program</span><span class="p">(</span><span class="n">program</span><span class="p">:</span> <span class="n">Program</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="normal">1433</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">register_program</span><span class="p">(</span><span class="n">program</span><span class="p">:</span> <span class="n">Program</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Make a program findable by name in this process, ahead of installed ones.</span>
 
 <span class="sd">    For programs that are not installed packages: in tests, notebooks and scripts.</span>
@@ -6453,14 +6456,14 @@ with kind <code>environment</code>, saying so.</p>
 
             <details class="quote">
               <summary>Source code in <code>src/qccompute/program.py</code></summary>
-              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1439</span>
+              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1436</span>
+<span class="normal">1437</span>
+<span class="normal">1438</span>
+<span class="normal">1439</span>
 <span class="normal">1440</span>
 <span class="normal">1441</span>
 <span class="normal">1442</span>
-<span class="normal">1443</span>
-<span class="normal">1444</span>
-<span class="normal">1445</span>
-<span class="normal">1446</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">unregister_program</span><span class="p">(</span><span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="normal">1443</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">unregister_program</span><span class="p">(</span><span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Forget a program added with `register_program`; installed programs stay.</span>
 
 <span class="sd">    Args:</span>
@@ -6566,7 +6569,10 @@ once per process.</p>
 
             <details class="quote">
               <summary>Source code in <code>src/qccompute/program.py</code></summary>
-              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1467</span>
+              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1464</span>
+<span class="normal">1465</span>
+<span class="normal">1466</span>
+<span class="normal">1467</span>
 <span class="normal">1468</span>
 <span class="normal">1469</span>
 <span class="normal">1470</span>
@@ -6590,10 +6596,7 @@ once per process.</p>
 <span class="normal">1488</span>
 <span class="normal">1489</span>
 <span class="normal">1490</span>
-<span class="normal">1491</span>
-<span class="normal">1492</span>
-<span class="normal">1493</span>
-<span class="normal">1494</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">find_program</span><span class="p">(</span><span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Program</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="normal">1491</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">find_program</span><span class="p">(</span><span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Program</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;The program of this name: registered in this process, else installed.</span>
 
 <span class="sd">    Installed programs are read from the ``qccompute.programs`` entry points and loaded</span>
@@ -6671,7 +6674,10 @@ executable cannot be found.</p>
 
             <details class="quote">
               <summary>Source code in <code>src/qccompute/program.py</code></summary>
-              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1449</span>
+              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1446</span>
+<span class="normal">1447</span>
+<span class="normal">1448</span>
+<span class="normal">1449</span>
 <span class="normal">1450</span>
 <span class="normal">1451</span>
 <span class="normal">1452</span>
@@ -6683,10 +6689,7 @@ executable cannot be found.</p>
 <span class="normal">1458</span>
 <span class="normal">1459</span>
 <span class="normal">1460</span>
-<span class="normal">1461</span>
-<span class="normal">1462</span>
-<span class="normal">1463</span>
-<span class="normal">1464</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">available_programs</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<span class="normal">1461</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">available_programs</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Names of the programs qccompute can find, without loading any.</span>
 
 <span class="sd">    The programs registered in this process and those installed packages offer</span>
@@ -6796,7 +6799,10 @@ when they are those it would run now.</p>
 
             <details class="quote">
               <summary>Source code in <code>src/qccompute/program.py</code></summary>
-              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1497</span>
+              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1494</span>
+<span class="normal">1495</span>
+<span class="normal">1496</span>
+<span class="normal">1497</span>
 <span class="normal">1498</span>
 <span class="normal">1499</span>
 <span class="normal">1500</span>
@@ -6814,10 +6820,7 @@ when they are those it would run now.</p>
 <span class="normal">1512</span>
 <span class="normal">1513</span>
 <span class="normal">1514</span>
-<span class="normal">1515</span>
-<span class="normal">1516</span>
-<span class="normal">1517</span>
-<span class="normal">1518</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">numerics_of</span><span class="p">(</span><span class="n">program</span><span class="p">:</span> <span class="n">Program</span><span class="p">,</span> <span class="n">spec</span><span class="p">:</span> <span class="n">ProgramSpec</span> <span class="o">|</span> <span class="n">FileInput</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="normal">1515</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">numerics_of</span><span class="p">(</span><span class="n">program</span><span class="p">:</span> <span class="n">Program</span><span class="p">,</span> <span class="n">spec</span><span class="p">:</span> <span class="n">ProgramSpec</span> <span class="o">|</span> <span class="n">FileInput</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;A program&#39;s numerics identity for a spec: ``program.numerics(spec)``, else its version.</span>
 
 <span class="sd">    ``numerics(spec) -&gt; str`` is optional in the protocol: a string that changes</span>
@@ -6912,16 +6915,16 @@ when they are those it would run now.</p>
 
             <details class="quote">
               <summary>Source code in <code>src/qccompute/program.py</code></summary>
-              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1521</span>
+              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1518</span>
+<span class="normal">1519</span>
+<span class="normal">1520</span>
+<span class="normal">1521</span>
 <span class="normal">1522</span>
 <span class="normal">1523</span>
 <span class="normal">1524</span>
 <span class="normal">1525</span>
 <span class="normal">1526</span>
-<span class="normal">1527</span>
-<span class="normal">1528</span>
-<span class="normal">1529</span>
-<span class="normal">1530</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">capabilities_of</span><span class="p">(</span><span class="n">program</span><span class="p">:</span> <span class="n">Program</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Capabilities</span><span class="p">:</span>
+<span class="normal">1527</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">capabilities_of</span><span class="p">(</span><span class="n">program</span><span class="p">:</span> <span class="n">Program</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Capabilities</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;A program&#39;s capabilities, validated: it may return a mapping or any object.</span>
 
 <span class="sd">    Args:</span>
@@ -7041,7 +7044,10 @@ when they are those it would run now.</p>
 
             <details class="quote">
               <summary>Source code in <code>src/qccompute/program.py</code></summary>
-              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1533</span>
+              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1530</span>
+<span class="normal">1531</span>
+<span class="normal">1532</span>
+<span class="normal">1533</span>
 <span class="normal">1534</span>
 <span class="normal">1535</span>
 <span class="normal">1536</span>
@@ -7051,10 +7057,7 @@ when they are those it would run now.</p>
 <span class="normal">1540</span>
 <span class="normal">1541</span>
 <span class="normal">1542</span>
-<span class="normal">1543</span>
-<span class="normal">1544</span>
-<span class="normal">1545</span>
-<span class="normal">1546</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">plan_of</span><span class="p">(</span><span class="n">program</span><span class="p">:</span> <span class="n">Program</span><span class="p">,</span> <span class="n">inp</span><span class="p">:</span> <span class="n">ProgramInput</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Plan</span><span class="p">:</span>
+<span class="normal">1543</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">plan_of</span><span class="p">(</span><span class="n">program</span><span class="p">:</span> <span class="n">Program</span><span class="p">,</span> <span class="n">inp</span><span class="p">:</span> <span class="n">ProgramInput</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Plan</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;A program&#39;s plan for an input, validated: it may return a mapping or any object.</span>
 
 <span class="sd">    Args:</span>

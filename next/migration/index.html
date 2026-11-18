@@ -16,7 +16,7 @@
         <link rel="prev" href="..">
       
       
-        <link rel="next" href="../programs/overview/">
+        <link rel="next" href="../threads/">
       
       
       <link rel="icon" href="../assets/images/favicon.png">
@@ -511,6 +511,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#the-runner" class="md-nav__link">
+    <span class="md-ellipsis">
+      The runner
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#sessions" class="md-nav__link">
     <span class="md-ellipsis">
       Sessions
@@ -532,6 +541,28 @@
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../threads/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Threads
+    
+  </span>
+  
+
+      </a>
     </li>
   
 
@@ -968,6 +999,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#the-runner" class="md-nav__link">
+    <span class="md-ellipsis">
+      The runner
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#sessions" class="md-nav__link">
     <span class="md-ellipsis">
       Sessions
@@ -1035,10 +1075,11 @@ change.</p>
 <span class="c1"># 0.23</span>
 <span class="n">out</span> <span class="o">=</span> <span class="n">qccompute</span><span class="o">.</span><span class="n">compute</span><span class="p">(</span><span class="n">inp</span><span class="p">)</span>
 </code></pre></div>
-<p>A calculation gets the threads it asks for: its <code>threads</code> keyword
-(<code>keywords={"threads": 8}</code>), else what its program's plan says (1 unless the program
-states more, or all of them for a program that plans <code>None</code>), at most the runner's. It no
-longer gets every core of the machine by default.</p>
+<p>A calculation runs with one thread count: its <code>threads</code> keyword
+(<code>keywords={"threads": 8}</code>), else the runner's whole count (every core this process may
+use, or <code>OMP_NUM_THREADS</code> if it is set). Nothing runs more threads at once than its
+runner has: to run many calculations at once, set <code>threads</code> (usually 1) on each, or run
+them as a list. See <a href="../threads/">Threads</a>.</p>
 <p><code>compute</code> takes <code>store</code>, <code>timeout</code>, <code>rerun</code>, <code>tags</code>, <code>meta</code>, <code>raise_exc</code> and <code>progress</code>.
 The removed options:</p>
 <table>
@@ -1087,7 +1128,7 @@ The removed options:</p>
 </tr>
 <tr>
 <td><code>max_workers=</code></td>
-<td><code>qccompute.Runner(threads=...)</code></td>
+<td><code>qccompute.Runner(threads=...)</code>, and <code>threads</code> on each input</td>
 </tr>
 <tr>
 <td><code>compute_args(...)</code></td>
@@ -1147,18 +1188,43 @@ and the kind of failure in <code>error.kind</code>:</p>
     <span class="n">logs</span> <span class="o">=</span> <span class="n">e</span><span class="o">.</span><span class="n">output</span><span class="o">.</span><span class="n">logs</span>
 </code></pre></div>
 <h2 id="lists">Lists<a class="headerlink" href="#lists" title="Permanent link">&para;</a></h2>
-<p><code>compute(list)</code> packs calculations by what each program's plan asks for, within the
-runner's threads and GPUs, instead of within <code>max_workers</code>. A program that evaluates
-many inputs at once gets them together; there is no <code>batch_size</code> or <code>batch_index</code> in
-<code>execution.extras</code> beyond what a program records, and the batch's wall time is
-<code>execution.timings["batch"]</code>. <code>Runner.as_completed</code> yields outputs as they finish, and
-<code>qccompute.submit(inp, priority=0)</code> returns a <code>concurrent.futures.Future</code> of one output,
-whose <code>cancel()</code> ends the calculation even while it runs.</p>
+<p><code>compute(list)</code> shares the runner's threads among the inputs that run, instead of running
+<code>max_workers</code> at once. A program that evaluates many inputs at once gets them together;
+there is no <code>batch_size</code> or <code>batch_index</code> in <code>execution.extras</code> beyond what a program
+records, and the batch's wall time is <code>execution.timings["batch"]</code>.
+<code>qccompute.submit(inp)</code> returns a <code>concurrent.futures.Future</code> of one output, whose
+<code>cancel()</code> ends the calculation even while it runs; <code>concurrent.futures.as_completed</code>
+yields submitted futures as they finish. Submitted calculations start in the order
+submitted.</p>
+<h2 id="the-runner">The runner<a class="headerlink" href="#the-runner" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>0.22</th>
+<th>0.23</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>compute(..., max_workers=)</code></td>
+<td><code>qccompute.Runner(threads=, gpus=, isolation=)</code></td>
+</tr>
+<tr>
+<td>a backend argument</td>
+<td>gone: a runner runs on this machine</td>
+</tr>
+<tr>
+<td>GPUs shared between calculations</td>
+<td>each GPU goes to one calculation at a time; machine-learned potentials batch many inputs in one call</td>
+</tr>
+</tbody>
+</table>
 <h2 id="sessions">Sessions<a class="headerlink" href="#sessions" title="Permanent link">&para;</a></h2>
 <p><code>qccompute.session(spec, structure, threads=..., **compute_options)</code> is
 <code>qccompute.session(inp, calctypes=None, threads=None, progress=None)</code>: build the input
 with <code>ProgramInput.from_spec(spec, structure)</code>. <code>compute_many</code> now runs every request and then
-raises <code>qcdata.ProgramErrors</code> when any failed, with every frame in <code>results</code>.</p>
+raises <code>qcdata.ProgramErrors</code> when any failed, with every frame in <code>results</code>. A session's
+requests share its thread count and hold it only while they run.</p>
 <h2 id="programs">Programs<a class="headerlink" href="#programs" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -1210,11 +1276,11 @@ raises <code>qcdata.ProgramErrors</code> when any failed, with every frame in <c
 </tr>
 <tr>
 <td><code>check_program(..., children=...)</code></td>
-<td>register the subprograms; <code>check_program</code> also checks the thread grant</td>
+<td>register the subprograms; <code>check_program</code> also checks the thread count</td>
 </tr>
 <tr>
-<td>the runner granted every core</td>
-<td><code>plan(inp).resources.threads</code> is what the runner grants when the input has no <code>threads</code> keyword (default 1): a program that wants more says how many, or <code>None</code> for all the runner (or parent grant) has</td>
+<td>thread counts from the caller</td>
+<td>every program accepts the shared <code>threads</code> keyword and runs on <code>ctx.threads</code>, at most; it may use fewer where more don't help (its own cap). Plans state no threads (<code>Resources</code> has no <code>threads</code>)</td>
 </tr>
 </tbody>
 </table>

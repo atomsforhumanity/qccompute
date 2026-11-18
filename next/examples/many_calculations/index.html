@@ -435,6 +435,28 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../threads/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Threads
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -963,7 +985,7 @@ mix programs, methods and calculation types.</p>
         <span class="n">calctype</span><span class="o">=</span><span class="n">CalcType</span><span class="o">.</span><span class="n">gradient</span><span class="p">,</span>
         <span class="n">structure</span><span class="o">=</span><span class="n">structure</span><span class="p">,</span>
         <span class="n">model</span><span class="o">=</span><span class="n">Model</span><span class="p">(</span><span class="n">method</span><span class="o">=</span><span class="s2">&quot;gfn2&quot;</span><span class="p">),</span>
-        <span class="n">keywords</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;parallel&quot;</span><span class="p">:</span> <span class="mi">2</span><span class="p">},</span>  <span class="c1"># two threads each</span>
+        <span class="n">keywords</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;threads&quot;</span><span class="p">:</span> <span class="mi">2</span><span class="p">},</span>  <span class="c1"># two threads each</span>
     <span class="p">)</span>
     <span class="k">for</span> <span class="n">structure</span> <span class="ow">in</span> <span class="n">structures</span>
 <span class="p">]</span>
@@ -974,20 +996,19 @@ mix programs, methods and calculation types.</p>
 <li><strong>Lookup.</strong> With a <code>store</code>, every input is looked up first; reusable runs come back
    without running.</li>
 <li><strong>Planning.</strong> Each program plans its inputs (<code>program.plan(inp)</code>): an input it refuses
-   fails at once, without running, and the plan says what the calculation needs (threads,
-   GPUs). The plan is handed to the program, so nothing is planned twice.</li>
-<li><strong>Packing.</strong> Calculations are admitted in input order while their shares of the runner
-   sum to at most one. A calculation's share is the larger of its share of the threads
-   and its share of the GPUs; its host memory is its share of the runner's (unless its
-   <code>memory_gib</code> keyword asks for an amount). On 16 threads, eight 2-thread xtb
-   calculations run at once.</li>
+   fails at once, without running, and the plan says which GPUs the calculation needs.
+   The plan is handed to the program, so nothing is planned twice.</li>
+<li><strong>Sharing.</strong> The inputs that run share the runner's thread count: each gets the count
+   divided by how many run, at least 1, unless it sets <code>threads</code>; they start in input
+   order, as threads free up (<a href="../../threads/">Threads</a>). On 16 threads, eight 2-thread
+   xtb calculations run at once.</li>
 <li><strong>Placement.</strong> Programs that may share this process run in its threads (one at a time
    for programs that are not thread-safe); programs that cannot (they capture the
    process's output streams, as Python libraries run by qccodec do) run in worker
    processes, which stay alive for the next call. A program that evaluates many inputs at
    once (<code>compute_batch</code>, machine-learned potentials, qcopt) gets all of its inputs
-   together, with the threads they ask for together (at most the runner's), and divides
-   them among its inputs: 100 one-thread searches as one batch get 100 threads.</li>
+   together in one call, with their threads together, and divides them among its
+   inputs.</li>
 </ol>
 <h2 id="failures">Failures<a class="headerlink" href="#failures" title="Permanent link">&para;</a></h2>
 <p>Every calculation runs; then, if any failed, <code>qcdata.ProgramErrors</code> is raised. It is an
@@ -1007,12 +1028,16 @@ mix programs, methods and calculation types.</p>
 </code></pre></div>
 <p><code>raise_exc=False</code> returns failed outputs in place.</p>
 <h2 id="as-they-finish">As they finish<a class="headerlink" href="#as-they-finish" title="Permanent link">&para;</a></h2>
-<div class="language-python highlight"><pre><span></span><code><span class="k">with</span> <span class="n">qccompute</span><span class="o">.</span><span class="n">Runner</span><span class="p">(</span><span class="n">threads</span><span class="o">=</span><span class="mi">32</span><span class="p">)</span> <span class="k">as</span> <span class="n">runner</span><span class="p">:</span>
-    <span class="k">for</span> <span class="n">out</span> <span class="ow">in</span> <span class="n">runner</span><span class="o">.</span><span class="n">as_completed</span><span class="p">(</span><span class="n">inputs</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="mi">600</span><span class="p">):</span>
+<p>Submit each input and take the futures as they complete. Give each <code>threads</code> (usually
+1), or they run one at a time:</p>
+<div class="language-python highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">concurrent.futures</span><span class="w"> </span><span class="kn">import</span> <span class="n">as_completed</span>
+
+<span class="k">with</span> <span class="n">qccompute</span><span class="o">.</span><span class="n">Runner</span><span class="p">(</span><span class="n">threads</span><span class="o">=</span><span class="mi">32</span><span class="p">)</span> <span class="k">as</span> <span class="n">runner</span><span class="p">:</span>
+    <span class="n">one</span> <span class="o">=</span> <span class="p">[</span><span class="n">i</span><span class="o">.</span><span class="n">model_copy</span><span class="p">(</span><span class="n">update</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;keywords&quot;</span><span class="p">:</span> <span class="p">{</span><span class="o">**</span><span class="n">i</span><span class="o">.</span><span class="n">keywords</span><span class="p">,</span> <span class="s2">&quot;threads&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">}})</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">inputs</span><span class="p">]</span>
+    <span class="k">for</span> <span class="n">future</span> <span class="ow">in</span> <span class="n">as_completed</span><span class="p">([</span><span class="n">runner</span><span class="o">.</span><span class="n">submit</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="mi">600</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">one</span><span class="p">]):</span>
+        <span class="n">out</span> <span class="o">=</span> <span class="n">future</span><span class="o">.</span><span class="n">result</span><span class="p">()</span>  <span class="c1"># raises qcdata.ProgramError for a failure</span>
         <span class="nb">print</span><span class="p">(</span><span class="n">out</span><span class="o">.</span><span class="n">input_data</span><span class="o">.</span><span class="n">program</span><span class="p">,</span> <span class="n">out</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">energy</span><span class="p">)</span>
 </code></pre></div>
-<p>Stored outputs come first, then each as it finishes. With <code>raise_exc=True</code> (the default)
-failures are held back and raised together after the last success.</p>
 <p>When the next calculations depend on earlier ones, submit each as its inputs become
 known and get a future of its output: see <a href="../dynamic_workflows/">Dynamic workflows</a>.</p>
 

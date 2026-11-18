@@ -435,6 +435,28 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../threads/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Threads
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -871,9 +893,10 @@ so each reaction moves to its next step as soon as its last one finishes:</p>
 <span class="n">children</span> <span class="o">=</span> <span class="p">[{</span><span class="o">**</span><span class="n">gxtb</span><span class="p">,</span> <span class="s2">&quot;calctype&quot;</span><span class="p">:</span> <span class="s2">&quot;gradient&quot;</span><span class="p">},</span> <span class="p">{</span><span class="o">**</span><span class="n">gxtb</span><span class="p">,</span> <span class="s2">&quot;calctype&quot;</span><span class="p">:</span> <span class="s2">&quot;hessian&quot;</span><span class="p">}]</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">qcopt</span><span class="p">(</span><span class="n">calctype</span><span class="p">,</span> <span class="n">structure</span><span class="p">,</span> <span class="o">**</span><span class="n">fields</span><span class="p">):</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">qcopt</span><span class="p">(</span><span class="n">calctype</span><span class="p">,</span> <span class="n">structure</span><span class="p">,</span> <span class="n">keywords</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">fields</span><span class="p">):</span>
     <span class="k">return</span> <span class="n">ProgramInput</span><span class="p">(</span>
         <span class="n">program</span><span class="o">=</span><span class="s2">&quot;qcopt&quot;</span><span class="p">,</span> <span class="n">calctype</span><span class="o">=</span><span class="n">calctype</span><span class="p">,</span> <span class="n">structure</span><span class="o">=</span><span class="n">structure</span><span class="p">,</span>
+        <span class="n">keywords</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;threads&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="o">**</span><span class="p">(</span><span class="n">keywords</span> <span class="ow">or</span> <span class="p">{})},</span>  <span class="c1"># many at once: one thread each</span>
         <span class="n">subprograms</span><span class="o">=</span><span class="n">children</span><span class="p">,</span> <span class="o">**</span><span class="n">fields</span><span class="p">,</span>
     <span class="p">)</span>
 
@@ -906,19 +929,17 @@ so each reaction moves to its next step as soon as its last one finishes:</p>
                     <span class="n">futures</span><span class="p">[</span><span class="n">runner</span><span class="o">.</span><span class="n">submit</span><span class="p">(</span><span class="n">end</span><span class="p">,</span> <span class="n">store</span><span class="o">=</span><span class="n">store</span><span class="p">)]</span> <span class="o">=</span> <span class="p">(</span><span class="n">side</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
 </code></pre></div>
 <ul>
-<li><strong>The runner packs submitted calculations</strong> into its threads and GPUs as it packs a
-  list, admitted in the order submitted: on 8 threads, eight one-thread searches run at
-  once and the ninth starts when one ends. A stored result resolves its future before
-  <code>submit</code> returns, so a rerun of this workflow from a store computes nothing: it asks
-  for the same inputs again.</li>
+<li><strong>Submitted calculations share the runner's threads</strong>, starting in the order submitted:
+  on 8 threads, eight one-thread searches run at once and the ninth starts when one
+  ends. Without <code>threads</code>, each would take all 8 and they would run one at a time (the
+  runner warns; see <a href="../../threads/">Threads</a>). A stored result resolves its future
+  before <code>submit</code> returns, so a rerun of this workflow from a store computes nothing: it
+  asks for the same inputs again.</li>
 <li><strong><code>future.result()</code></strong> is the output, or raises <code>qcdata.ProgramError</code> with the failed
   output as <code>e.output</code>, as <code>compute</code> does. <code>concurrent.futures.as_completed</code> and
   <code>future.add_done_callback</code> work as for any future.</li>
-<li><strong>Priorities and cancelling.</strong> <code>runner.submit(inp, priority=2)</code> puts a calculation
-  ahead of every waiting one of lower priority (default 0); within a priority, the first
-  submitted starts first, and running calculations are never displaced. So a workflow
-  can keep submitting what it finds and still have its most promising work start
-  first. <code>future.cancel()</code> works while the calculation runs, too: a worker running it
+<li><strong>Cancelling.</strong> <code>future.cancel()</code> ends a waiting calculation before it starts, and
+  works while it runs, too: a worker running it
   is killed with every process it started (an external program's included), and one
   running in this process stops at its next look at <code>ctx.timeout</code>, which reads 0, as
   for a timeout. A cancelled calculation is never stored; <code>future.result()</code> raises
@@ -938,7 +959,7 @@ so each reaction moves to its next step as soon as its last one finishes:</p>
   the same results, asks for exactly the same inputs: the key is the input as given, so
   a geometry, seed or keyword that differs is a miss. A workflow whose choices depend on
   timing (which future finished first, a reference structure replaced when a lower one
-  arrives, priorities that read what has been found so far) takes other branches when
+  arrives, an order that reads what has been found so far) takes other branches when
   rerun. The store still serves every calculation it asks for again, but it does not
   hold the workflow's decisions: what was searched, what was set aside, where it was
   heading. Such a workflow keeps that decision state itself and resumes from it.</li>

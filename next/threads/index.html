@@ -1036,9 +1036,15 @@ want many calculations at once.</p>
   caller's whole count:</li>
 <li>at top level, the runner's: <code>Runner(threads=...)</code>, else <code>OMP_NUM_THREADS</code> if it is
     set, else the CPUs this process may use (its affinity, capped by any cgroup quota);</li>
-<li>for a subprogram or a session request, its parent's or its session's count. A
-    <code>threads</code> keyword never takes more than that.</li>
-<li>A calculation given GPUs and no <code>threads</code> gets 1.</li>
+<li>for a subprogram or a session request, its parent's or its session's count.</li>
+<li>A <code>threads</code> keyword never takes more than the caller's count, at top level too. The
+  runner lowers it to the count and warns. So a script that sets <code>OMP_NUM_THREADS=1</code>
+  to keep NumPy on one thread runs every calculation on one thread. Set
+  <code>OPENBLAS_NUM_THREADS</code> or <code>MKL_NUM_THREADS</code> for NumPy instead, or pass
+  <code>Runner(threads=...)</code>.</li>
+<li>A calculation that runs on GPUs and sets no <code>threads</code> gets 1. A parent whose plan
+  asks for GPUs only for its subprograms (its input names subprograms) gets its
+  caller's whole count like any other calculation, and its children their share of it.</li>
 <li>The program uses at most that many threads, and fewer where more don't help: that
   cap is the program's own (qccodec's xtb runs on one thread unless asked). Programs
   don't suggest thread counts to the runner.</li>

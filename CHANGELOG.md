@@ -188,6 +188,13 @@ covers moving from 0.22.
 - **Breaking:** the qccodec dependency and every codec path: `compute` options `codec`, `environment`, `executables`, `scratch_dir`, `rm_scratch_dir`, `collect_logs`, `collect_files`, `collect_wfn`, `propagate_wfn`, `options`, `print_logs`, `update_func`, `update_interval` and `max_workers`; `compute_args`; `qccompute.exceptions`; `get_program`; `qccompute.utils`; the extras `geometric`, `tcpb` and `all`.
 - **Breaking:** `local_context`, `Capabilities.driver`, and `check_program(children=)`.
 
+## [0.22.1] - 2026-11-17
+
+### Changed
+
+- Requires `qcdata<0.24` and `qccodec<0.22`. The next releases of the qc* stack change these interfaces without compatibility, so this release line keeps resolving to a working set.
+- Moved documentation from `qccompute.docs.atomsforhumanity.org` to `qccompute.docs.afh.org`.
+
 ## [0.22.0] - 2026-10-23
 
 ### Changed

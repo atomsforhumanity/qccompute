@@ -13,4 +13,4 @@
   complete program.
 
 Every external program has a runnable example script per calculation type in
-[qccodec's documentation](https://qccodec.docs.afh.org/next/programs/).
+[qccodec's documentation](https://qccodec.docs.afh.org/programs/).

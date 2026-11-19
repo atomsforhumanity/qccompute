@@ -6,10 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [unreleased]
 
+## [0.23.0] - 2026-11-19
+
+The final release of the 0.23.0 alphas and release candidate: their entries below make up its changes since 0.22. Since 0.23.0rc1:
+
+### Changed
+
+- Requires qcdata 0.24.0 or later; the README and docs install the final releases and link to the stable docs.
+
 ### Fixed
 
 - A calculation whose input names subprograms gets its caller's whole count when it sets no `threads`, even when its plan asks for GPUs for those subprograms. Before, it got 1 thread, as a calculation running on the GPU does, and its children's `threads` keywords were lowered to 1 without a word.
-- A `threads` keyword above the caller's count is lowered to the count with a `RuntimeWarning` that says where the count comes from. The [Threads](https://qccompute.docs.afh.org/next/threads/) page now says that `OMP_NUM_THREADS` caps top-level keywords too, and how to keep NumPy on one thread without capping calculations.
+- A `threads` keyword above the caller's count is lowered to the count with a `RuntimeWarning` that says where the count comes from. The [Threads](https://qccompute.docs.afh.org/threads/) page now says that `OMP_NUM_THREADS` caps top-level keywords too, and how to keep NumPy on one thread without capping calculations.
 
 ## [0.23.0rc1] - 2026-11-18
 
@@ -17,7 +25,7 @@ The release candidate: these are the final interfaces; only bug fixes follow bef
 
 ### Changed
 
-- **Breaking:** one thread count per calculation: its `threads` keyword, else its caller's whole count (`Runner(threads=)`, else `OMP_NUM_THREADS`, else the usable CPUs; a parent's or a session's for subprograms and requests). A calculation given GPUs and no `threads` gets 1. The [Threads](https://qccompute.docs.afh.org/next/threads/) page is the one place this is explained.
+- **Breaking:** one thread count per calculation: its `threads` keyword, else its caller's whole count (`Runner(threads=)`, else `OMP_NUM_THREADS`, else the usable CPUs; a parent's or a session's for subprograms and requests). A calculation given GPUs and no `threads` gets 1. The [Threads](https://qccompute.docs.afh.org/threads/) page is the one place this is explained.
 - **Breaking:** lists, a session's `compute_many` and requests on one session share the count; store hits don't count. A batch program gets the whole list in one call with the sum of its inputs' shares.
 - **Breaking:** nothing runs more threads at once than the count it runs under (the runner's, a calculation's, a session's); extra work waits, first come first served. Calls from several threads, `submit`, lists and sessions all share the runner's count; an idle open session holds nothing. A top-level call from a thread that is running a calculation raises `RuntimeError` at once. The runner warns once when calculations that each take its whole count wait.
 - Waiting calculations can be cancelled or stopped; timeouts count from when a calculation starts.
@@ -748,7 +756,8 @@ covers moving from 0.22.
 - Created adapter for TeraChem.
 - Exposed general purpose computing for any subprocess with `FileAdaptor`
 
-[unreleased]: https://github.com/atomsforhumanity/qccompute/compare/0.22.0...HEAD
+[unreleased]: https://github.com/atomsforhumanity/qccompute/compare/0.23.0...HEAD
+[0.23.0]: https://github.com/atomsforhumanity/qccompute/releases/tag/0.23.0
 [0.22.0]: https://github.com/atomsforhumanity/qccompute/releases/tag/0.22.0
 [0.21.0]: https://github.com/atomsforhumanity/qccompute/releases/tag/0.21.0
 [0.20.0]: https://github.com/atomsforhumanity/qccompute/releases/tag/0.20.0

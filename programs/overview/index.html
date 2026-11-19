@@ -13,10 +13,10 @@
         <link rel="canonical" href="https://qccompute.docs.afh.org/programs/overview/">
       
       
-        <link rel="prev" href="../..">
+        <link rel="prev" href="../../threads/">
       
       
-        <link rel="next" href="../../examples/overview/">
+        <link rel="next" href="../../api/program/">
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
@@ -397,6 +397,50 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../migration/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Migrating from 0.22
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../threads/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Threads
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -477,6 +521,72 @@
 
       </a>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/program/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Programs and sessions (API)
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/runner/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Running (API)
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/program-interface/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    The program interface (design)
+    
+  </span>
+  
+
+      </a>
     </li>
   
 
@@ -625,11 +735,55 @@
   
   
     <li class="md-nav__item">
-      <a href="../../examples/custom_codec/" class="md-nav__link">
+      <a href="../../examples/dynamic_workflows/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
-    Custom codec
+    Dynamic workflows: futures
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/sessions/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Sessions, lineages and seeds
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/function_program/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    A program from functions
     
   </span>
   
@@ -708,27 +862,32 @@
 
 
 <h1 id="programs">Programs<a class="headerlink" href="#programs" title="Permanent link">&para;</a></h1>
-<p>qccompute runs programs; everything specific to a program lives in its
-<a href="https://qccodec.docs.afh.org">qccodec</a> codec. The qccodec documentation
-has a page for each supported program, explaining how a <code>ProgramInput</code> maps onto it
-(keywords, solvent, parallelism, quirks), with a complete, runnable example script for
-every calculation type:</p>
+<p>qccompute runs any program that implements its <a href="../../api/program/">protocol</a>, found by
+name among the installed programs (the <code>qccompute.programs</code> entry points) and those
+registered in this process with <code>qccompute.register_program</code>.</p>
+<p>External programs come with <code>pip install qccompute[qccodec]</code>: qccodec registers each as a
+program. Its documentation has a page for each, explaining how a <code>ProgramInput</code> maps
+onto it (keywords, solvent, parallelism, quirks), with a runnable example script for every
+calculation type:</p>
 <ul>
 <li><a href="https://qccodec.docs.afh.org/programs/crest/">CREST</a></li>
-<li><a href="https://qccodec.docs.afh.org/programs/geometric/">geomeTRIC</a></li>
+<li><a href="https://qccodec.docs.afh.org/programs/dftbplus/">DFTB+</a></li>
+<li><a href="https://qccodec.docs.afh.org/programs/geometric/">geomeTRIC</a> and
+  <a href="https://qccodec.docs.afh.org/programs/sella/">Sella</a></li>
 <li><a href="https://qccodec.docs.afh.org/programs/orca/">ORCA</a></li>
 <li><a href="https://qccodec.docs.afh.org/programs/psi4/">Psi4</a></li>
 <li><a href="https://qccodec.docs.afh.org/programs/terachem/">TeraChem</a> and its
   <a href="https://qccodec.docs.afh.org/programs/terachem-servers/">servers</a></li>
-<li><a href="https://qccodec.docs.afh.org/programs/xtb/">xtb</a></li>
+<li><a href="https://qccodec.docs.afh.org/programs/xtb/">xtb</a> and
+  <a href="https://qccodec.docs.afh.org/programs/tblite/">tblite</a></li>
+<li>machine-learned potentials: <a href="https://qccodec.docs.afh.org/programs/aimnet2/">AIMNet2</a>,
+  <a href="https://qccodec.docs.afh.org/programs/fairchem/">FAIR-Chem</a>,
+  <a href="https://qccodec.docs.afh.org/programs/mace/">MACE</a>,
+  <a href="https://qccodec.docs.afh.org/programs/orb/">Orb</a>,
+  <a href="https://qccodec.docs.afh.org/programs/torchani/">TorchANI</a></li>
 </ul>
-<p>Program-specific decode options are passed as <code>compute(input_data, options={...})</code>;
-each codec declares what it accepts in <code>codec.options</code>. A program not on <code>PATH</code>, or
-shadowed by another command of the same name, is selected with
-<code>compute(..., executables={"orca": "/path/to/orca"})</code> or the environment variable
-<code>QCCOMPUTE_&lt;PROGRAM&gt;_EXECUTABLE</code>.</p>
-<p>Programs qccodec doesn't support yet can be run by writing a codec in your own script;
-see <a href="../../examples/custom_codec/">Custom codec</a>.</p>
+<p>An external program not on <code>PATH</code>, or shadowed by another command of the same name, is
+found with the environment variable <code>QCCODEC_&lt;PROGRAM&gt;_EXECUTABLE</code>.</p>
 
 
 

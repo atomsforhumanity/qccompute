@@ -77,6 +77,11 @@
     <label class="md-overlay" for="__drawer"></label>
     <div data-md-component="skip">
       
+        
+        <a href="#file-input" class="md-skip">
+          Skip to content
+        </a>
+      
     </div>
     <div data-md-component="announce">
       
@@ -392,6 +397,50 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../migration/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Migrating from 0.22
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../threads/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Threads
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -452,6 +501,72 @@
   
   <span class="md-ellipsis">
     Overview
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/program/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Programs and sessions (API)
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/runner/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Running (API)
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/program-interface/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    The program interface (design)
     
   </span>
   
@@ -572,6 +687,8 @@
       <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
       
       
+        
+      
       
       <a href="./" class="md-nav__link md-nav__link--active">
         
@@ -618,11 +735,55 @@
   
   
     <li class="md-nav__item">
-      <a href="../custom_codec/" class="md-nav__link">
+      <a href="../dynamic_workflows/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
-    Custom codec
+    Dynamic workflows: futures
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../sessions/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Sessions, lineages and seeds
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../function_program/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    A program from functions
     
   </span>
   
@@ -680,6 +841,8 @@
   
   
   
+    
+  
   
 </nav>
                   </div>
@@ -698,10 +861,18 @@
   
 
 
-  <h1>File Input</h1>
+<h1 id="file-input">File Input<a class="headerlink" href="#file-input" title="Permanent link">&para;</a></h1>
+<p>A <code>qcdata.FileInput</code> is a command line and the files it needs: an escape hatch for a
+program qccodec does not support yet, or a calculation its codec does not cover (an MD
+run, a script). qccompute runs it under qccodec's <code>files</code> program
+(<code>pip install qccompute[qccodec]</code>) in a scratch directory and returns every file the
+command wrote in <code>results.files</code>, with its output in <code>logs</code>.</p>
+<div class="language-python highlight"><pre><span></span><code><span class="sd">&quot;&quot;&quot;Run a command with its files and get every file it wrote back (needs qccodec).</span>
 
-<p>The <code>File Input</code> can be used as an escape hatch when you want to perform a calculation type that is not yet supported by <code>qccompute</code> or use a program not yet supported by <code>qccompute</code>. You can submit the program's native input files to the program and <code>qccompute</code> will execute the program, collect all the outputs, and return them to you. These calculations could be an MD run, some unique calculation type not supported by <code>qccompute</code>, or any arbitrary command you can send to any command-line executable program.</p>
-<div class="language-python highlight"><pre><span></span><code><span class="sd">&quot;&quot;&quot;An example of how to create a FileInput object for a QC Program.&quot;&quot;&quot;</span>
+<span class="sd">A FileInput is a command line and the files it needs. qccompute runs it under the</span>
+<span class="sd">``files`` program that ``qccompute[qccodec]`` provides, in a scratch directory, and</span>
+<span class="sd">returns the files the command wrote in ``results.files``.</span>
+<span class="sd">&quot;&quot;&quot;</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
 
@@ -709,30 +880,23 @@
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">qccompute</span><span class="w"> </span><span class="kn">import</span> <span class="n">compute</span>
 
-<span class="c1"># Input files for QC Program</span>
+<span class="c1"># Input files for the program</span>
 <span class="n">inp_file</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="s2">&quot;path/to/tc.in&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">read_text</span><span class="p">()</span>  <span class="c1"># Or your own function to create tc.in</span>
 
 <span class="c1"># Structure object to XYZ file</span>
 <span class="n">structure</span> <span class="o">=</span> <span class="n">Structure</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="s2">&quot;path/to/my/mol.xyz&quot;</span><span class="p">)</span>
 <span class="n">xyz_str</span> <span class="o">=</span> <span class="n">structure</span><span class="o">.</span><span class="n">to_xyz</span><span class="p">()</span>  <span class="c1"># type: ignore</span>
 
-<span class="c1"># Create a FileInput object for TeraChem</span>
+<span class="c1"># Run &quot;terachem tc.in&quot; in a scratch directory holding these files.</span>
 <span class="n">file_input</span> <span class="o">=</span> <span class="n">FileInput</span><span class="p">(</span>
     <span class="n">program</span><span class="o">=</span><span class="s2">&quot;terachem&quot;</span><span class="p">,</span>
     <span class="n">files</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;tc.in&quot;</span><span class="p">:</span> <span class="n">inp_file</span><span class="p">,</span> <span class="s2">&quot;coords.xyz&quot;</span><span class="p">:</span> <span class="n">xyz_str</span><span class="p">},</span>
     <span class="n">cmdline_args</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;tc.in&quot;</span><span class="p">],</span>
 <span class="p">)</span>
+<span class="n">prog_output</span> <span class="o">=</span> <span class="n">compute</span><span class="p">(</span><span class="n">file_input</span><span class="p">)</span>
 
-<span class="c1"># This will write the files to disk in a temporary directory and then run</span>
-<span class="c1"># &quot;terachem tc.in&quot; in that directory.</span>
-<span class="n">prog_output</span> <span class="o">=</span> <span class="n">compute</span><span class="p">(</span><span class="n">file_input</span><span class="p">,</span> <span class="n">print_logs</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-
-<span class="c1"># Data</span>
 <span class="nb">print</span><span class="p">(</span><span class="n">prog_output</span><span class="o">.</span><span class="n">logs</span><span class="p">)</span>
-<span class="nb">print</span><span class="p">(</span><span class="n">prog_output</span><span class="o">.</span><span class="n">input_data</span><span class="p">)</span>
-<span class="nb">print</span><span class="p">(</span><span class="n">prog_output</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">files</span><span class="p">)</span>  <span class="c1"># Has all the files terachem creates</span>
-<span class="nb">print</span><span class="p">(</span><span class="n">prog_output</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">files</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>  <span class="c1"># File names</span>
-<span class="c1"># Saves all outputs with the exact structure produced by the QC program</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">prog_output</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">files</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>  <span class="c1"># every file terachem wrote</span>
 <span class="n">prog_output</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">save_files</span><span class="p">(</span><span class="s2">&quot;to/this/directory&quot;</span><span class="p">)</span>
 </code></pre></div>
 

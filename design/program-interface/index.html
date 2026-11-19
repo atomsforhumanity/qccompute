@@ -1,0 +1,1723 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+        <meta name="author" content="Colton Hicks">
+      
+      
+        <link rel="canonical" href="https://qccompute.docs.afh.org/design/program-interface/">
+      
+      
+        <link rel="prev" href="../../api/runner/">
+      
+      
+        <link rel="next" href="../../examples/overview/">
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.5">
+    
+    
+      
+        <title>The program interface (design) - qccompute</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.8608ea7d.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.06af60db.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="green" data-md-color-accent="amber">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#the-program-interface" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="qccompute" class="md-header__button md-logo" aria-label="qccompute" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            qccompute
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              The program interface (design)
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="green" data-md-color-accent="amber"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 0-7 7c0 2.38 1.19 4.47 3 5.74V17a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2.26c1.81-1.27 3-3.36 3-5.74a7 7 0 0 0-7-7M9 21a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1v-1H9z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="green" data-md-color-accent="amber"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 1 7 7c0 2.38-1.19 4.47-3 5.74V17a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1v-2.26C6.19 13.47 5 11.38 5 9a7 7 0 0 1 7-7M9 21v-1h6v1a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1m3-17a5 5 0 0 0-5 5c0 2.05 1.23 3.81 3 4.58V16h4v-2.42c1.77-.77 3-2.53 3-4.58a5 5 0 0 0-5-5"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      <label class="md-header__button md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+      </label>
+      <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/atomsforhumanity/qccompute" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 512"><!--! Font Awesome Free 6.7.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M186.1 328.7c0 20.9-10.9 55.1-36.7 55.1s-36.7-34.2-36.7-55.1 10.9-55.1 36.7-55.1 36.7 34.2 36.7 55.1M480 278.2c0 31.9-3.2 65.7-17.5 95-37.9 76.6-142.1 74.8-216.7 74.8-75.8 0-186.2 2.7-225.6-74.8-14.6-29-20.2-63.1-20.2-95 0-41.9 13.9-81.5 41.5-113.6-5.2-15.8-7.7-32.4-7.7-48.8 0-21.5 4.9-32.3 14.6-51.8 45.3 0 74.3 9 108.8 36 29-6.9 58.8-10 88.7-10 27 0 54.2 2.9 80.4 9.2 34-26.7 63-35.2 107.8-35.2 9.8 19.5 14.6 30.3 14.6 51.8 0 16.4-2.6 32.7-7.7 48.2 27.5 32.4 39 72.3 39 114.2m-64.3 50.5c0-43.9-26.7-82.6-73.5-82.6-18.9 0-37 3.4-56 6-14.9 2.3-29.8 3.2-45.1 3.2-15.2 0-30.1-.9-45.1-3.2-18.7-2.6-37-6-56-6-46.8 0-73.5 38.7-73.5 82.6 0 87.8 80.4 101.3 150.4 101.3h48.2c70.3 0 150.6-13.4 150.6-101.3m-82.6-55.1c-25.8 0-36.7 34.2-36.7 55.1s10.9 55.1 36.7 55.1 36.7-34.2 36.7-55.1-10.9-55.1-36.7-55.1"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../.." class="md-tabs__link">
+          
+  
+  Getting Started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../../programs/overview/" class="md-tabs__link">
+          
+  
+  Programs
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../examples/overview/" class="md-tabs__link">
+          
+  
+  Examples
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="https://github.com/atomsforhumanity/qccompute/blob/master/CHANGELOG.md" class="md-tabs__link">
+        
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="qccompute" class="md-nav__button md-logo" aria-label="qccompute" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    qccompute
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/atomsforhumanity/qccompute" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 512"><!--! Font Awesome Free 6.7.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M186.1 328.7c0 20.9-10.9 55.1-36.7 55.1s-36.7-34.2-36.7-55.1 10.9-55.1 36.7-55.1 36.7 34.2 36.7 55.1M480 278.2c0 31.9-3.2 65.7-17.5 95-37.9 76.6-142.1 74.8-216.7 74.8-75.8 0-186.2 2.7-225.6-74.8-14.6-29-20.2-63.1-20.2-95 0-41.9 13.9-81.5 41.5-113.6-5.2-15.8-7.7-32.4-7.7-48.8 0-21.5 4.9-32.3 14.6-51.8 45.3 0 74.3 9 108.8 36 29-6.9 58.8-10 88.7-10 27 0 54.2 2.9 80.4 9.2 34-26.7 63-35.2 107.8-35.2 9.8 19.5 14.6 30.3 14.6 51.8 0 16.4-2.6 32.7-7.7 48.2 27.5 32.4 39 72.3 39 114.2m-64.3 50.5c0-43.9-26.7-82.6-73.5-82.6-18.9 0-37 3.4-56 6-14.9 2.3-29.8 3.2-45.1 3.2-15.2 0-30.1-.9-45.1-3.2-18.7-2.6-37-6-56-6-46.8 0-73.5 38.7-73.5 82.6 0 87.8 80.4 101.3 150.4 101.3h48.2c70.3 0 150.6-13.4 150.6-101.3m-82.6-55.1c-25.8 0-36.7 34.2-36.7 55.1s10.9 55.1 36.7 55.1 36.7-34.2 36.7-55.1-10.9-55.1-36.7-55.1"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_1" id="__nav_1_label" tabindex="0">
+            
+  
+  <span class="md-ellipsis">
+    Getting Started
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1">
+            <span class="md-nav__icon md-icon"></span>
+            Getting Started
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Welcome to QCCompute
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../migration/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Migrating from 0.22
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../threads/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Threads
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  <span class="md-ellipsis">
+    Programs
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            Programs
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../programs/overview/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Overview
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/program/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Programs and sessions (API)
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/runner/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Running (API)
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  <span class="md-ellipsis">
+    The program interface (design)
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  <span class="md-ellipsis">
+    The program interface (design)
+    
+  </span>
+  
+
+      </a>
+      
+        
+
+  
+
+<nav class="md-nav md-nav--secondary" aria-label="Page contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Page contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-layers" class="md-nav__link">
+    <span class="md-ellipsis">
+      The layers
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#programs" class="md-nav__link">
+    <span class="md-ellipsis">
+      Programs
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-context" class="md-nav__link">
+    <span class="md-ellipsis">
+      The context
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#progress" class="md-nav__link">
+    <span class="md-ellipsis">
+      Progress
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#stopping" class="md-nav__link">
+    <span class="md-ellipsis">
+      Stopping
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#failures" class="md-nav__link">
+    <span class="md-ellipsis">
+      Failures
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sessions" class="md-nav__link">
+    <span class="md-ellipsis">
+      Sessions
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-runner" class="md-nav__link">
+    <span class="md-ellipsis">
+      The runner
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-store" class="md-nav__link">
+    <span class="md-ellipsis">
+      The store
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#workers" class="md-nav__link">
+    <span class="md-ellipsis">
+      Workers
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#external-programs" class="md-nav__link">
+    <span class="md-ellipsis">
+      External programs
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cost" class="md-nav__link">
+    <span class="md-ellipsis">
+      Cost
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#conformance" class="md-nav__link">
+    <span class="md-ellipsis">
+      Conformance
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://qccodec.docs.afh.org/programs/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Program pages and examples
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  <span class="md-ellipsis">
+    Examples
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            Examples
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/overview/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Overview
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/file_input/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    File Input
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/many_calculations/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Many calculations at once
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/dynamic_workflows/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Dynamic workflows: futures
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/sessions/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Sessions, lineages and seeds
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/function_program/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    A program from functions
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://github.com/atomsforhumanity/qccompute/blob/master/CHANGELOG.md" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Changelog
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+  
+
+<nav class="md-nav md-nav--secondary" aria-label="Page contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Page contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-layers" class="md-nav__link">
+    <span class="md-ellipsis">
+      The layers
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#programs" class="md-nav__link">
+    <span class="md-ellipsis">
+      Programs
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-context" class="md-nav__link">
+    <span class="md-ellipsis">
+      The context
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#progress" class="md-nav__link">
+    <span class="md-ellipsis">
+      Progress
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#stopping" class="md-nav__link">
+    <span class="md-ellipsis">
+      Stopping
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#failures" class="md-nav__link">
+    <span class="md-ellipsis">
+      Failures
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sessions" class="md-nav__link">
+    <span class="md-ellipsis">
+      Sessions
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-runner" class="md-nav__link">
+    <span class="md-ellipsis">
+      The runner
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-store" class="md-nav__link">
+    <span class="md-ellipsis">
+      The store
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#workers" class="md-nav__link">
+    <span class="md-ellipsis">
+      Workers
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#external-programs" class="md-nav__link">
+    <span class="md-ellipsis">
+      External programs
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cost" class="md-nav__link">
+    <span class="md-ellipsis">
+      Cost
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#conformance" class="md-nav__link">
+    <span class="md-ellipsis">
+      Conformance
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="the-program-interface">The program interface<a class="headerlink" href="#the-program-interface" title="Permanent link">&para;</a></h1>
+<p>How qccompute runs programs: the protocol a program implements, the context a runner
+gives each calculation, sessions, failures, the runner, the store, and worker processes.
+This is the design as built; the API pages document each name.</p>
+<h2 id="the-layers">The layers<a class="headerlink" href="#the-layers" title="Permanent link">&para;</a></h2>
+<div class="language-text highlight"><pre><span></span><code>workflows, apps, analysis        read and write qcdata; call qccompute
+─────────────────────────────────────────────────────────────────────────
+qcdata     data only: inputs, outputs, Frame, Request, Accuracy, ProgramError,
+           conventions, the calculation key, the save format
+qccompute  the Program protocol (qccompute.program) and the Runner: discovery,
+           planning, placement, resources, lists, sessions, workers, the store hook
+─────────────────────────────────────────────────────────────────────────
+programs   implement the protocol; a program without subprograms imports only qcdata
+qccodec    external programs (xtb, ORCA, Psi4, CREST, ...) as programs: input files,
+           subprocesses, output capture, file collection, parsers
+</code></pre></div>
+<p>qccompute depends on qcdata only. qccodec is the optional add-on for external programs
+(<code>pip install qccompute[qccodec]</code>) and does not import qccompute to run them.</p>
+<h2 id="programs">Programs<a class="headerlink" href="#programs" title="Permanent link">&para;</a></h2>
+<p>There is one kind of program. A program maps one <code>ProgramInput</code> to one <code>ProgramOutput</code>
+and may have subprograms (<code>ProgramSpec</code>s in its input) that it runs through the runner.
+Running many programs, with logic between them, is a workflow: plain Python.</p>
+<p>A program registers an instance under the <code>qccompute.programs</code> entry point group, or in a
+process with <code>qccompute.register_program</code> (a registered program that runs in a worker
+reaches it by its module attribute, else pickled; see <strong>Workers</strong>):</p>
+<div class="language-toml highlight"><pre><span></span><code><span class="k">[project.entry-points.</span><span class="s2">&quot;qccompute.programs&quot;</span><span class="k">]</span>
+<span class="n">myprogram</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;mypackage.qc:program&quot;</span>
+</code></pre></div>
+<p>The object implements <code>qccompute.program.Program</code>, structurally:</p>
+<table>
+<thead>
+<tr>
+<th>member</th>
+<th>what it is</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name</code></td>
+<td>the program's name, as in <code>ProgramInput.program</code></td>
+</tr>
+<tr>
+<td><code>version()</code></td>
+<td>the program's version</td>
+</tr>
+<tr>
+<td><code>capabilities()</code></td>
+<td>calctypes, methods with their calctypes, <code>sessions</code>, <code>batches</code>, <code>in_process</code>, <code>thread_safe</code>; a <code>Capabilities</code> or a plain mapping</td>
+</tr>
+<tr>
+<td><code>settings_schema(calctype)</code></td>
+<td>the JSON Schema of <code>keywords</code> and of <code>resolved.settings</code></td>
+</tr>
+<tr>
+<td><code>record_schema(calctype)</code></td>
+<td>the JSON Schema of <code>ProgramOutput.record</code></td>
+</tr>
+<tr>
+<td><code>plan(inp)</code></td>
+<td>a dry run: validates (kind <code>input</code> with a did-you-mean for unknown keys), resolves every <code>"auto"</code>, and says what the calculation needs (<code>Resources</code>: GPUs; memory, informational)</td>
+</tr>
+<tr>
+<td><code>compute(inp, ctx=None)</code></td>
+<td>runs the calculation; returns the successful output or raises <code>ProgramError</code></td>
+</tr>
+<tr>
+<td><code>numerics(spec)</code> (optional)</td>
+<td>a string that changes whenever results for an unchanged input may change; the version by default</td>
+</tr>
+<tr>
+<td><code>open_session(inp, ctx=None, calctypes=None)</code> (optional)</td>
+<td>a session, usually the program's own session class</td>
+</tr>
+<tr>
+<td><code>compute_batch(inputs, ctx=None)</code> (optional)</td>
+<td>many inputs at once; one output per input, in order, failures in place</td>
+</tr>
+</tbody>
+</table>
+<p>A <code>qcdata.FileInput</code> that is not a <code>ProgramInput</code> (a command with its files, whose
+<code>program</code> is the command) runs under the program registered as <code>files</code>, the one name the
+protocol reserves; qccodec registers it, and its numerics identity is the run's identity
+(<code>{"files": ...}</code>).</p>
+<p>What a program returns for <code>capabilities</code> and <code>plan</code> may be a plain mapping, which
+qccompute validates (<code>capabilities_of</code>, <code>plan_of</code>): it is the same document a program's
+command line prints and its worker sends. <code>numerics</code> takes the spec it would run (the
+input, or a subprogram's <code>ProgramSpec</code>), so a program of several methods can give each
+its own identity: a numerics epoch, an executable's sha256, a model's checksum.</p>
+<p><code>qccompute.program.FunctionProgram(name, energy_gradient, hessian=None, *, version=None,
+takes_input=False, settings=None)</code> is the smallest complete program: functions of the
+positions, in process and thread-safe, taking the shared <code>threads</code> and <code>accuracy</code>. With
+<code>takes_input=True</code> the functions also get the input (structure, model, keywords), and
+<code>settings=</code> declares the JSON Schema of the keywords they read, so one program stands
+in for an engine on any molecule. Its numerics identity is a digest of what the
+functions compute with (code, constants, defaults, closures, the globals they read),
+unless <code>version</code> names it.</p>
+<h2 id="the-context">The context<a class="headerlink" href="#the-context" title="Permanent link">&para;</a></h2>
+<p><code>compute</code>'s second argument is a <code>RunContext</code>, which only a runner passes, and a runner
+always passes one. It carries the calculation's thread count, GPUs and memory and the way
+to run subprograms:</p>
+<ul>
+<li><code>threads</code>: the calculation's thread count: its <code>threads</code> keyword, else its caller's
+  whole count (1 when it is given GPUs), as <a href="../../threads/">Threads</a> explains. The program
+  uses at most that many; a larger request of its own is a <code>resource_capped</code> warning.
+  <code>gpus</code>: as many whole GPUs as its plan asks for (<code>plan.resources.gpus</code>), of the
+  runner's or the parent's: a program whose subprograms use GPUs plans theirs and passes
+  them on. While the program runs, the runner holds the process's BLAS and OpenMP pools
+  at its threads, or at one thread when its input names subprograms (below, <strong>Thread
+  pools</strong>).</li>
+<li><code>device_ordinals()</code>: the granted GPUs as this process's CUDA device ordinals, so every
+  program maps a grant alike. <code>gpus</code> names them as <code>CUDA_VISIBLE_DEVICES</code> does (indices
+  or <code>GPU-</code>/<code>MIG-</code> UUIDs). When the process's <code>CUDA_VISIBLE_DEVICES</code> is set, a GPU's
+  ordinal is its position there: a worker is started with <code>CUDA_VISIBLE_DEVICES</code> set to
+  its grant, so its GPUs are 0, 1, ...; in the runner's process GPU <code>"2"</code> of
+  <code>CUDA_VISIBLE_DEVICES=1,2</code> is ordinal 1. When it is unset, an index is its own ordinal
+  and a UUID is the index <code>nvidia-smi</code> gives it. <code>nvidia-smi</code> numbers GPUs in PCI bus
+  order and CUDA by default may not, so a runner that finds its GPUs with <code>nvidia-smi</code>
+  sets <code>CUDA_DEVICE_ORDER=PCI_BUS_ID</code> (unless it is set) when it is made, for its
+  process and its workers; a process that starts CUDA before it makes a runner sets it
+  itself. A dispatcher's <code>CUDA_VISIBLE_DEVICES</code> is never changed. A granted GPU the
+  process cannot see fails with kind <code>environment</code>.</li>
+<li><code>memory_gib</code>, <code>device_memory_gib</code>: host and GPU memory (GiB), as the runner grants it
+  (below, <strong>Memory</strong>).</li>
+<li><code>timeout</code>: the seconds left. A program that starts processes kills them when it runs
+  out and fails with kind <code>timeout</code>; one that loops checks it. The runner kills a
+  program in a worker process that runs out, but cannot stop one in its own process
+  (Python cannot stop a thread): there the limit is the program's to honour, and the
+  runner starts none of its subprograms once it has run out (<code>ctx.compute</code>,
+  <code>ctx.session</code> and its child sessions' requests fail with kind <code>timeout</code>), so a driver
+  stops at its next step. For a hard limit on any program, <code>isolation="process"</code>.</li>
+<li><code>plan</code>: the runner's plan of the input, so the program need not plan again.</li>
+<li><code>progress</code>: where the program reports what it is doing while it runs, when the
+  caller listens (below, <strong>Progress</strong>); None when nobody does, so a program checks it
+  before building an event.</li>
+<li><code>stop_requested()</code>: whether the caller asked the calculation to stop (below,
+  <strong>Stopping</strong>). A program that works in steps checks it before each step.</li>
+<li><code>scratch</code>: a directory, made on first use and removed when the call returns. In a
+  worker it is made in a directory the worker's client gives it (<code>--scratch</code>) and
+  removes when it closes the worker, so a calculation whose worker is killed (a
+  timeout, a cancel) leaves no scratch behind. <code>QCCOMPUTE_KEEP_SCRATCH=1</code> keeps every
+  one, for debugging; a killed worker's failure then names where its scratch is.</li>
+<li><code>compute(inputs, raise_exc=True)</code> and <code>session(spec, structure, threads=, calctypes=)</code>:
+  subprograms, under the calculation's thread count. They run only programs the calculation's input names,
+  its own and its subprograms' recursively, and every program a subprogram's input
+  names must be among them; another is refused (kind <code>input</code>, code
+  <code>unnamed_subprogram</code>), so a run's identities cover every program it used. The
+  refusal fails the calculation, whatever the program returns or raises afterwards: a
+  store then reuses it, as any input error, rather than rerunning the work. A program
+  that decides at run time which programs to run (a path method that minimizes its
+  ends) names each in its input's subprograms.</li>
+</ul>
+<p><code>ctx is None</code> means a direct call: the program uses its own settings. A program with
+subprograms has no route of its own to programs, so called directly it returns
+<code>qccompute.compute(inp)</code>, and the default runner runs it with a context. The runner finds
+programs by name: one that is neither installed nor registered fails with kind
+<code>environment</code>, and the message says how to register it.</p>
+<p>The runner never changes a number by itself. A grant may change a program's resolved
+choices (a storage scheme picked from the memory granted, a precision from the device);
+the program records each one in <code>resolved</code>.</p>
+<h2 id="progress">Progress<a class="headerlink" href="#progress" title="Permanent link">&para;</a></h2>
+<p><code>submit</code>, <code>compute</code> and <code>session</code> take <code>progress=</code>, a callable that
+receives small JSON events while calculations run. Programs choose what to emit (qcopt:
+one event per step); the runner only delivers them, and nothing is stored.</p>
+<ul>
+<li>A program calls <code>ctx.progress(event)</code> with a JSON object of its own: plain values,
+  qcdata's units, small enough to send every step (a step number, an energy, the largest
+  gradient component; positions where a live view needs them). A shared key: <code>event</code>,
+  a snake_case name of what happened (<code>step</code>).</li>
+<li>The caller receives the event with <code>path</code> added: the program names from the
+  caller's input down to the program that emitted it (<code>["neb", "qcopt"]</code>). A
+  subprogram's events reach the same callable through its parent's context, so a
+  workflow sees every level of a nested run.</li>
+<li>The callable may be called from several threads at once (a list's calculations, a
+  program's own threads), and should return quickly. An exception it raises is a
+  warning; the calculation goes on.</li>
+<li>Store hits emit nothing. A list's events do not say which input they are from:
+  <code>submit</code> each input with a callable of its own (<code>functools.partial(show, i)</code>) to
+  tell them apart.</li>
+<li>A program in a worker streams its events to the client while a message is in flight
+  (<code>ctx.progress</code> on the wire, below); a program run without a listener has
+  <code>ctx.progress</code> None, so an unused progress channel costs nothing.</li>
+</ul>
+<h2 id="stopping">Stopping<a class="headerlink" href="#stopping" title="Permanent link">&para;</a></h2>
+<p><code>runner.stop(future)</code> (<code>qccompute.stop</code> for the default runner) asks a submitted
+calculation to stop at its next step and keep what it reached: Stop &amp; analyze in a live
+view, a search ended on a budget. It is not a cancel, which discards the calculation.</p>
+<ul>
+<li>The program sees the request as <code>ctx.stop_requested()</code>, checks it where it can end
+  cleanly (an optimizer: before each step), and ends there: its output is a failure of
+  kind <code>stopped</code> with its partial results (a search's frames so far), raised as for any
+  failure. <code>future.result()</code> raises <code>qcdata.ProgramError</code> with that output.</li>
+<li>The request covers the whole calculation: its subprograms see it through their
+  contexts, and a program whose subprogram stopped stops too. When a program lets a
+  stopped subprogram's failure escape, the runner fails it with kind <code>stopped</code> (not
+  <code>program</code>), the subprogram's error as <code>cause</code>.</li>
+<li>In a worker process the request reaches the program through a file named in the
+  message's context (<code>stop_file</code>), which the client creates while the message is in
+  flight: one <code>stat</code> per check, and never the wrong message. The worker is asked, not
+  killed, and serves on.</li>
+<li>A calculation asked before it starts stops at its first step; a program with no steps
+  runs to its end. The runner never stores a stopped output, and a store never reuses
+  one.</li>
+</ul>
+<h2 id="failures">Failures<a class="headerlink" href="#failures" title="Permanent link">&para;</a></h2>
+<p>A failed calculation raises <code>qcdata.ProgramError</code>, from <code>compute</code> as from sessions. Its
+<code>error</code> is an <code>ErrorInfo</code> (<code>kind</code>, <code>message</code>, an optional <code>code</code>, and for a failed
+subprogram the subprogram's error as <code>cause</code>), and its <code>output</code> is the whole failed
+output: partial results, logs, record, traceback. A program whose result is one output
+raises <code>ProgramError(out.error, output=out)</code>; when a program raises without one, the
+runner attaches the output it built. Any other exception from a program is a bug: the
+runner reports it as kind <code>internal</code>, caused by the original exception.</p>
+<p>The runner turns failures into failed outputs only where it needs data:</p>
+<ul>
+<li>a list runs every calculation, then raises <code>qcdata.ProgramErrors</code>, an <code>ExceptionGroup</code>
+  of the <code>ProgramError</code>s whose <code>results</code> holds every output in input order;</li>
+<li>a session's <code>compute_many</code> runs every request, then raises the same group, whose
+  <code>results</code> holds every frame in request order (<code>ProgramErrors.check(frames)</code>);</li>
+<li><code>compute_batch</code> returns failures in place, a refused input included;</li>
+<li><code>raise_exc=False</code> returns failed outputs in place; the store and workers carry failed
+  outputs as data.</li>
+</ul>
+<p>A subprogram's failure that a program lets escape fails it with kind <code>program</code>, the
+subprogram's name and its error as <code>cause</code>; a program that catches it sees the
+subprogram's own error (kind <code>stopped</code> when the subprogram stopped on request). The
+runner sets the kinds <code>timeout</code> (a deadline) and <code>environment</code> (a program not
+installed, a worker that died: code <code>worker_died</code>).</p>
+<h2 id="sessions">Sessions<a class="headerlink" href="#sessions" title="Permanent link">&para;</a></h2>
+<p>The same program and molecule at many geometries, warm-started: what optimizers, IRCs,
+dynamics, path methods and finite differences need. <code>prog.Session(inp)</code> is both the
+program's own API and the protocol object; <code>open_session</code> returns it.</p>
+<div class="language-python highlight"><pre><span></span><code><span class="k">with</span> <span class="n">program</span><span class="o">.</span><span class="n">Session</span><span class="p">(</span><span class="n">inp</span><span class="p">)</span> <span class="k">as</span> <span class="n">s</span><span class="p">:</span>            <span class="c1"># every calctype the method supports</span>
+    <span class="n">f</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">compute</span><span class="p">()</span>                         <span class="c1"># the input&#39;s geometry and calctype</span>
+    <span class="n">f</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">compute</span><span class="p">(</span><span class="n">x2</span><span class="p">)</span>                       <span class="c1"># warm start from this lineage&#39;s history</span>
+    <span class="n">h</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">compute</span><span class="p">(</span><span class="n">x2</span><span class="p">,</span> <span class="n">calctype</span><span class="o">=</span><span class="s2">&quot;hessian&quot;</span><span class="p">)</span>   <span class="c1"># energy and gradient too</span>
+    <span class="n">g</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">compute</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="n">lineage</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;irc&quot;</span><span class="p">,</span> <span class="s2">&quot;forward&quot;</span><span class="p">),</span> <span class="n">seed</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;ts&quot;</span><span class="p">])</span>
+    <span class="n">fd</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">compute_many</span><span class="p">([</span><span class="n">Request</span><span class="p">(</span><span class="n">positions</span><span class="o">=</span><span class="n">p</span><span class="p">,</span> <span class="n">commit</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">displaced</span><span class="p">])</span>
+</code></pre></div>
+<ul>
+<li>The input pins atoms, charge, multiplicity, model and keywords; its geometry and
+  calctype are a request's defaults. <code>calctypes=</code> narrows what may run; a setting that
+  applies to none of them is an input error (<code>not_applicable</code>).</li>
+<li>Results are <code>Frame</code>s, with the shared <code>warm_start</code> record key.</li>
+<li>A lineage is any JSON value, keyed by its canonical text (<code>qcdata.lineage_key</code>).
+  <code>seed</code> lists lineages to start from when the request's own has no history; <code>commit</code>
+  (default true) makes a success the lineage's history.</li>
+<li><code>compute_many</code> runs requests of one lineage in order, each reading its lineage's
+  history as it stands at its place; requests of different lineages may run
+  concurrently, sharing the session's thread count (<code>ctx.threads</code> when it opened): the
+  program gives each the count divided by those it runs at once.</li>
+<li>A failed request raises <code>ProgramError</code> with its failed frame; the session and its other
+  lineages go on, and the lineage's history is untouched.</li>
+<li>Sessions may be called from several threads; the runner serializes those of programs
+  that are not thread-safe.</li>
+</ul>
+<p><code>qccompute.session(inp)</code> hands back the program's own session in process, behind a thin
+wrapper that counts each request's threads, so the numbers are exactly those of the
+program used directly. A program in a worker gets a <code>WorkerSession</code> over the pipe, with
+the same methods. A program without sessions gets a <code>ComputeSession</code>: one stateless
+calculation per request (<code>warm_start</code> false), placed like any other calculation (in this
+process, or in the program's workers). Its <code>compute_many</code> runs as a list does, sharing
+the session's count: thirteen path images on eight threads run eight at a time. A
+session holds no threads while it is idle; each request takes its count while it runs
+(<a href="../../threads/">Threads</a>).</p>
+<h2 id="the-runner">The runner<a class="headerlink" href="#the-runner" title="Permanent link">&para;</a></h2>
+<p><code>Runner(threads=None, gpus="auto", isolation="auto")</code> with <code>submit</code> (one input; returns
+a <code>concurrent.futures.Future</code> of its output), <code>compute</code> (one input or a list) and
+<code>session</code>; <code>concurrent.futures.as_completed</code> serves submitted futures. Every call takes
+the same options:
+<code>store</code>, <code>timeout</code>, <code>rerun</code>, <code>tags</code>, <code>meta</code>, <code>raise_exc</code> (not <code>submit</code>: its future
+raises) and <code>progress</code>. <code>qccompute.compute</code>, <code>qccompute.submit</code> and <code>qccompute.session</code>
+are the methods of the default runner: this machine (every core this process may use,
+or <code>OMP_NUM_THREADS</code>, and every visible GPU), made on first use, never reconfigured.</p>
+<p><code>submit</code> is for workflows whose next calculation depends on the last (per reaction, a
+transition-state search, the IRC from its saddle, then both ends), many at once with no
+stage barriers. A stored output, or an input its program refuses, resolves the future
+before <code>submit</code> returns; the others are planned at once and start in the order
+submitted as the runner's threads and GPUs allow, sharing them with <code>compute</code> calls and
+sessions (<a href="../../threads/">Threads</a>). <code>future.cancel()</code> cancels a calculation whether it waits or
+runs: one that waits never starts; one running in a worker process is killed with every
+process it started (below, <strong>Workers</strong>); one running in this process ends cooperatively,
+as for a timeout: <code>ctx.timeout</code> reads 0 for it and every subprogram, and it starts no
+more subprograms. A cancelled calculation's output is discarded, never stored.</p>
+<p>Every input goes one path: find the program, plan it (an input its program refuses
+fails without running), place it (this process, or a worker process for programs with
+<code>in_process=False</code> and for <code>isolation="process"</code>), call <code>compute</code> or <code>compute_batch</code>
+with a context, record the execution.</p>
+<p><strong>Execution.</strong> The runner sets each output's <code>execution</code>: <code>wall_time</code> (the call's),
+<code>identities</code>, <code>threads</code> when the program left it unset (the threads granted), and the
+environment: <code>hostname</code>, <code>host_cpu</code>, <code>host_mem_gib</code>, <code>cpu_model</code> (as the operating
+system names the CPU), <code>libc</code> (<code>glibc 2.39</code>) and <code>devices</code> (the granted GPUs' names, as
+<code>nvidia-smi</code> gives them), each read once per process and filled only where the program
+left it unset, so a program that knows better (one that ran elsewhere) sets its own. A
+program granted a GPU that ran on none (a CPU fallback) says <code>devices=[]</code>, which stays; a
+worker fills its program's <code>devices</code> the same way before the output crosses the pipe.
+The outputs of a batch ran together: each keeps a <code>wall_time</code> its program set (a
+lockstep batch knows when each task finished), else gets the batch's, and the batch's
+wall time is always <code>timings["batch"]</code>. One whose program left <code>threads</code> unset gets its
+own input's part of the batch's threads: its own, scaled down when the batch was capped
+(<code>max(1, asked × granted // total asked)</code>). So <code>wall_time × threads</code>
+adds up across a batch's outputs, and a store's runs, to what the batch cost, to
+rounding.</p>
+<p><strong>Resources.</strong> qc* never allocates machines or decides what runs when: a dispatcher (a
+batch system, Kubernetes) gives the process its cores, memory and GPUs, and workflows
+choose what to run. A runner gives each calculation one thread count and never runs more
+than its own count at once; whatever holds a count (the runner, a running calculation, a
+session) never has more than it running under it. <a href="../../threads/">Threads</a> has the rules
+and the recipes. GPUs are whole: each goes to one calculation at a time. The inputs of a
+list that go to a program with batches are one calculation of the list, with the sum of
+their threads and the most GPUs any of them asks for; the program divides them.</p>
+<p><strong>Memory.</strong> There are no memory estimates and no memory scheduling: a plan's
+<code>memory_gib</code> and <code>device_memory_gib</code> are informational, recorded and never scheduled.
+What the runner grants, in <code>ctx</code>:</p>
+<ul>
+<li><em>Host memory.</em> A calculation's share of its caller's: of the runner's for a top-level
+  calculation or session (its threads' share or its GPUs', whichever is larger), of its
+  parent's for a subprogram, of its session's for a request.</li>
+<li><em>GPU memory.</em> Each granted GPU's, at most a subprogram's parent's.</li>
+<li><em>Keywords.</em> The input's <code>memory_gib</code> or <code>device_memory_gib</code> replaces either, at most
+  what its caller has. A batch's single <code>ctx</code> gets the shares, not its inputs' keywords.
+  Like <code>threads</code>, these resource keywords are what a calculation asks for, and they are
+  left out of its key.</li>
+<li>Nothing is rounded: a keyword reaches the program as given, a share as computed, so a
+  small grant is never zero and a keyword at the grant is never "capped" by rounding.</li>
+</ul>
+<p><strong>Placement.</strong> A program that may share the process runs in its threads; one that is not
+thread-safe takes turns on a lock per program. The first time one of its calculations
+waits for its turn (threads calling <code>compute</code>, futures, a list), the runner warns once
+(<code>RuntimeWarning</code>) that they run one at a time and that <code>isolation="process"</code> runs them
+side by side. Worker processes are kept for the next
+call until the runner closes, in pools. A worker sees exactly the GPUs granted to it
+(<code>CUDA_VISIBLE_DEVICES</code>, empty for none). Workers are pooled by program and GPUs,
+whatever the threads of the calls they serve, because a program's state (a model
+loaded, a GPU context) is costly to repeat: a list's batches of different sizes, and
+calls with different <code>threads</code>, share the program's workers rather than starting one
+each. Each call's threads reach the program in <code>ctx.threads</code>, which it applies to that
+call (a subprocess's <code>OMP_NUM_THREADS</code>, <code>torch.set_num_threads</code>); a worker's numerical
+libraries start with the threads of the call that started it (<code>OMP_NUM_THREADS</code> and the
+others, unless set), which sizes the pools they make when they load; each call's pools
+are then held at its own threads, as in process (<strong>Thread pools</strong>). On GPUs one
+worker serves every calculation and session of a program on those GPUs, whose work
+queues on the device anyway; without GPUs, at most as many as fit side by side in the
+runner's threads at a call's threads. A call or session takes an idle
+worker of its pool, else starts one while the pool has room, else shares the worker with
+the fewest users, taking turns on it. A worker that dies or is killed for a timeout ends
+the sessions it hosts.</p>
+<p><strong>Thread pools.</strong> Multithreaded BLAS gives different last bits at different thread counts,
+so the runner holds the numerical libraries loaded in a process (OpenBLAS, MKL, BLIS,
+FlexiBLAS and the OpenMP runtimes, as <code>threadpoolctl</code> finds them) at a calculation's
+threads around each call of its program: <code>compute</code>, <code>compute_batch</code>, a session's opening
+and each of its requests, in process and in workers alike. A calculation run alone thus
+gives the same numbers in process and in a worker, whatever the caller's environment and
+whichever call started a pooled worker.</p>
+<ul>
+<li>A count that belongs to the calling thread (OpenMP's, MKL's, OpenBLAS's on OpenMP) is
+  set on the thread that calls the program and restored after.</li>
+<li>A count that belongs to the process (OpenBLAS on its own threads, BLIS, FlexiBLAS) is
+  set, and on return the call gives back what it found: a subprogram holds its own
+  threads and its parent gets its own back. In process, calculations running at once
+  with different threads share these counts (the one started last holds them); for
+  bitwise reproducibility across mixed thread counts, use <code>isolation="process"</code>. Once no
+  calculation runs, every count is back where the caller had it.</li>
+<li>A calculation that runs subprograms (its input names some) holds its own pools at one
+  thread, and its count goes to its subprograms, which hold theirs while they run. So the
+  threads in use, children included, stay within the count: a parent's pools at the
+  whole count kept threads busy beside its children, because an idle OpenBLAS thread
+  spins for about 0.1 s after each call. On 8 threads, a qcopt optimizer's own steps
+  woke 7 such threads between gradients that axtb computed on all 8: 15-16 runnable
+  threads on 8 cores, and 38 submitted TS searches, IRCs and end minimizations took
+  80-140 s instead of 24-26 s.</li>
+<li>A parent may raise its own pools up to its count for heavy linear algebra of its own,
+  only while none of its subprograms runs, lowering them again before the next one
+  starts and before it returns.</li>
+<li>A session's requests are held at its count, in process (the runner's wrapper around
+  the program's own session) and in workers.</li>
+</ul>
+<h2 id="the-store">The store<a class="headerlink" href="#the-store" title="Permanent link">&para;</a></h2>
+<p>A store files runs by two identities, kept apart:</p>
+<ul>
+<li><em>which calculation</em>: the key, <code>qcdata.calculation_key(inp)</code>, the input as given;</li>
+<li><em>which code produced the numbers</em>: the run's identities, <code>{program: numerics}</code> for the
+  input's program and every subprogram it names, recursively. A calculation runs no
+  program its input does not name (<code>ctx</code> refuses it), so these are every program
+  that made the numbers. A program named with
+  several specs (g-xTB gradients with GFN2 Hessians, one program) has its distinct
+  identities sorted and joined by <code>;</code> (<code>"gfn2:5;gxtb-2.0.1:7"</code>). <code>given</code> results add no
+  identities: they are data in the input, so already in the key.</li>
+</ul>
+<p>With <code>compute(..., store=store)</code> the runner computes the input's identities from the
+programs it would run now, looks the key up with them, and returns a stored run only if
+it was made with exactly those identities: a success always, a failure only when the
+input determines it (kind <code>input</code>, <code>unsupported</code> or <code>convergence</code>, or <code>program</code> with such
+a cause; never <code>resource</code>, <code>backend</code>, <code>environment</code>, <code>timeout</code>, <code>numerical</code> or
+<code>internal</code>). Misses run, and every run is stored with its identities, except a stopped
+one (kind <code>stopped</code>, or failed because a subprogram stopped): it is where the caller
+chose to end the run, not what the input gives. Every output the runner returns carries the identities of the programs
+that made it in <code>execution.identities</code>, with or without a store, so an output read back
+says which code made it; a stored run keeps the ones it was made with. <code>rerun=True</code>
+always runs; <code>tags</code> go onto every key, cache hits included;
+<code>meta</code> goes with each run. An output whose record says <code>warm_start</code> true depends on
+history, not only on its input, and is never stored. Every output a runner returns with
+a store names its run, <code>execution.store_run = "&lt;key&gt;/&lt;run&gt;"</code>: a hit as the store marks
+it, a fresh run once it is stored. So a result is cited exactly, and read back later
+with <code>qcstore.Store.get(key, run=...)</code> even after a newer run became the preferred one.
+Concurrent misses of one key each compute, and the store keeps every run.</p>
+<p>The runner needs four methods of a store (<code>qccompute.runner.Store</code>): <code>key(inp)</code>,
+<code>get(key, identities)</code>, <code>put(output, tags=, meta=)</code> (which files the run under
+<code>output.execution.identities</code>) and <code>tag(key, *tags)</code>.</p>
+<h2 id="workers">Workers<a class="headerlink" href="#workers" title="Permanent link">&para;</a></h2>
+<p><code>python -m qccompute.serve PROGRAM</code> hosts one program's calculations and sessions in its
+own process, so a crash ends the worker and not its caller, and a program keeps its state
+between calls. <code>qccompute.worker.Worker</code> is its client.</p>
+<ul>
+<li>
+<p><strong>Which program:</strong> <code>PROGRAM</code> is an installed program's name, a <code>module:attribute</code>, or
+  <code>pickle:PATH</code>. A runner names an installed program (the object its entry point
+  names) by its name, a registered one by the module attribute that holds it, and any
+  other registered instance (one made in a script) by a pickle of it, written once per
+  process to a private directory. A pickle stores classes and functions by reference,
+  so they must be importable in the worker; one that holds a lambda, a closure, or
+  anything defined in the script being run cannot be rebuilt there, and running it in
+  a worker fails with kind <code>environment</code>, saying so.</p>
+</li>
+<li>
+<p><strong>Transport:</strong> stdin and stdout, one JSON message per line, one client per connection;
+  <code>--socket PATH</code> serves a Unix socket on the same framing. <code>--scratch DIR</code>: the
+  calculations' temporary scratch directories are made in <code>DIR</code>, which a <code>Worker</code>
+  makes for its worker and removes when it closes it, killed or not.</p>
+</li>
+<li><strong>Hello:</strong> the first line, <code>{"protocol": 1, "program", "version", "capabilities",
+  "array_files": true, "calls": true}</code>.</li>
+<li><strong>Envelope:</strong> every message has an <code>id</code>; replies are <code>{"id", "ok": true, "result"}</code> or
+  <code>{"id", "ok": false, "error"}</code>. <code>ok: false</code> is for the message itself; a failed
+  calculation is a result (a failed output or frame).</li>
+<li><strong>Ops:</strong> <code>open</code>, <code>compute</code> (a session's request, or a one-off <code>input</code>), <code>compute_many</code>,
+  <code>compute_batch</code>, <code>reset</code>, <code>plan</code>, <code>close</code>, <code>lineages</code>, <code>options</code>. End of input closes
+  every session.</li>
+<li><strong>Options:</strong> a client turns on what the hello offers with <code>options {array_dir,
+  calls}</code>, per connection; a plain JSON-lines client sends nothing and gets neither.</li>
+<li><strong>Large arrays:</strong> with <code>array_dir</code> (workers are local), an array field over 1 MiB, in
+  a message either way, crosses as a <code>.npy</code> file in that directory, with qcdata's pointer
+  <code>{path, shape, dtype, sha256}</code> in its place, as in a saved model; the reader checks it
+  and deletes the file. A 1200 x 1200 Hessian's output crosses in 20 ms instead of
+  0.85 s and a 28 MB line.</li>
+<li><strong>Subprograms run in the worker when they can, else in the client:</strong> with
+  <code>calls: true</code>, a subprogram call of the worker's program (<code>ctx.compute</code>,
+  <code>ctx.session</code>) runs in the worker itself, under the calculation's thread count, when it can
+  run there exactly as the client would run it: every program its input names is found
+  in the worker with the identities the client gave for the calculation (the wire
+  context's <code>identities</code>), may run in process, and its plan uses no GPU. So qcopt's
+  axtb gradients cost no round trip: one caffeine optimization took 10.9 ms per
+  gradient instead of 12.8-15.0 through the client, and 16 submitted at once on 8
+  threads 1.0-1.2 s instead of 1.5-2.0 s, with identical numbers. Every other call
+  comes back to the client as a call line, <code>{"call", "op", ...}</code> with the ops above,
+  which the client answers in any order (<code>{"call", "ok", "result"}</code>) while the message
+  is in flight: a program registered only in the client, one that needs a worker of its
+  own, a GPU calculation; such a call takes its threads from the calculation's count in
+  the worker before it goes. A nested worker is started by the client, never by a worker.
+  Either way the count, the time left, a stop, progress (paths compose: the worker's
+  <code>["axtb"]</code> under the client's <code>["qcopt"]</code>) and the check that the input names the
+  program apply alike. Without <code>calls</code>, subprograms run in the worker's own default
+  runner. A list of subprograms runs in the worker only if all of it can.</li>
+<li><strong>Context on the wire:</strong> <code>{threads, memory_gib, device_memory_gib, timeout,
+  scratch_dir, progress, stop_file, identities}</code>; the GPUs are fixed when the worker
+  starts. <code>identities</code> are those of the programs the client would run for the
+  calculation (<code>{program: numerics}</code>), against which the worker checks its own before
+  running a subprogram itself.
+  <code>stop_file</code> names a file whose existence asks the calculation to stop
+  (<code>ctx.stop_requested()</code> checks it): the client creates it for <code>runner.stop</code>, while the
+  message is in flight, so a request never reaches another message. With
+  <code>progress: true</code> (the client's caller listens) the program's progress events stream
+  back as lines <code>{"id", "progress": event}</code> naming the message in flight (for a
+  session, its request's message); the client hands each to the caller's callable.</li>
+<li><strong>Numbers:</strong> shortest round-trip decimals, so positions and results cross bit for bit;
+  no NaN or infinity on the wire.</li>
+<li><strong>Hygiene:</strong> stdout carries protocol lines only; the worker points file descriptor 1
+  at stderr, because native libraries print.</li>
+<li><strong>Crashes:</strong> a dead worker is kind <code>environment</code>, code <code>worker_died</code>, with the exit
+  status and the end of its stderr. After a GPU fault that poisons the device context
+  (code <code>device_lost</code>) the worker answers, then exits 3. A runner kills a worker whose
+  calculation exceeds its timeout or is cancelled, with every process it started,
+  however deep and in whatever session (qccodec runs each external program in a
+  session of its own): the tree is found through <code>/proc</code>, frozen, then killed. Closing a
+  runner kills a worker still running a calculation rather than waiting for it.</li>
+</ul>
+<h2 id="external-programs">External programs<a class="headerlink" href="#external-programs" title="Permanent link">&para;</a></h2>
+<p>qccodec registers each external program as a program (<code>qccodec.CodecProgram</code>). An adapter
+encodes the input, runs the command in the context's scratch directory with its output
+captured and the context's deadline, decodes what it wrote, and raises <code>ProgramError</code>
+with the failed output and the logs when it fails.</p>
+<ul>
+<li>An input that requests threads (<code>threads</code>, or the program's own: ORCA <code>pal</code>, Psi4
+  <code>-n</code>, CREST <code>threads</code>) runs with its request; one that requests none runs with the
+  calculation's count (xtb with 1, its own cap), through the program's own setting or
+  <code>OMP_NUM_THREADS</code> and the other numerical libraries' variables. A GPU program sees its granted GPUs in
+  <code>CUDA_VISIBLE_DEVICES</code>.</li>
+<li>Codecs that call a Python library take over the process's output streams and working
+  directory while they run, so they are <code>in_process=False</code> and run in workers.</li>
+<li>geomeTRIC and Sella run their gradient subprograms through <code>ctx.compute</code>, which from a
+  worker comes back to the runner's process.</li>
+<li>An external program's <code>numerics</code> is the sha256 of the executable that would run; a
+  library's, its version.</li>
+<li>A <code>qcdata.FileInput</code> runs under the <code>files</code> program and returns every file the command
+  wrote.</li>
+</ul>
+<h2 id="cost">Cost<a class="headerlink" href="#cost" title="Permanent link">&para;</a></h2>
+<p>On one core, <code>qccompute.compute</code> adds about 10 µs to a direct call of a <code>FunctionProgram</code>
+with a <code>version</code> (finding it, planning it, its context, recording the execution and the
+identities, and about 2.4 µs of it holding numpy's OpenBLAS at the calculation's
+threads and giving the count back); a <code>FunctionProgram</code> without a
+<code>version</code> adds about 6 µs more, the digest of its functions that is its identity. The
+runner hands its plan on in <code>ctx.plan</code>, so a program need not plan twice. Through qccodec, a trivial external
+command takes about 0.26 ms more than launching it in a fresh directory by hand. A worker
+round trip for the toy program costs about 0.14 ms (JSON on a pipe), and starting a
+worker about 0.15 s plus the program's own imports, once.</p>
+<h2 id="conformance">Conformance<a class="headerlink" href="#conformance" title="Permanent link">&para;</a></h2>
+<p><code>qccompute.testing.check_program(program, inputs)</code> runs a program's own small inputs and
+checks the contract: schemas that validate, plans that reproduce themselves from
+<code>resolved.settings</code>, unknown keys refused with kind <code>input</code> by <code>plan</code> and <code>compute</code>, the
+thread count honoured, standard fields in atomic-unit shapes, energy components that add
+up, and for sessions and batches, agreement with plain computes, refusal of other
+calctypes, and a session that survives a failed request.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+      <div class="md-progress" data-md-component="progress" role="progressbar"></div>
+    
+    
+    <script id="__config" type="application/json">{"base": "../..", "features": ["content.tabs.link", "content.code.annotate", "content.code.copy", "announce.dismiss", "navigation.tabs", "navigation.instant", "navigation.instant.prefetch", "navigation.instant.preview", "navigation.instant.progress", "navigation.path", "navigation.sections", "navigation.top", "navigation.tracking", "search.suggest", "toc.follow"], "search": "../../assets/javascripts/workers/search.f8cc74c7.min.js", "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.f1b6f286.min.js"></script>
+      
+    
+  </body>
+</html>

@@ -10,10 +10,10 @@
         <meta name="author" content="Colton Hicks">
       
       
-        <link rel="canonical" href="https://qccompute.docs.afh.org/examples/custom_codec/">
+        <link rel="canonical" href="https://qccompute.docs.afh.org/examples/function_program/">
       
       
-        <link rel="prev" href="../many_calculations/">
+        <link rel="prev" href="../sessions/">
       
       
       
@@ -22,7 +22,7 @@
     
     
       
-        <title>Custom codec - qccompute</title>
+        <title>A program from functions - qccompute</title>
       
     
     
@@ -76,7 +76,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#custom-codec" class="md-skip">
+        <a href="#a-program-from-functions" class="md-skip">
           Skip to content
         </a>
       
@@ -110,7 +110,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Custom codec
+              A program from functions
             
           </span>
         </div>
@@ -395,6 +395,50 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../migration/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Migrating from 0.22
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../threads/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Threads
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -455,6 +499,72 @@
   
   <span class="md-ellipsis">
     Overview
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/program/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Programs and sessions (API)
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/runner/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Running (API)
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/program-interface/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    The program interface (design)
     
   </span>
   
@@ -610,6 +720,50 @@
                 
   
   
+  
+  
+    <li class="md-nav__item">
+      <a href="../dynamic_workflows/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Dynamic workflows: futures
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../sessions/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Sessions, lineages and seeds
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
     
   
   
@@ -626,7 +780,7 @@
         
   
   <span class="md-ellipsis">
-    Custom codec
+    A program from functions
     
   </span>
   
@@ -705,68 +859,77 @@
   
 
 
-<h1 id="custom-codec">Custom codec<a class="headerlink" href="#custom-codec" title="Permanent link">&para;</a></h1>
-<p>Run a program qccodec doesn't support by defining its codec in your own script. The
-codec turns a <code>ProgramInput</code> into the program's command and files, and parses the
-output back into qcdata. Pass it as <code>codec=</code>, or register it to use the program by name,
-including as a geomeTRIC gradient child. qccodec's
-<a href="https://qccodec.docs.afh.org/guides/writing-a-codec/">Writing a codec</a>
-guide covers parsers, failure detection, and testing.</p>
-<div class="language-python highlight"><pre><span></span><code><span class="sd">&quot;&quot;&quot;Define a codec for a program qccodec does not know about, and run it.</span>
+<h1 id="a-program-from-functions">A program from functions<a class="headerlink" href="#a-program-from-functions" title="Permanent link">&para;</a></h1>
+<p><code>qccompute.program.FunctionProgram(name, energy_gradient, hessian=None)</code> makes a program
+of Python functions of the positions (bohr): a model surface, an ML potential in a
+script, a teaching example. It runs in this process and is thread-safe, so lists run
+side by side and sessions work as for any other program. It takes the shared keywords
+<code>threads</code> (its thread count, which the runner holds its BLAS pools at) and <code>accuracy</code> (recorded as met:
+nothing converges). An exception from a function is a failed calculation of kind
+<code>internal</code>, with the function's traceback in the failed output; a <code>ProgramError</code> it
+raises is the calculation's own failure.</p>
+<p>With <code>takes_input=True</code> the functions get the input after the positions, so one program
+stands in for a chemistry engine on any molecule and setting: the function reads the
+symbols, charge, multiplicity, model and keywords. <code>settings=</code> declares the JSON Schema
+of the keywords it reads; the program refuses any other key (<code>unknown_key</code>), and the
+function checks their values:</p>
+<div class="language-python highlight"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">engine</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">inp</span><span class="p">):</span>  <span class="c1"># positions (bohr), the input</span>
+    <span class="n">calc</span> <span class="o">=</span> <span class="n">Calculator</span><span class="p">(</span><span class="n">inp</span><span class="o">.</span><span class="n">structure</span><span class="o">.</span><span class="n">symbols</span><span class="p">,</span> <span class="n">inp</span><span class="o">.</span><span class="n">structure</span><span class="o">.</span><span class="n">charge</span><span class="p">,</span>
+                      <span class="n">method</span><span class="o">=</span><span class="n">inp</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">method</span><span class="p">,</span> <span class="n">accuracy</span><span class="o">=</span><span class="n">inp</span><span class="o">.</span><span class="n">keywords</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;acc&quot;</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">calc</span><span class="o">.</span><span class="n">energy_gradient</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
 
-<span class="sd">The &quot;program&quot; here is a Python one-liner so the example runs anywhere; swap the</span>
-<span class="sd">command and regex for the real thing.</span>
+<span class="n">settings</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;object&quot;</span><span class="p">,</span> <span class="s2">&quot;properties&quot;</span><span class="p">:</span> <span class="p">{</span>
+    <span class="s2">&quot;acc&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;number&quot;</span><span class="p">,</span> <span class="s2">&quot;exclusiveMinimum&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span> <span class="s2">&quot;x-concern&quot;</span><span class="p">:</span> <span class="s2">&quot;convergence&quot;</span><span class="p">}}}</span>
+<span class="n">qccompute</span><span class="o">.</span><span class="n">register_program</span><span class="p">(</span>
+    <span class="n">FunctionProgram</span><span class="p">(</span><span class="s2">&quot;engine&quot;</span><span class="p">,</span> <span class="n">engine</span><span class="p">,</span> <span class="n">takes_input</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">settings</span><span class="o">=</span><span class="n">settings</span><span class="p">)</span>
+<span class="p">)</span>
+</code></pre></div>
+<p>Its version and numerics identity is a digest of the functions (<code>fn-...</code>): their code,
+constants, defaults, closures and the module globals they read (<code>D</code>, <code>A</code> and <code>R0</code> below),
+recursing into the Python functions they call. Edit the function or one of those values
+and a store no longer serves the old results. Give <code>version="..."</code> to name the numbers
+yourself, for example a model's checksum when the functions call an ML model.</p>
+<div class="language-python highlight"><pre><span></span><code><span class="sd">&quot;&quot;&quot;Make a program of two Python functions and run it like any other program.</span>
+
+<span class="sd">A Morse potential between two atoms: the smallest complete program. The runner gives</span>
+<span class="sd">it lists, sessions and the store, exactly as any other program.</span>
 <span class="sd">&quot;&quot;&quot;</span>
 
-<span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">qcdata</span><span class="w"> </span><span class="kn">import</span> <span class="n">CalcType</span><span class="p">,</span> <span class="n">ProgramInput</span><span class="p">,</span> <span class="n">Structure</span>
 
-<span class="kn">import</span><span class="w"> </span><span class="nn">qccodec</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">qccodec</span><span class="w"> </span><span class="kn">import</span> <span class="n">Codec</span><span class="p">,</span> <span class="n">SubprocessInput</span><span class="p">,</span> <span class="n">re_search</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">qcdata</span><span class="w"> </span><span class="kn">import</span> <span class="n">CalcType</span><span class="p">,</span> <span class="n">ProgramInput</span><span class="p">,</span> <span class="n">SinglePointData</span><span class="p">,</span> <span class="n">Structure</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">qccompute</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">qccompute.program</span><span class="w"> </span><span class="kn">import</span> <span class="n">FunctionProgram</span>
 
-<span class="kn">from</span><span class="w"> </span><span class="nn">qccompute</span><span class="w"> </span><span class="kn">import</span> <span class="n">compute</span>
-
-<span class="n">codec</span> <span class="o">=</span> <span class="n">Codec</span><span class="p">(</span><span class="s2">&quot;myprog&quot;</span><span class="p">,</span> <span class="n">calctypes</span><span class="o">=</span><span class="p">{</span><span class="n">CalcType</span><span class="o">.</span><span class="n">energy</span><span class="p">})</span>
+<span class="n">D</span><span class="p">,</span> <span class="n">A</span><span class="p">,</span> <span class="n">R0</span> <span class="o">=</span> <span class="mf">0.17</span><span class="p">,</span> <span class="mf">1.03</span><span class="p">,</span> <span class="mf">1.40</span>  <span class="c1"># well depth (Eh), width (1/bohr), bond length (bohr)</span>
 
 
-<span class="nd">@codec</span><span class="o">.</span><span class="n">encoder</span>
-<span class="k">def</span><span class="w"> </span><span class="nf">encode</span><span class="p">(</span><span class="n">inp</span><span class="p">:</span> <span class="n">ProgramInput</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">SubprocessInput</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Write the program&#39;s input file and build its command line.&quot;&quot;&quot;</span>
-    <span class="k">assert</span> <span class="n">inp</span><span class="o">.</span><span class="n">model</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
-    <span class="n">run_inp</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;method </span><span class="si">{</span><span class="n">inp</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">method</span><span class="si">}</span><span class="se">\n</span><span class="si">{</span><span class="n">inp</span><span class="o">.</span><span class="n">require_structure</span><span class="p">()</span><span class="o">.</span><span class="n">to_xyz</span><span class="p">()</span><span class="si">}</span><span class="s2">&quot;</span>
-    <span class="c1"># Stand-in for (&quot;myprog&quot;, &quot;run.inp&quot;)</span>
-    <span class="n">command</span> <span class="o">=</span> <span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">executable</span><span class="p">,</span> <span class="s2">&quot;-c&quot;</span><span class="p">,</span> <span class="s2">&quot;print(&#39;Total energy: -1.5&#39;)&quot;</span><span class="p">)</span>
-    <span class="k">return</span> <span class="n">SubprocessInput</span><span class="p">(</span><span class="n">command</span><span class="p">,</span> <span class="n">files</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;run.inp&quot;</span><span class="p">:</span> <span class="n">run_inp</span><span class="p">})</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">morse</span><span class="p">(</span><span class="n">x</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Energy (Eh) and gradient (Eh/bohr) of a Morse bond at positions x (bohr).&quot;&quot;&quot;</span>
+    <span class="n">d</span> <span class="o">=</span> <span class="n">x</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">r</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">d</span><span class="p">))</span>
+    <span class="n">e</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="n">A</span> <span class="o">*</span> <span class="p">(</span><span class="n">r</span> <span class="o">-</span> <span class="n">R0</span><span class="p">))</span>
+    <span class="n">de_dr</span> <span class="o">=</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">D</span> <span class="o">*</span> <span class="n">A</span> <span class="o">*</span> <span class="n">e</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">e</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">D</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">e</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="o">-</span><span class="n">de_dr</span> <span class="o">*</span> <span class="n">d</span> <span class="o">/</span> <span class="n">r</span><span class="p">,</span> <span class="n">de_dr</span> <span class="o">*</span> <span class="n">d</span> <span class="o">/</span> <span class="n">r</span><span class="p">])</span>
 
 
-<span class="nd">@codec</span><span class="o">.</span><span class="n">parser</span><span class="p">(</span><span class="n">target</span><span class="o">=</span><span class="s2">&quot;energy&quot;</span><span class="p">,</span> <span class="n">calctypes</span><span class="o">=</span><span class="p">[</span><span class="n">CalcType</span><span class="o">.</span><span class="n">energy</span><span class="p">])</span>
-<span class="k">def</span><span class="w"> </span><span class="nf">parse_energy</span><span class="p">(</span><span class="n">stdout</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Pull the final energy out of the program&#39;s stdout.&quot;&quot;&quot;</span>
-    <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">re_search</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;Total energy:\s+(-?\d+\.\d+)&quot;</span><span class="p">,</span> <span class="n">stdout</span><span class="p">)</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">1</span><span class="p">))</span>
+<span class="n">qccompute</span><span class="o">.</span><span class="n">register_program</span><span class="p">(</span><span class="n">FunctionProgram</span><span class="p">(</span><span class="s2">&quot;morse&quot;</span><span class="p">,</span> <span class="n">morse</span><span class="p">))</span>
 
-
-<span class="nd">@codec</span><span class="o">.</span><span class="n">parser</span><span class="p">(</span><span class="n">target</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;provenance&quot;</span><span class="p">,</span> <span class="s2">&quot;program_version&quot;</span><span class="p">),</span> <span class="n">required</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
-<span class="k">def</span><span class="w"> </span><span class="nf">parse_version</span><span class="p">(</span><span class="n">stdout</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Record the version when the program prints one.&quot;&quot;&quot;</span>
-    <span class="k">return</span> <span class="n">re_search</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;myprog version (\S+)&quot;</span><span class="p">,</span> <span class="n">stdout</span><span class="p">)</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
-
-
-<span class="n">prog_input</span> <span class="o">=</span> <span class="n">ProgramInput</span><span class="p">(</span>
-    <span class="n">program</span><span class="o">=</span><span class="s2">&quot;myprog&quot;</span><span class="p">,</span>
-    <span class="n">calctype</span><span class="o">=</span><span class="s2">&quot;energy&quot;</span><span class="p">,</span>  <span class="c1"># type: ignore</span>
-    <span class="n">structure</span><span class="o">=</span><span class="n">Structure</span><span class="p">(</span><span class="n">symbols</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;H&quot;</span><span class="p">,</span> <span class="s2">&quot;H&quot;</span><span class="p">],</span> <span class="n">geometry</span><span class="o">=</span><span class="p">[[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mf">1.4</span><span class="p">]]),</span>  <span class="c1"># type: ignore</span>
-    <span class="n">model</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;method&quot;</span><span class="p">:</span> <span class="s2">&quot;wb97x-d&quot;</span><span class="p">},</span>  <span class="c1"># type: ignore</span>
+<span class="n">h2</span> <span class="o">=</span> <span class="n">Structure</span><span class="p">(</span>
+    <span class="n">symbols</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;H&quot;</span><span class="p">,</span> <span class="s2">&quot;H&quot;</span><span class="p">],</span> <span class="n">geometry</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">],</span> <span class="p">[</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.6</span><span class="p">]])</span>
 <span class="p">)</span>
+<span class="n">inp</span> <span class="o">=</span> <span class="n">ProgramInput</span><span class="p">(</span><span class="n">program</span><span class="o">=</span><span class="s2">&quot;morse&quot;</span><span class="p">,</span> <span class="n">calctype</span><span class="o">=</span><span class="n">CalcType</span><span class="o">.</span><span class="n">gradient</span><span class="p">,</span> <span class="n">structure</span><span class="o">=</span><span class="n">h2</span><span class="p">)</span>
 
-<span class="c1"># Pass the codec explicitly...</span>
-<span class="n">output</span> <span class="o">=</span> <span class="n">compute</span><span class="p">(</span><span class="n">prog_input</span><span class="p">,</span> <span class="n">codec</span><span class="o">=</span><span class="n">codec</span><span class="p">)</span>
-<span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">output</span><span class="o">.</span><span class="n">results</span><span class="p">,</span> <span class="n">SinglePointData</span><span class="p">)</span>
-<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;energy:&quot;</span><span class="p">,</span> <span class="n">output</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">energy</span><span class="p">)</span>
+<span class="n">out</span> <span class="o">=</span> <span class="n">qccompute</span><span class="o">.</span><span class="n">compute</span><span class="p">(</span><span class="n">inp</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">out</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">energy</span><span class="p">,</span> <span class="n">out</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">gradient</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
 
-<span class="c1"># ...or register it once and run by program name, e.g. as a geomeTRIC gradient child.</span>
-<span class="n">qccodec</span><span class="o">.</span><span class="n">register</span><span class="p">(</span><span class="n">codec</span><span class="p">)</span>
-<span class="n">output</span> <span class="o">=</span> <span class="n">compute</span><span class="p">(</span><span class="n">prog_input</span><span class="p">)</span>
-<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;provenance:&quot;</span><span class="p">,</span> <span class="n">output</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">provenance</span><span class="p">)</span>
+<span class="c1"># A scan along the bond, side by side: the input at each new geometry</span>
+<span class="n">scan</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="n">ProgramInput</span><span class="o">.</span><span class="n">from_spec</span><span class="p">(</span><span class="n">inp</span><span class="p">,</span> <span class="n">h2</span><span class="o">.</span><span class="n">with_geometry</span><span class="p">([[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">r</span><span class="p">]]))</span>
+    <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">3.0</span><span class="p">,</span> <span class="mi">9</span><span class="p">)</span>
+<span class="p">]</span>
+<span class="n">energies</span> <span class="o">=</span> <span class="p">[</span><span class="n">o</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">energy</span> <span class="k">for</span> <span class="n">o</span> <span class="ow">in</span> <span class="n">qccompute</span><span class="o">.</span><span class="n">compute</span><span class="p">(</span><span class="n">scan</span><span class="p">)]</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="n">energies</span><span class="p">,</span> <span class="mi">4</span><span class="p">))</span>
 </code></pre></div>
 
 

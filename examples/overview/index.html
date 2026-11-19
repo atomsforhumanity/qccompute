@@ -13,7 +13,7 @@
         <link rel="canonical" href="https://qccompute.docs.afh.org/examples/overview/">
       
       
-        <link rel="prev" href="../../programs/overview/">
+        <link rel="prev" href="../../design/program-interface/">
       
       
         <link rel="next" href="../file_input/">
@@ -78,7 +78,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#qccompute.main.compute" class="md-skip">
+        <a href="#examples" class="md-skip">
           Skip to content
         </a>
       
@@ -397,6 +397,50 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../migration/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Migrating from 0.22
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../threads/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Threads
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -457,6 +501,72 @@
   
   <span class="md-ellipsis">
     Overview
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/program/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Programs and sessions (API)
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/runner/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Running (API)
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/program-interface/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    The program interface (design)
     
   </span>
   
@@ -555,18 +665,8 @@
       <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
       
       
+        
       
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  <span class="md-ellipsis">
-    Overview
-    
-  </span>
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
       
       <a href="./" class="md-nav__link md-nav__link--active">
         
@@ -578,43 +678,6 @@
   
 
       </a>
-      
-        
-
-  
-
-<nav class="md-nav md-nav--secondary" aria-label="Page contents">
-  
-  
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Page contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#qccompute.main.compute" class="md-nav__link">
-    <span class="md-ellipsis">
-      <code class="doc-symbol doc-symbol-toc doc-symbol-function"></code>&nbsp;compute
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#examples-for-each-program" class="md-nav__link">
-    <span class="md-ellipsis">
-      Examples for each program
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
       
     </li>
   
@@ -672,11 +735,55 @@
   
   
     <li class="md-nav__item">
-      <a href="../custom_codec/" class="md-nav__link">
+      <a href="../dynamic_workflows/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
-    Custom codec
+    Dynamic workflows: futures
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../sessions/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Sessions, lineages and seeds
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../function_program/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    A program from functions
     
   </span>
   
@@ -734,32 +841,8 @@
   
   
   
+    
   
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Page contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#qccompute.main.compute" class="md-nav__link">
-    <span class="md-ellipsis">
-      <code class="doc-symbol doc-symbol-toc doc-symbol-function"></code>&nbsp;compute
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#examples-for-each-program" class="md-nav__link">
-    <span class="md-ellipsis">
-      Examples for each program
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
   
 </nav>
                   </div>
@@ -778,835 +861,22 @@
   
 
 
-  <h1>Overview</h1>
-
-<p>Calculations are run by calling the <code>qccompute.compute()</code> function with the relevant arguments and keywords like this:</p>
-<div class="language-python highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">qcdata</span><span class="w"> </span><span class="kn">import</span> <span class="n">Structure</span><span class="p">,</span> <span class="n">ProgramInput</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">qccompute</span><span class="w"> </span><span class="kn">import</span> <span class="n">compute</span>
-
-<span class="c1"># Create the Structure</span>
-<span class="n">structure</span> <span class="o">=</span> <span class="n">Structure</span><span class="p">(</span>
-    <span class="n">symbols</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;O&quot;</span><span class="p">,</span> <span class="s2">&quot;H&quot;</span><span class="p">,</span> <span class="s2">&quot;H&quot;</span><span class="p">],</span>
-    <span class="n">geometry</span><span class="o">=</span><span class="p">[</span>  <span class="c1"># type: ignore</span>
-        <span class="p">[</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">],</span>
-        <span class="p">[</span><span class="mf">0.52421003</span><span class="p">,</span> <span class="mf">1.68733646</span><span class="p">,</span> <span class="mf">0.48074633</span><span class="p">],</span>
-        <span class="p">[</span><span class="mf">1.14668581</span><span class="p">,</span> <span class="o">-</span><span class="mf">0.45032174</span><span class="p">,</span> <span class="o">-</span><span class="mf">1.35474466</span><span class="p">],</span>
-    <span class="p">],</span>
-<span class="p">)</span>
-
-<span class="c1"># Define the program input</span>
-<span class="n">prog_input</span> <span class="o">=</span> <span class="n">ProgramInput</span><span class="p">(</span>
-    <span class="n">program</span><span class="o">=</span><span class="s2">&quot;terachem&quot;</span><span class="p">,</span>
-    <span class="n">structure</span><span class="o">=</span><span class="n">structure</span><span class="p">,</span>
-    <span class="n">calctype</span><span class="o">=</span><span class="s2">&quot;energy&quot;</span><span class="p">,</span>
-    <span class="n">model</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;method&quot;</span><span class="p">:</span> <span class="s2">&quot;wb97xd3&quot;</span><span class="p">,</span> <span class="s2">&quot;basis&quot;</span><span class="p">:</span> <span class="s2">&quot;def2-svp&quot;</span><span class="p">},</span>
-    <span class="n">keywords</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;purify&quot;</span><span class="p">:</span> <span class="s2">&quot;no&quot;</span><span class="p">,</span> <span class="s2">&quot;restricted&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">},</span>
-<span class="p">)</span>
-
-<span class="c1"># Run the calculation; will return a ProgramOutput or raise an exception</span>
-<span class="n">result</span> <span class="o">=</span> <span class="n">compute</span><span class="p">(</span><span class="n">prog_input</span><span class="p">,</span> <span class="n">collect_files</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-</code></pre></div>
-<p>The <code>compute</code> function resolves a codec and executes its native invocation. It also accepts an explicit local <code>codec=</code>. The available arguments are:</p>
-
-
-<div class="doc doc-object doc-function">
-
-
-<h2 id="qccompute.main.compute" class="doc doc-heading">
-<code class="doc-symbol doc-symbol-heading doc-symbol-function"></code>            <code class="highlight language-python"><span class="n">qccompute</span><span class="o">.</span><span class="n">main</span><span class="o">.</span><span class="n">compute</span><span class="p">(</span><span class="n">input_data</span><span class="p">:</span> <span class="n">InputType</span> <span class="o">|</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">InputType</span><span class="p">],</span> <span class="o">*</span><span class="p">,</span> <span class="n">codec</span><span class="p">:</span> <span class="n">qccodec</span><span class="o">.</span><span class="n">Codec</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">environment</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">scratch_dir</span><span class="p">:</span> <span class="n">StrOrPath</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">rm_scratch_dir</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span> <span class="n">collect_logs</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span> <span class="n">collect_files</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">collect_wfn</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">update_func</span><span class="p">:</span> <span class="n">Callable</span><span class="p">[</span><span class="o">...</span><span class="p">,</span> <span class="kc">None</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">update_interval</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">print_logs</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">raise_exc</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span> <span class="n">propagate_wfn</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">options</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">timeout</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">executables</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">max_workers</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ProgramOutput</span><span class="p">[</span><span class="n">InputType</span><span class="p">,</span> <span class="n">Data</span><span class="p">]</span> <span class="o">|</span> <span class="nb">list</span><span class="p">[</span><span class="n">ProgramOutput</span><span class="p">[</span><span class="n">InputType</span><span class="p">,</span> <span class="n">Data</span><span class="p">]]</span></code>
-
-<a href="#qccompute.main.compute" class="headerlink" title="Permanent link">&para;</a></h2>
-
-
-    <div class="doc doc-contents first">
-
-      <p>Compute one input, or a list of inputs in parallel, with a local runner.</p>
-<p>A single input returns a single <code>ProgramOutput</code>. A list (or tuple) returns a
-list of outputs in input order; its inputs may be for different programs, and
-every other argument applies to each of them. Calculations that run as programs
-(ORCA, xtb, Psi4, ...) run side by side in threads. Calculations that run in
-Python (geomeTRIC, tblite) take over a process's output streams while they run,
-so two or more of them run side by side in worker processes, which start with the
-numerical libraries' thread counts set to their share. All of them draw on the
-<code>max_workers</code> budget. Inputs a codec can evaluate together (machine-learned
-potentials sharing a model) run in batches in this process, one call per batch
-of up to <code>codec.max_batch</code>; <code>execution.extras</code> records <code>batch_size</code> and
-<code>batch_index</code>.</p>
-
-
-<p><span class="doc-section-title">Parameters:</span></p>
-    <table>
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Type</th>
-          <th>Description</th>
-          <th>Default</th>
-        </tr>
-      </thead>
-      <tbody>
-          <tr class="doc-section-item">
-            <td><code>input_data</code></td>
-            <td>
-                  <code><span title="qcdata.InputType">InputType</span> | <span title="collections.abc.Sequence">Sequence</span>[<span title="qcdata.InputType">InputType</span>]</code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>A qcdata input object, such as ProgramInput or FileInput, or a
-list of them.</p>
-              </div>
-            </td>
-            <td>
-                <em>required</em>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td><code>codec</code></td>
-            <td>
-                  <code><span title="qccodec.Codec">Codec</span> | None</code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>The <code>qccodec.Codec</code> translating this program's inputs and outputs.
-If None, resolve one with <code>qccodec.get_codec(input_data)</code>: a codec
-registered with <code>qccodec.register</code>, a built-in, or one installed by
-another package.</p>
-              </div>
-            </td>
-            <td>
-                  <code>None</code>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td><code>environment</code></td>
-            <td>
-                  <code><span title="collections.abc.Mapping">Mapping</span>[<span title="str">str</span>, <span title="str">str</span>] | None</code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>Process environment overrides mapping strings to strings.
-Applied after the inherited environment and codec defaults. Subprocess
-overrides affect only the child. Python calls temporarily change the
-current process's environment, working directory, and output streams;
-use separate processes for parallel Python calculations. Environment
-settings must be applied before the relevant native library initializes.</p>
-              </div>
-            </td>
-            <td>
-                  <code>None</code>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td><code>scratch_dir</code></td>
-            <td>
-                  <code><span title="qcdata.helper_types.StrOrPath">StrOrPath</span> | None</code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>The calculation directory, not its parent; not accepted with a
-list of inputs. If None, create a
-directory in the system's temporary directory. Each concurrent call
-needs its own directory. This directory, including any existing
-contents, is deleted when rm_scratch_dir is True.</p>
-              </div>
-            </td>
-            <td>
-                  <code>None</code>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td><code>rm_scratch_dir</code></td>
-            <td>
-                  <code><span title="bool">bool</span></code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>Delete the calculation directory after execution, decoding,
-and file collection finish, including on failure.</p>
-              </div>
-            </td>
-            <td>
-                  <code>True</code>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td><code>collect_logs</code></td>
-            <td>
-                  <code><span title="bool">bool</span></code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>Retain merged stdout/stderr in ProgramOutput.logs. Available
-logs are always retained for failed calculations.</p>
-              </div>
-            </td>
-            <td>
-                  <code>True</code>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td><code>collect_files</code></td>
-            <td>
-                  <code><span title="bool">bool</span></code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>Collect files from the calculation directory, excluding files
-supplied in input_data.files. FileInput always collects these files.
-Decoders can access generated files regardless of this setting.</p>
-              </div>
-            </td>
-            <td>
-                  <code>False</code>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td><code>collect_wfn</code></td>
-            <td>
-                  <code><span title="bool">bool</span></code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>Collect wavefunction files identified by the codec. Not every
-codec supports this. Ignored when collect_files is True, which retains
-all generated files including wavefunction files.</p>
-              </div>
-            </td>
-            <td>
-                  <code>False</code>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td><code>update_func</code></td>
-            <td>
-                  <code><span title="collections.abc.Callable">Callable</span>[..., None] | None</code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>Callback accepting (all_logs, new_logs), both strings.
-Subprocess updates arrive during execution; Python output is delivered
-after invocation. No callback is made for empty output. For a list of
-inputs it receives (index, all_logs, new_logs), where index is the
-input's position, and is called from the threads running the
-calculations, so it must be thread-safe.</p>
-              </div>
-            </td>
-            <td>
-                  <code>None</code>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td><code>update_interval</code></td>
-            <td>
-                  <code><span title="float">float</span> | None</code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>Minimum seconds between subprocess log updates; defaults
-to 0.5. Updates are line-based, and final output is delivered without
-waiting for this interval. Has no effect on Python calls.</p>
-              </div>
-            </td>
-            <td>
-                  <code>None</code>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td><code>print_logs</code></td>
-            <td>
-                  <code><span title="bool">bool</span></code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>Print merged stdout/stderr using the update callback. Ignored
-when update_func is supplied. Python logs print after invocation. For a
-list, each line is prefixed with its input's index, e.g. <code>[3]</code>.</p>
-              </div>
-            </td>
-            <td>
-                  <code>False</code>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td><code>raise_exc</code></td>
-            <td>
-                  <code><span title="bool">bool</span></code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>Raise a qccompute exception on calculation failure, with the
-completed ProgramOutput attached as .prog_output. If False, return
-the failed output instead. Partial results and diagnostics are retained
-when available. For a list, every calculation runs first; then
-<code>ComputeErrors</code> (an <code>ExceptionGroup</code>) is raised if any failed, holding
-each failure's exception and every output in <code>.outputs</code>.</p>
-              </div>
-            </td>
-            <td>
-                  <code>True</code>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td><code>propagate_wfn</code></td>
-            <td>
-                  <code><span title="bool">bool</span></code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>For integrations that request child calculations, such as
-geometry optimization, use the child codec's restart support to prepare
-each input from the previous result. Requires a child-calculation
-integration and support for collecting and restarting from wavefunctions.</p>
-              </div>
-            </td>
-            <td>
-                  <code>False</code>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td><code>options</code></td>
-            <td>
-                  <code><span title="collections.abc.Mapping">Mapping</span>[<span title="str">str</span>, <span title="typing.Any">Any</span>] | None</code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>Program-specific decode options passed to the codec, such as
-<code>{"collect_rotamers": True}</code> for CREST. Each codec declares the
-options it accepts in <code>codec.options</code>; unknown keys are rejected.</p>
-              </div>
-            </td>
-            <td>
-                  <code>None</code>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td><code>timeout</code></td>
-            <td>
-                  <code><span title="float">float</span> | None</code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>Seconds each external program may run before it and the processes
-it started are killed, raising <code>ProgramTimeoutError</code> with any partial
-results attached. Applies to every subprocess, including child
-calculations of Python integrations such as geomeTRIC; a Python
-callable itself is not interrupted.</p>
-              </div>
-            </td>
-            <td>
-                  <code>None</code>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td><code>executables</code></td>
-            <td>
-                  <code><span title="collections.abc.Mapping">Mapping</span>[<span title="str">str</span>, <span title="str">str</span>] | None</code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>Executables to run, keyed by program name, such as
-<code>{"orca": "/opt/orca/orca"}</code>. Child calculations of Python
-integrations such as geomeTRIC use the same mapping; entries for programs
-that do not run are ignored. Without an entry, the environment variable
-<code>QCCOMPUTE_&lt;PROGRAM&gt;_EXECUTABLE</code> (for example
-<code>QCCOMPUTE_ORCA_EXECUTABLE</code>) is used, and otherwise the program is
-found on <code>PATH</code>. Bare names are looked up on <code>PATH</code>; the program
-always runs by its absolute path, recorded in
-<code>execution.extras["executable"]</code>.</p>
-              </div>
-            </td>
-            <td>
-                  <code>None</code>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td><code>max_workers</code></td>
-            <td>
-                  <code><span title="int">int</span> | None</code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>For a list of inputs, the CPU threads program calculations may
-use at once. Defaults to the number of CPU cores this process may use.
-Each calculation counts the threads its codec declares (ORCA <code>pal</code>,
-Psi4 <code>-n</code>, CREST <code>threads</code>; one otherwise), and each GPU calculation
-gets its own devices through <code>CUDA_VISIBLE_DEVICES</code>. Ignored for a
-single input.</p>
-              </div>
-            </td>
-            <td>
-                  <code>None</code>
-            </td>
-          </tr>
-      </tbody>
-    </table>
-
-
-    <p><span class="doc-section-title">Returns:</span></p>
-    <table>
-      <thead>
-        <tr>
-          <th>Type</th>
-          <th>Description</th>
-        </tr>
-      </thead>
-      <tbody>
-          <tr class="doc-section-item">
-            <td>
-                  <code><span title="qcdata.ProgramOutput">ProgramOutput</span>[<span title="qcdata.InputType">InputType</span>, <span title="qcdata.Data">Data</span>] | <span title="list">list</span>[<span title="qcdata.ProgramOutput">ProgramOutput</span>[<span title="qcdata.InputType">InputType</span>, <span title="qcdata.Data">Data</span>]]</code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>A ProgramOutput containing scientific results, execution metadata, and the</p>
-              </div>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td>
-                  <code><span title="qcdata.ProgramOutput">ProgramOutput</span>[<span title="qcdata.InputType">InputType</span>, <span title="qcdata.Data">Data</span>] | <span title="list">list</span>[<span title="qcdata.ProgramOutput">ProgramOutput</span>[<span title="qcdata.InputType">InputType</span>, <span title="qcdata.Data">Data</span>]]</code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>requested logs and files, or a list of them in input order for a list of</p>
-              </div>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td>
-                  <code><span title="qcdata.ProgramOutput">ProgramOutput</span>[<span title="qcdata.InputType">InputType</span>, <span title="qcdata.Data">Data</span>] | <span title="list">list</span>[<span title="qcdata.ProgramOutput">ProgramOutput</span>[<span title="qcdata.InputType">InputType</span>, <span title="qcdata.Data">Data</span>]]</code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>inputs. Failed calculations may contain partial results.</p>
-              </div>
-            </td>
-          </tr>
-      </tbody>
-    </table>
-
-
-<p><span class="doc-section-title">Raises:</span></p>
-    <table>
-      <thead>
-        <tr>
-          <th>Type</th>
-          <th>Description</th>
-        </tr>
-      </thead>
-      <tbody>
-          <tr class="doc-section-item">
-            <td>
-                  <code><span title="qccompute.exceptions.CodecNotFoundError">CodecNotFoundError</span></code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>No codec is available for the requested program.</p>
-              </div>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td>
-                  <code><span title="qccompute.exceptions.InputError">InputError</span></code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>Inputs or compute options are unsupported or invalid.</p>
-              </div>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td>
-                  <code><span title="qccompute.exceptions.ProgramNotFoundError">ProgramNotFoundError</span></code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>The executable cannot be found, or a codec explicitly
-reports an unavailable dependency.</p>
-              </div>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td>
-                  <code><span title="ProgramTimeoutError">ProgramTimeoutError</span></code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>A program exceeded <code>timeout</code>.</p>
-              </div>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td>
-                  <code><span title="qccompute.exceptions.ExternalProgramError">ExternalProgramError</span></code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>Execution, decoding, artifact collection, or cleanup
-fails. Unexpected codec exceptions also use this category.</p>
-              </div>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td>
-                  <code><span title="ComputeErrors">ComputeErrors</span></code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>For a list of inputs, some calculations failed.</p>
-              </div>
-            </td>
-          </tr>
-      </tbody>
-    </table>
-      <p>Calculation exceptions are raised only when raise_exc is True.</p>
-
-            <details class="quote">
-              <summary>Source code in <code>src/qccompute/main.py</code></summary>
-              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 96</span>
-<span class="normal"> 97</span>
-<span class="normal"> 98</span>
-<span class="normal"> 99</span>
-<span class="normal">100</span>
-<span class="normal">101</span>
-<span class="normal">102</span>
-<span class="normal">103</span>
-<span class="normal">104</span>
-<span class="normal">105</span>
-<span class="normal">106</span>
-<span class="normal">107</span>
-<span class="normal">108</span>
-<span class="normal">109</span>
-<span class="normal">110</span>
-<span class="normal">111</span>
-<span class="normal">112</span>
-<span class="normal">113</span>
-<span class="normal">114</span>
-<span class="normal">115</span>
-<span class="normal">116</span>
-<span class="normal">117</span>
-<span class="normal">118</span>
-<span class="normal">119</span>
-<span class="normal">120</span>
-<span class="normal">121</span>
-<span class="normal">122</span>
-<span class="normal">123</span>
-<span class="normal">124</span>
-<span class="normal">125</span>
-<span class="normal">126</span>
-<span class="normal">127</span>
-<span class="normal">128</span>
-<span class="normal">129</span>
-<span class="normal">130</span>
-<span class="normal">131</span>
-<span class="normal">132</span>
-<span class="normal">133</span>
-<span class="normal">134</span>
-<span class="normal">135</span>
-<span class="normal">136</span>
-<span class="normal">137</span>
-<span class="normal">138</span>
-<span class="normal">139</span>
-<span class="normal">140</span>
-<span class="normal">141</span>
-<span class="normal">142</span>
-<span class="normal">143</span>
-<span class="normal">144</span>
-<span class="normal">145</span>
-<span class="normal">146</span>
-<span class="normal">147</span>
-<span class="normal">148</span>
-<span class="normal">149</span>
-<span class="normal">150</span>
-<span class="normal">151</span>
-<span class="normal">152</span>
-<span class="normal">153</span>
-<span class="normal">154</span>
-<span class="normal">155</span>
-<span class="normal">156</span>
-<span class="normal">157</span>
-<span class="normal">158</span>
-<span class="normal">159</span>
-<span class="normal">160</span>
-<span class="normal">161</span>
-<span class="normal">162</span>
-<span class="normal">163</span>
-<span class="normal">164</span>
-<span class="normal">165</span>
-<span class="normal">166</span>
-<span class="normal">167</span>
-<span class="normal">168</span>
-<span class="normal">169</span>
-<span class="normal">170</span>
-<span class="normal">171</span>
-<span class="normal">172</span>
-<span class="normal">173</span>
-<span class="normal">174</span>
-<span class="normal">175</span>
-<span class="normal">176</span>
-<span class="normal">177</span>
-<span class="normal">178</span>
-<span class="normal">179</span>
-<span class="normal">180</span>
-<span class="normal">181</span>
-<span class="normal">182</span>
-<span class="normal">183</span>
-<span class="normal">184</span>
-<span class="normal">185</span>
-<span class="normal">186</span>
-<span class="normal">187</span>
-<span class="normal">188</span>
-<span class="normal">189</span>
-<span class="normal">190</span>
-<span class="normal">191</span>
-<span class="normal">192</span>
-<span class="normal">193</span>
-<span class="normal">194</span>
-<span class="normal">195</span>
-<span class="normal">196</span>
-<span class="normal">197</span>
-<span class="normal">198</span>
-<span class="normal">199</span>
-<span class="normal">200</span>
-<span class="normal">201</span>
-<span class="normal">202</span>
-<span class="normal">203</span>
-<span class="normal">204</span>
-<span class="normal">205</span>
-<span class="normal">206</span>
-<span class="normal">207</span>
-<span class="normal">208</span>
-<span class="normal">209</span>
-<span class="normal">210</span>
-<span class="normal">211</span>
-<span class="normal">212</span>
-<span class="normal">213</span>
-<span class="normal">214</span>
-<span class="normal">215</span>
-<span class="normal">216</span>
-<span class="normal">217</span>
-<span class="normal">218</span>
-<span class="normal">219</span>
-<span class="normal">220</span>
-<span class="normal">221</span>
-<span class="normal">222</span>
-<span class="normal">223</span>
-<span class="normal">224</span>
-<span class="normal">225</span>
-<span class="normal">226</span>
-<span class="normal">227</span>
-<span class="normal">228</span>
-<span class="normal">229</span>
-<span class="normal">230</span>
-<span class="normal">231</span>
-<span class="normal">232</span>
-<span class="normal">233</span>
-<span class="normal">234</span>
-<span class="normal">235</span>
-<span class="normal">236</span>
-<span class="normal">237</span>
-<span class="normal">238</span>
-<span class="normal">239</span>
-<span class="normal">240</span>
-<span class="normal">241</span>
-<span class="normal">242</span>
-<span class="normal">243</span>
-<span class="normal">244</span>
-<span class="normal">245</span>
-<span class="normal">246</span>
-<span class="normal">247</span>
-<span class="normal">248</span>
-<span class="normal">249</span>
-<span class="normal">250</span>
-<span class="normal">251</span>
-<span class="normal">252</span>
-<span class="normal">253</span>
-<span class="normal">254</span>
-<span class="normal">255</span>
-<span class="normal">256</span>
-<span class="normal">257</span>
-<span class="normal">258</span>
-<span class="normal">259</span>
-<span class="normal">260</span>
-<span class="normal">261</span>
-<span class="normal">262</span>
-<span class="normal">263</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">compute</span><span class="p">(</span>
-    <span class="n">input_data</span><span class="p">:</span> <span class="n">InputType</span> <span class="o">|</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">InputType</span><span class="p">],</span>
-    <span class="o">*</span><span class="p">,</span>
-    <span class="n">codec</span><span class="p">:</span> <span class="n">qccodec</span><span class="o">.</span><span class="n">Codec</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-    <span class="n">environment</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-    <span class="n">scratch_dir</span><span class="p">:</span> <span class="n">StrOrPath</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-    <span class="n">rm_scratch_dir</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
-    <span class="n">collect_logs</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
-    <span class="n">collect_files</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-    <span class="n">collect_wfn</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-    <span class="n">update_func</span><span class="p">:</span> <span class="n">Callable</span><span class="p">[</span><span class="o">...</span><span class="p">,</span> <span class="kc">None</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-    <span class="n">update_interval</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-    <span class="n">print_logs</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-    <span class="n">raise_exc</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
-    <span class="n">propagate_wfn</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-    <span class="n">options</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-    <span class="n">timeout</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-    <span class="n">executables</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-    <span class="n">max_workers</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ProgramOutput</span><span class="p">[</span><span class="n">InputType</span><span class="p">,</span> <span class="n">Data</span><span class="p">]</span> <span class="o">|</span> <span class="nb">list</span><span class="p">[</span><span class="n">ProgramOutput</span><span class="p">[</span><span class="n">InputType</span><span class="p">,</span> <span class="n">Data</span><span class="p">]]:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Compute one input, or a list of inputs in parallel, with a local runner.</span>
-
-<span class="sd">    A single input returns a single ``ProgramOutput``. A list (or tuple) returns a</span>
-<span class="sd">    list of outputs in input order; its inputs may be for different programs, and</span>
-<span class="sd">    every other argument applies to each of them. Calculations that run as programs</span>
-<span class="sd">    (ORCA, xtb, Psi4, ...) run side by side in threads. Calculations that run in</span>
-<span class="sd">    Python (geomeTRIC, tblite) take over a process&#39;s output streams while they run,</span>
-<span class="sd">    so two or more of them run side by side in worker processes, which start with the</span>
-<span class="sd">    numerical libraries&#39; thread counts set to their share. All of them draw on the</span>
-<span class="sd">    ``max_workers`` budget. Inputs a codec can evaluate together (machine-learned</span>
-<span class="sd">    potentials sharing a model) run in batches in this process, one call per batch</span>
-<span class="sd">    of up to ``codec.max_batch``; ``execution.extras`` records ``batch_size`` and</span>
-<span class="sd">    ``batch_index``.</span>
-
-<span class="sd">    Args:</span>
-<span class="sd">        input_data: A qcdata input object, such as ProgramInput or FileInput, or a</span>
-<span class="sd">            list of them.</span>
-<span class="sd">        codec: The ``qccodec.Codec`` translating this program&#39;s inputs and outputs.</span>
-<span class="sd">            If None, resolve one with ``qccodec.get_codec(input_data)``: a codec</span>
-<span class="sd">            registered with ``qccodec.register``, a built-in, or one installed by</span>
-<span class="sd">            another package.</span>
-<span class="sd">        environment: Process environment overrides mapping strings to strings.</span>
-<span class="sd">            Applied after the inherited environment and codec defaults. Subprocess</span>
-<span class="sd">            overrides affect only the child. Python calls temporarily change the</span>
-<span class="sd">            current process&#39;s environment, working directory, and output streams;</span>
-<span class="sd">            use separate processes for parallel Python calculations. Environment</span>
-<span class="sd">            settings must be applied before the relevant native library initializes.</span>
-<span class="sd">        scratch_dir: The calculation directory, not its parent; not accepted with a</span>
-<span class="sd">            list of inputs. If None, create a</span>
-<span class="sd">            directory in the system&#39;s temporary directory. Each concurrent call</span>
-<span class="sd">            needs its own directory. This directory, including any existing</span>
-<span class="sd">            contents, is deleted when rm_scratch_dir is True.</span>
-<span class="sd">        rm_scratch_dir: Delete the calculation directory after execution, decoding,</span>
-<span class="sd">            and file collection finish, including on failure.</span>
-<span class="sd">        collect_logs: Retain merged stdout/stderr in ProgramOutput.logs. Available</span>
-<span class="sd">            logs are always retained for failed calculations.</span>
-<span class="sd">        collect_files: Collect files from the calculation directory, excluding files</span>
-<span class="sd">            supplied in input_data.files. FileInput always collects these files.</span>
-<span class="sd">            Decoders can access generated files regardless of this setting.</span>
-<span class="sd">        collect_wfn: Collect wavefunction files identified by the codec. Not every</span>
-<span class="sd">            codec supports this. Ignored when collect_files is True, which retains</span>
-<span class="sd">            all generated files including wavefunction files.</span>
-<span class="sd">        update_func: Callback accepting (all_logs, new_logs), both strings.</span>
-<span class="sd">            Subprocess updates arrive during execution; Python output is delivered</span>
-<span class="sd">            after invocation. No callback is made for empty output. For a list of</span>
-<span class="sd">            inputs it receives (index, all_logs, new_logs), where index is the</span>
-<span class="sd">            input&#39;s position, and is called from the threads running the</span>
-<span class="sd">            calculations, so it must be thread-safe.</span>
-<span class="sd">        update_interval: Minimum seconds between subprocess log updates; defaults</span>
-<span class="sd">            to 0.5. Updates are line-based, and final output is delivered without</span>
-<span class="sd">            waiting for this interval. Has no effect on Python calls.</span>
-<span class="sd">        print_logs: Print merged stdout/stderr using the update callback. Ignored</span>
-<span class="sd">            when update_func is supplied. Python logs print after invocation. For a</span>
-<span class="sd">            list, each line is prefixed with its input&#39;s index, e.g. ``[3]``.</span>
-<span class="sd">        raise_exc: Raise a qccompute exception on calculation failure, with the</span>
-<span class="sd">            completed ProgramOutput attached as .prog_output. If False, return</span>
-<span class="sd">            the failed output instead. Partial results and diagnostics are retained</span>
-<span class="sd">            when available. For a list, every calculation runs first; then</span>
-<span class="sd">            ``ComputeErrors`` (an ``ExceptionGroup``) is raised if any failed, holding</span>
-<span class="sd">            each failure&#39;s exception and every output in ``.outputs``.</span>
-<span class="sd">        propagate_wfn: For integrations that request child calculations, such as</span>
-<span class="sd">            geometry optimization, use the child codec&#39;s restart support to prepare</span>
-<span class="sd">            each input from the previous result. Requires a child-calculation</span>
-<span class="sd">            integration and support for collecting and restarting from wavefunctions.</span>
-<span class="sd">        options: Program-specific decode options passed to the codec, such as</span>
-<span class="sd">            ``{&quot;collect_rotamers&quot;: True}`` for CREST. Each codec declares the</span>
-<span class="sd">            options it accepts in ``codec.options``; unknown keys are rejected.</span>
-<span class="sd">        timeout: Seconds each external program may run before it and the processes</span>
-<span class="sd">            it started are killed, raising ``ProgramTimeoutError`` with any partial</span>
-<span class="sd">            results attached. Applies to every subprocess, including child</span>
-<span class="sd">            calculations of Python integrations such as geomeTRIC; a Python</span>
-<span class="sd">            callable itself is not interrupted.</span>
-<span class="sd">        executables: Executables to run, keyed by program name, such as</span>
-<span class="sd">            ``{&quot;orca&quot;: &quot;/opt/orca/orca&quot;}``. Child calculations of Python</span>
-<span class="sd">            integrations such as geomeTRIC use the same mapping; entries for programs</span>
-<span class="sd">            that do not run are ignored. Without an entry, the environment variable</span>
-<span class="sd">            ``QCCOMPUTE_&lt;PROGRAM&gt;_EXECUTABLE`` (for example</span>
-<span class="sd">            ``QCCOMPUTE_ORCA_EXECUTABLE``) is used, and otherwise the program is</span>
-<span class="sd">            found on ``PATH``. Bare names are looked up on ``PATH``; the program</span>
-<span class="sd">            always runs by its absolute path, recorded in</span>
-<span class="sd">            ``execution.extras[&quot;executable&quot;]``.</span>
-<span class="sd">        max_workers: For a list of inputs, the CPU threads program calculations may</span>
-<span class="sd">            use at once. Defaults to the number of CPU cores this process may use.</span>
-<span class="sd">            Each calculation counts the threads its codec declares (ORCA ``pal``,</span>
-<span class="sd">            Psi4 ``-n``, CREST ``threads``; one otherwise), and each GPU calculation</span>
-<span class="sd">            gets its own devices through ``CUDA_VISIBLE_DEVICES``. Ignored for a</span>
-<span class="sd">            single input.</span>
-
-<span class="sd">    Returns:</span>
-<span class="sd">        A ProgramOutput containing scientific results, execution metadata, and the</span>
-<span class="sd">        requested logs and files, or a list of them in input order for a list of</span>
-<span class="sd">        inputs. Failed calculations may contain partial results.</span>
-
-<span class="sd">    Raises:</span>
-<span class="sd">        CodecNotFoundError: No codec is available for the requested program.</span>
-<span class="sd">        InputError: Inputs or compute options are unsupported or invalid.</span>
-<span class="sd">        ProgramNotFoundError: The executable cannot be found, or a codec explicitly</span>
-<span class="sd">            reports an unavailable dependency.</span>
-<span class="sd">        ProgramTimeoutError: A program exceeded ``timeout``.</span>
-<span class="sd">        ExternalProgramError: Execution, decoding, artifact collection, or cleanup</span>
-<span class="sd">            fails. Unexpected codec exceptions also use this category.</span>
-
-<span class="sd">        ComputeErrors: For a list of inputs, some calculations failed.</span>
-
-<span class="sd">    Calculation exceptions are raised only when raise_exc is True.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">input_data</span><span class="p">,</span> <span class="n">Sequence</span><span class="p">)</span> <span class="ow">and</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">input_data</span><span class="p">,</span> <span class="nb">str</span> <span class="o">|</span> <span class="nb">bytes</span><span class="p">):</span>
-        <span class="k">return</span> <span class="n">compute_list</span><span class="p">(</span>
-            <span class="n">_compute_one</span><span class="p">,</span>
-            <span class="n">input_data</span><span class="p">,</span>
-            <span class="n">compute_batch</span><span class="o">=</span><span class="n">_compute_batch</span><span class="p">,</span>
-            <span class="n">max_workers</span><span class="o">=</span><span class="n">max_workers</span><span class="p">,</span>
-            <span class="n">raise_exc</span><span class="o">=</span><span class="n">raise_exc</span><span class="p">,</span>
-            <span class="n">update_func</span><span class="o">=</span><span class="n">update_func</span><span class="p">,</span>
-            <span class="n">print_logs</span><span class="o">=</span><span class="n">print_logs</span><span class="p">,</span>
-            <span class="n">options</span><span class="o">=</span><span class="p">{</span>
-                <span class="s2">&quot;codec&quot;</span><span class="p">:</span> <span class="n">codec</span><span class="p">,</span>
-                <span class="s2">&quot;environment&quot;</span><span class="p">:</span> <span class="n">environment</span><span class="p">,</span>
-                <span class="s2">&quot;scratch_dir&quot;</span><span class="p">:</span> <span class="n">scratch_dir</span><span class="p">,</span>
-                <span class="s2">&quot;rm_scratch_dir&quot;</span><span class="p">:</span> <span class="n">rm_scratch_dir</span><span class="p">,</span>
-                <span class="s2">&quot;collect_logs&quot;</span><span class="p">:</span> <span class="n">collect_logs</span><span class="p">,</span>
-                <span class="s2">&quot;collect_files&quot;</span><span class="p">:</span> <span class="n">collect_files</span><span class="p">,</span>
-                <span class="s2">&quot;collect_wfn&quot;</span><span class="p">:</span> <span class="n">collect_wfn</span><span class="p">,</span>
-                <span class="s2">&quot;update_interval&quot;</span><span class="p">:</span> <span class="n">update_interval</span><span class="p">,</span>
-                <span class="s2">&quot;propagate_wfn&quot;</span><span class="p">:</span> <span class="n">propagate_wfn</span><span class="p">,</span>
-                <span class="s2">&quot;options&quot;</span><span class="p">:</span> <span class="n">options</span><span class="p">,</span>
-                <span class="s2">&quot;timeout&quot;</span><span class="p">:</span> <span class="n">timeout</span><span class="p">,</span>
-                <span class="s2">&quot;executables&quot;</span><span class="p">:</span> <span class="n">executables</span><span class="p">,</span>
-            <span class="p">},</span>
-        <span class="p">)</span>
-    <span class="k">return</span> <span class="n">_compute_one</span><span class="p">(</span>
-        <span class="n">input_data</span><span class="p">,</span>
-        <span class="n">codec</span><span class="o">=</span><span class="n">codec</span><span class="p">,</span>
-        <span class="n">environment</span><span class="o">=</span><span class="n">environment</span><span class="p">,</span>
-        <span class="n">scratch_dir</span><span class="o">=</span><span class="n">scratch_dir</span><span class="p">,</span>
-        <span class="n">rm_scratch_dir</span><span class="o">=</span><span class="n">rm_scratch_dir</span><span class="p">,</span>
-        <span class="n">collect_logs</span><span class="o">=</span><span class="n">collect_logs</span><span class="p">,</span>
-        <span class="n">collect_files</span><span class="o">=</span><span class="n">collect_files</span><span class="p">,</span>
-        <span class="n">collect_wfn</span><span class="o">=</span><span class="n">collect_wfn</span><span class="p">,</span>
-        <span class="n">update_func</span><span class="o">=</span><span class="n">update_func</span><span class="p">,</span>
-        <span class="n">update_interval</span><span class="o">=</span><span class="n">update_interval</span><span class="p">,</span>
-        <span class="n">print_logs</span><span class="o">=</span><span class="n">print_logs</span><span class="p">,</span>
-        <span class="n">raise_exc</span><span class="o">=</span><span class="n">raise_exc</span><span class="p">,</span>
-        <span class="n">propagate_wfn</span><span class="o">=</span><span class="n">propagate_wfn</span><span class="p">,</span>
-        <span class="n">options</span><span class="o">=</span><span class="n">options</span><span class="p">,</span>
-        <span class="n">timeout</span><span class="o">=</span><span class="n">timeout</span><span class="p">,</span>
-        <span class="n">executables</span><span class="o">=</span><span class="n">executables</span><span class="p">,</span>
-    <span class="p">)</span>
-</code></pre></div></td></tr></table></div>
-            </details>
-    </div>
-
-</div><h2 id="examples-for-each-program">Examples for each program<a class="headerlink" href="#examples-for-each-program" title="Permanent link">&para;</a></h2>
-<p>Complete, runnable scripts for every program and calculation type, with every common
-option shown and the program's quirks explained, are on the
-<a href="https://qccodec.docs.afh.org/programs/">qccodec program pages</a>. The
-examples here cover qccompute itself: running a program from your own input files and
-defining a codec for a program qccodec doesn't support.</p>
+<h1 id="examples">Examples<a class="headerlink" href="#examples" title="Permanent link">&para;</a></h1>
+<ul>
+<li><a href="../file_input/">File Input</a>: run any command with its files and get every file it
+  wrote back.</li>
+<li><a href="../many_calculations/">Many calculations at once</a>: lists, failures, outputs as they finish, a
+  runner of your own.</li>
+<li><a href="../dynamic_workflows/">Dynamic workflows</a>: <code>submit</code> and futures, per reaction a
+  transition-state search, its IRC and both ends, many reactions at once with no stage
+  barriers.</li>
+<li><a href="../sessions/">Sessions, lineages and seeds</a>: which programs gain from a session, and
+  a worked example of lineages, seeds, commits and resets.</li>
+<li><a href="../function_program/">A program from functions</a>: <code>FunctionProgram</code>, the smallest
+  complete program.</li>
+</ul>
+<p>Every external program has a runnable example script per calculation type in
+<a href="https://qccodec.docs.afh.org/programs/">qccodec's documentation</a>.</p>
 
 
 

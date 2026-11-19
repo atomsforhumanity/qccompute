@@ -2,26 +2,54 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
          <loc>https://qccompute.docs.afh.org/</loc>
-         <lastmod>2026-11-17</lastmod>
+         <lastmod>2026-11-19</lastmod>
     </url>
     <url>
-         <loc>https://qccompute.docs.afh.org/examples/custom_codec/</loc>
-         <lastmod>2026-11-17</lastmod>
+         <loc>https://qccompute.docs.afh.org/migration/</loc>
+         <lastmod>2026-11-19</lastmod>
+    </url>
+    <url>
+         <loc>https://qccompute.docs.afh.org/threads/</loc>
+         <lastmod>2026-11-19</lastmod>
+    </url>
+    <url>
+         <loc>https://qccompute.docs.afh.org/api/program/</loc>
+         <lastmod>2026-11-19</lastmod>
+    </url>
+    <url>
+         <loc>https://qccompute.docs.afh.org/api/runner/</loc>
+         <lastmod>2026-11-19</lastmod>
+    </url>
+    <url>
+         <loc>https://qccompute.docs.afh.org/design/program-interface/</loc>
+         <lastmod>2026-11-19</lastmod>
+    </url>
+    <url>
+         <loc>https://qccompute.docs.afh.org/examples/dynamic_workflows/</loc>
+         <lastmod>2026-11-19</lastmod>
     </url>
     <url>
          <loc>https://qccompute.docs.afh.org/examples/file_input/</loc>
-         <lastmod>2026-11-17</lastmod>
+         <lastmod>2026-11-19</lastmod>
+    </url>
+    <url>
+         <loc>https://qccompute.docs.afh.org/examples/function_program/</loc>
+         <lastmod>2026-11-19</lastmod>
     </url>
     <url>
          <loc>https://qccompute.docs.afh.org/examples/many_calculations/</loc>
-         <lastmod>2026-11-17</lastmod>
+         <lastmod>2026-11-19</lastmod>
     </url>
     <url>
          <loc>https://qccompute.docs.afh.org/examples/overview/</loc>
-         <lastmod>2026-11-17</lastmod>
+         <lastmod>2026-11-19</lastmod>
+    </url>
+    <url>
+         <loc>https://qccompute.docs.afh.org/examples/sessions/</loc>
+         <lastmod>2026-11-19</lastmod>
     </url>
     <url>
          <loc>https://qccompute.docs.afh.org/programs/overview/</loc>
-         <lastmod>2026-11-17</lastmod>
+         <lastmod>2026-11-19</lastmod>
     </url>
 </urlset>

@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [unreleased]
 
+### Changed
+
+- The `qccodec` extra requires qccodec 0.22.0.
+
 ## [0.23.0] - 2026-11-19
 
 The final release of the 0.23.0 alphas and release candidate: their entries below make up its changes since 0.22. Since 0.23.0rc1:

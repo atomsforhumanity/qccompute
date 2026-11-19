@@ -6,6 +6,196 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [unreleased]
 
+## [0.23.0] - 2026-11-19
+
+The final release of the 0.23.0 alphas and release candidate: their entries below make up its changes since 0.22. Since 0.23.0rc1:
+
+### Changed
+
+- Requires qcdata 0.24.0 or later; the README and docs install the final releases and link to the stable docs.
+
+### Fixed
+
+- A calculation whose input names subprograms gets its caller's whole count when it sets no `threads`, even when its plan asks for GPUs for those subprograms. Before, it got 1 thread, as a calculation running on the GPU does, and its children's `threads` keywords were lowered to 1 without a word.
+- A `threads` keyword above the caller's count is lowered to the count with a `RuntimeWarning` that says where the count comes from. The [Threads](https://qccompute.docs.afh.org/threads/) page now says that `OMP_NUM_THREADS` caps top-level keywords too, and how to keep NumPy on one thread without capping calculations.
+
+## [0.23.0rc1] - 2026-11-18
+
+The release candidate: these are the final interfaces; only bug fixes follow before 0.23.0.
+
+### Changed
+
+- **Breaking:** one thread count per calculation: its `threads` keyword, else its caller's whole count (`Runner(threads=)`, else `OMP_NUM_THREADS`, else the usable CPUs; a parent's or a session's for subprograms and requests). A calculation given GPUs and no `threads` gets 1. The [Threads](https://qccompute.docs.afh.org/threads/) page is the one place this is explained.
+- **Breaking:** lists, a session's `compute_many` and requests on one session share the count; store hits don't count. A batch program gets the whole list in one call with the sum of its inputs' shares.
+- **Breaking:** nothing runs more threads at once than the count it runs under (the runner's, a calculation's, a session's); extra work waits, first come first served. Calls from several threads, `submit`, lists and sessions all share the runner's count; an idle open session holds nothing. A top-level call from a thread that is running a calculation raises `RuntimeError` at once. The runner warns once when calculations that each take its whole count wait.
+- Waiting calculations can be cancelled or stopped; timeouts count from when a calculation starts.
+- **Breaking:** memory follows a calculation's share of its holder (all of it at the whole count); GPUs are given out whole.
+- `qccompute.session` returns the program's own session behind a thin wrapper that counts its requests' threads; the numbers are exactly the program's.
+- The `qccodec` extra requires qccodec 0.22.0a7.
+
+### Removed
+
+- **Breaking:** `Resources.threads`: programs no longer suggest thread counts, and a plan that sets it is refused.
+- **Breaking:** `Runner(backend=)`, `Runner(per_gpu=)`, `Runner.as_completed` (use `concurrent.futures.as_completed` over `submit` futures, or `compute(list)`) and `submit(priority=)`. `Runner`'s positional arguments are `(threads, gpus, isolation)`.
+
+### Fixed
+
+- Requests of a thread-safe program's own session opened at top level hold the BLAS and OpenMP pools at its count.
+- A request of a subprogram's session gets the parent's time left when it starts, not at the session's opening.
+
+## [0.23.0a7] - 2026-11-17
+
+### Added
+
+- `QCCOMPUTE_KEEP_SCRATCH=1` keeps temporary scratch directories, in process and in workers, for debugging (`qccompute.program.KEEP_SCRATCH`); a killed worker's error then says where its scratch is.
+
+### Changed
+
+- **Breaking:** a calculation whose input names subprograms holds its own BLAS and OpenMP pools at one thread, in process and in workers, for one input, a batch or a session; its grant (`ctx.threads`) is its subprograms'. A program with heavy linear algebra of its own may raise its pools while it works, if it restores them around its subprograms' calls. Before, a parent asking for the whole grant had its own pools at the whole grant too, and an idle OpenBLAS thread spins for about 0.1 s after each call: parent and children together ran up to twice the grant's threads. qcopt over axtb g-xTB, 38 submitted TS searches, IRCs and end minimizations on 8 threads: 80–140 s before, 24–26 s after.
+- The `qccodec` extra requires qccodec 0.22.0a6.
+
+### Fixed
+
+- A worker killed for a timeout or a cancel no longer leaves its calculations' scratch behind: a `Worker` gives its worker a directory (`python -m qccompute.serve PROGRAM --scratch DIR`) and removes it when it closes the worker.
+
+## [0.23.0a6] - 2026-11-17
+
+### Added
+
+- A calculation's BLAS and OpenMP thread counts are held at its threads around every program call, in process and in workers, and the caller's are restored afterwards (+2.4 µs per in-process call). A calculation now gives the same bits in process and in a worker: qcopt on taxol went from 15 of 43 frames bitwise to 43 of 43, and 16 caffeine optimizations in one list from 3.9 s to 2.2 s. New dependency: `threadpoolctl`.
+- `submit(..., priority=)`: waiting work runs highest priority first, first in first out within a priority. `Future.cancel()` ends a running calculation: in a worker its whole process tree is killed; in process it stops cooperatively. A cancelled output is never stored.
+- `runner.stop(future)` and `qccompute.stop(future)` ask a running program to stop at its next step (`ctx.stop_requested()`); it returns its partial output under kind `stopped`, which is never stored.
+- A worker runs a subprogram itself when every program the call names is there with the same identities, may run in process and plans no GPU. Otherwise the call goes to the client. qcopt over axtb in workers: 12.8–15.0 → 10.9 ms per gradient, and 16 submitted optimizations 1.5–2.0 → 1.0–1.2 s, with every frame bitwise identical.
+
+### Changed
+
+- **Breaking:** an `unnamed_subprogram` refusal fails the calculation whatever the program does afterwards, in process, in workers and in batches.
+- **Breaking:** an explicit `execution.devices=[]` is kept (it ran on no device); the runner fills `devices` only when the program left it unset.
+- **Breaking:** memory grants are no longer rounded.
+- **Breaking:** `submit` returns a `Future` subclass; `Runner.close()` cancels waiting submissions and kills workers still running. Timeouts also kill a calculation's whole process tree.
+- qccompute no longer reads `.calctype.value`, so inputs copied with `model_copy(update=)` work.
+- The guide says that a rerun is all cache hits only when the workflow asks for the same inputs; a timing-dependent workflow keeps its own decision state.
+- Requires qcdata 0.24.0a8.
+
+### Fixed
+
+- A worker's output pipes are closed when it ends.
+
+
+## [0.23.0a5] - 2026-11-17
+
+### Added
+
+- `Runner.submit` and `qccompute.submit` run one calculation and return a `concurrent.futures.Future` of its output; a store hit or a refused input resolves at once. A guide page shows a dynamic workflow (per reaction, TS, then IRC, then both ends, many reactions at once, with no stage barriers).
+- `progress=` on `compute`, `as_completed`, `session` and `submit`: programs emit small JSON events through `ctx.progress` (None when nobody listens); the runner adds `path`, a subprogram's events come through its parent, workers stream them back, and store hits emit nothing.
+- `session(..., threads=)` sets a session's grant when it opens.
+- `FunctionProgram(..., takes_input=True, settings=)`: the functions receive the input too, `settings` declares its keywords, and `threads` is always accepted.
+- The runner records `cpu_model`, `libc` and `devices` (the granted GPUs' names) on every output, beside `hostname`, unless the program set them.
+- An output the runner has just stored names its run in `execution.store_run`, as a hit does, so results can be cited exactly (with qcstore's `get(key, run=)`).
+- `timings["batch"]`, a batch's wall time, on batch outputs.
+- A program instance registered from the user's own module runs in a worker: the worker finds it by its entry point, a module attribute, or a pickle; one that can't be rebuilt fails with kind `environment` and says how to fix it.
+- A warning, once per runner and program, when calls queue on the lock of an in-process program that isn't thread-safe; it names `isolation="process"`.
+
+### Changed
+
+- **Breaking:** `ctx.compute` and `ctx.session` refuse a program the calling input doesn't name among its subprograms (kind `input`, code `unnamed_subprogram`), so a run's identities cover every program it used.
+- **Breaking:** a session's `compute_many` runs its requests side by side, packed into the session's grant (`threads=`, else the runner's): 13 xtb gradients went from 0.2 s to 0.06 s, the same as `compute(list)`.
+- **Breaking:** a batch output keeps a `wall_time` its program set; environment fields are filled only where unset.
+- **Breaking:** `FunctionProgram` accepts `threads`; `execution.threads` is the grant; `resolved.settings` holds the keywords given; a function's `ProgramError` passes through (was kind `internal`).
+- Requires qcdata 0.24.0a6.
+
+
+## [0.23.0a4] - 2026-11-17
+
+### Changed
+
+- **Breaking:** `Capabilities.gpu` and `Resources.exclusive` are removed: nothing read them, and a calculation's GPUs are its plan's. `Capabilities` forbids extra fields, so programs that set them must drop them.
+- **Breaking:** the `memory_gib` and `device_memory_gib` keywords replace the memory share in `ctx`, as `threads` does, capped at the runner's memory or the GPU's, and for a subprogram at its parent's grant. A subprogram's GPU-memory share is also capped at its parent's grant.
+- **Breaking:** the worker hello no longer has `extras`.
+- **Breaking:** `FunctionProgram` and the toy program accept an `accuracy` target, as keyword or session request, and record it as met (`{"target": ..., "thresholds": {}, "estimate": {...: 0.0}}`). They no longer refuse it as `no_effect`, so a session over them can pass a request's target on. Requires qcdata 0.24.0a5.
+- Workers without GPUs are pooled by program, whatever the threads of their calls: a list's batches of different sizes share one worker, and each call gets its own threads in `ctx`.
+- A batch output whose program leaves `execution.threads` unset reports its own input's part of the batch's threads, not the whole batch's, so `wall_time × threads` adds up across a store (#52).
+- The docs say what the runner does with memory: a calculation run alone gets the runner's (or its parent's) memory; in lists and batches each gets its share; `memory_gib` and `device_memory_gib` in a plan are informational.
+
+### Added
+
+- `RunContext.device_ordinals()`: the granted GPUs as this process's CUDA ordinals, in a worker or in process, for indices and UUIDs. `Runner(gpus="auto")` sets `CUDA_DEVICE_ORDER=PCI_BUS_ID` when `CUDA_VISIBLE_DEVICES` is unset; `visible_gpus` handles UUIDs and stops at a `-1` entry.
+
+
+## [0.23.0a3] - 2026-11-17
+
+### Changed
+
+- **Breaking:** a batch's `ctx.threads` is the sum of its inputs' planned threads, capped at the runner's (or the parent's grant); its GPUs are the most any input asks for. A list of 32 qcopt TS searches on 8 cores went from 9.5 s to 3.1 s.
+- **Breaking:** a calculation's GPUs come from `plan.resources.gpus`, whatever `caps.gpu` says; a single top-level call no longer takes every GPU. Workers see only their granted GPUs (`CUDA_VISIBLE_DEVICES=""` when none).
+- **Breaking:** `Store.put(output, *, tags=(), meta=None)`: the store reads identities from `output.execution.identities`.
+- **Breaking:** `ComputeSession(..., *, program_version)` is required; a session's `program_version` is known at open.
+- **Breaking:** `FunctionProgram` and the toy program refuse the `accuracy` keyword with code `no_effect`. A `ComputeSession` passes a request's accuracy on as the `accuracy` keyword. Requires qcdata 0.24.0a4.
+
+### Added
+
+- `execution.identities` on every output that ran: single inputs, lists, batches, refusals, failures, subprogram outputs, worker programs.
+- Worker pools: GPU workers are pooled by program and GPUs (at most `per_gpu`), shared by calls and sessions; CPU workers by program and threads. 8 AIMNet2 sessions share one worker instead of starting eight.
+- In-process timeouts: once a calculation's time runs out, its `ctx.compute` and `ctx.session` calls fail with kind `timeout` without running, so a program with subprograms stops at its next step. Programs in workers are still killed.
+
+### Fixed
+
+- A batch ran on one thread (#39).
+- A GPU program started a second worker for a list's batch, loading its model twice.
+- Faster worker reads when no array files are present.
+
+
+## [0.23.0a2] - 2026-11-17
+
+### Changed
+
+- **Breaking:** a calculation gets the threads it asks for: its `threads` keyword, else its plan's `resources.threads`, else 1, capped at the runner's. `resources.threads = None` asks for the whole runner, or the parent's whole grant for a subprogram. This applies to single inputs, sessions and subprograms; before, every single calculation got the whole machine (a water gradient took 221 ms and 9.9 CPU-s on a large node; now 1.3 ms).
+- **Breaking:** every input is planned before it runs; an input its plan refuses fails without running.
+- **Breaking:** `FunctionProgram(..., version=None)`: its version and numerics default to a digest of the functions' code, so editing a function never serves stale stored results.
+- **Breaking:** the identities of a program named with several specs are joined with `;`.
+- **Breaking:** `WorkerSession(worker, key, inp, program_version="", on_close=None, grant=None)`; `Host(program, array_dir=None)`.
+- Stored failures of kind `convergence`, and of kind `program` caused by one, are reused, as decision 29 says; `rerun=True` gets past them.
+
+### Added
+
+- Worker protocol: hello flags `array_files` and `calls`, and an `options` op. Subprograms of a program hosted in a worker run in the caller's process, so a program registered there (a `FunctionProgram` in a script) works as a subprogram of geomeTRIC. Arrays over 1 MiB cross as `.npy` files (a 1200 × 1200 Hessian: 852 ms inline, 20 ms as files).
+- `qccompute.default_runner`; a sessions example and a docs page on lineages, seeds, commits and resets.
+
+### Fixed
+
+- Every second geomeTRIC run failed with `FileNotFoundError`: a nested worker inherited a deleted scratch directory as its working directory.
+- The migration-guide link.
+
+
+## [0.23.0a1] - 2026-11-17
+
+The first alpha of qccompute as the runner for AFH programs. qccompute now depends on
+qcdata only. External programs come from qccodec, the optional add-on
+(`pip install qccompute[qccodec]`), as programs like any other. Breaking changes come
+without compatibility shims; [the migration guide](https://github.com/atomsforhumanity/qccompute/blob/0.23.0a1/docs/migration.md)
+covers moving from 0.22.
+
+### Added
+
+- `Runner(threads=None, gpus="auto", backend="local", isolation="auto", *, per_gpu=1)` with `compute(inputs, *, store=None, timeout=None, rerun=False, tags=(), meta=None, raise_exc=True)`, `as_completed(...)` and `session(inp, calctypes=None)`. `qccompute.compute` and `qccompute.session` are the default runner's: this machine, made on first use, workers closed at exit.
+- One path for every program: find it (the `qccompute.programs` entry points, or `register_program`), plan, place it in this process or a worker, call `compute` or `compute_batch` with a `RunContext`, record execution.
+- Resource shares: a calculation's share is the larger of its share of the runner's threads and of its GPUs (`per_gpu` calculations per GPU). Host and device memory follow the share, and calculations are admitted while shares sum to at most 1. `RunContext` carries `threads`, `gpus`, `memory_gib`, `device_memory_gib`, `timeout`, `plan`, a scratch directory made on first use, `compute()` and `session()`.
+- A store hook: with `store=`, each input is looked up by `store.key(inp)` and the numerics identities of the programs it names (`numerics(spec)`, defaulting to the version). Only runs with the same identities are reused, and failures only of kinds `input`, `unsupported` and `convergence`. `tags` go on every returned key, cache hits included. Warm-started outputs are never stored.
+- `qccompute.worker.Worker` and `WorkerSession`: programs with `in_process=False`, or under `isolation="process"`, run in a worker process over `qccompute.serve`'s JSON lines. A timeout kills the worker; a dead worker is `worker_died`.
+- `qccompute.program.FunctionProgram(name, energy_gradient, hessian=None, *, version="0")`: Python functions as a program.
+- The optional `numerics(spec) -> str` in the Program protocol.
+
+### Changed
+
+- **Breaking:** failures raise `qcdata.ProgramError`, with the failed output as `.output`. A list, or a session's `compute_many`, runs everything, then raises one `qcdata.ProgramErrors` holding every result in order (`.results`). `raise_exc=False` returns failures in place.
+- **Breaking:** a program's `compute(inp, ctx=None)` raises for a failed calculation. `compute_batch` returns failures in place. A runner always passes a `ctx`, and a program with subprograms called directly hands itself to `qccompute.compute`.
+- **Breaking:** `session(inp, calctypes=None)`; `RunContext` is made only by runners.
+
+### Removed
+
+- **Breaking:** the qccodec dependency and every codec path: `compute` options `codec`, `environment`, `executables`, `scratch_dir`, `rm_scratch_dir`, `collect_logs`, `collect_files`, `collect_wfn`, `propagate_wfn`, `options`, `print_logs`, `update_func`, `update_interval` and `max_workers`; `compute_args`; `qccompute.exceptions`; `get_program`; `qccompute.utils`; the extras `geometric`, `tcpb` and `all`.
+- **Breaking:** `local_context`, `Capabilities.driver`, and `check_program(children=)`.
+
 ## [0.22.1] - 2026-11-17
 
 ### Changed
@@ -566,7 +756,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Created adapter for TeraChem.
 - Exposed general purpose computing for any subprocess with `FileAdaptor`
 
-[unreleased]: https://github.com/atomsforhumanity/qccompute/compare/0.22.0...HEAD
+[unreleased]: https://github.com/atomsforhumanity/qccompute/compare/0.23.0...HEAD
+[0.23.0]: https://github.com/atomsforhumanity/qccompute/releases/tag/0.23.0
 [0.22.0]: https://github.com/atomsforhumanity/qccompute/releases/tag/0.22.0
 [0.21.0]: https://github.com/atomsforhumanity/qccompute/releases/tag/0.21.0
 [0.20.0]: https://github.com/atomsforhumanity/qccompute/releases/tag/0.20.0

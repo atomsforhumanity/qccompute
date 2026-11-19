@@ -1,260 +1,265 @@
 # qccompute
 
-[![image](https://img.shields.io/pypi/v/qccompute.svg)](https://pypi.python.org/pypi/qccompute)
-[![image](https://img.shields.io/pypi/l/qccompute.svg)](https://pypi.python.org/pypi/qccompute)
-[![image](https://img.shields.io/pypi/pyversions/qccompute.svg)](https://pypi.python.org/pypi/qccompute)
-[![CI](https://github.com/atomsforhumanity/qccompute/actions/workflows/ci.yaml/badge.svg)](https://github.com/atomsforhumanity/qccompute/actions/workflows/ci.yaml)
-
-Runs quantum chemistry programs on [qcdata](https://github.com/atomsforhumanity/qcdata) inputs using [qccodec](https://github.com/atomsforhumanity/qccodec) codecs and returns structured results. Built-in support for `TeraChem`, `ORCA`, `Psi4`, `CREST`, `xtb`, and `geomeTRIC`, and any program you define a `qccodec.Codec` for.
-
-## The QC Suite
-
-These packages work together to make quantum chemistry fast, structured, and interoperable.
-
-- [qcref](https://github.com/atomsforhumanity/qcref) - Reference data for computational chemistry: CODATA physical constants, conversion factors, a periodic table, and solvent properties, each value with its source.
-- [qcdata](https://github.com/atomsforhumanity/qcdata) - Data structures for quantum chemistry inputs and results, with Jupyter visualizations. [Documentation](https://qcdata.docs.afh.org)
-- [qcinf](https://github.com/atomsforhumanity/qcinf) - Cheminformatics algorithms and structure utilities for [qcdata](https://github.com/atomsforhumanity/qcdata) structures.
-- [qccodec](https://github.com/atomsforhumanity/qccodec) - Translates [qcdata](https://github.com/atomsforhumanity/qcdata) inputs into native program inputs and parses program outputs back into qcdata objects, one codec per program. [Documentation](https://qccodec.docs.afh.org)
-- [qccompute](https://github.com/atomsforhumanity/qccompute) - Runs quantum chemistry programs on [qcdata](https://github.com/atomsforhumanity/qcdata) inputs using [qccodec](https://github.com/atomsforhumanity/qccodec) codecs and returns structured results. [Documentation](https://qccompute.docs.afh.org)
-- [BigChem](https://github.com/mtzgroup/bigchem) - Distributed execution of qccompute calculations across clusters of computers or the cloud.
-- [ChemCloud](https://github.com/mtzgroup/chemcloud-client) - A [web application](https://github.com/mtzgroup/chemcloud-server) and [Python client](https://github.com/mtzgroup/chemcloud-client) that expose a BigChem cluster securely over the internet.
-
-## Installation
+qccompute runs programs on [qcdata](https://qcdata.docs.afh.org/) inputs. Every program
+runs the same way, whether it implements qccompute's protocol in Python or is an
+external program that [qccodec](https://qccodec.docs.afh.org/) brings in:
 
 ```sh
-python -m pip install qccompute
+python -m pip install "qccompute[qccodec]" qcstore
 ```
 
-## Quickstart
+`qccompute` alone is the runner, for programs that implement its protocol
+(`pip install qccompute`); the `qccodec` extra adds external programs (xtb, ORCA, Psi4,
+...) and `qcstore` is the calculation store. Coming from 0.22? See [the migration guide](migration.md).
 
-Complete, runnable scripts for every supported program and calculation type, with every common option shown and each program's quirks explained, are on the [qccodec program pages](https://qccodec.docs.afh.org/programs/).
-
-`qccompute` uses the `qcdata` data structures to drive quantum chemistry programs in a standardized way. This allows for a simple and consistent interface to a wide variety of quantum chemistry programs. See the [qcdata](https://github.com/atomsforhumanity/qcdata) library for documentation on the input and output data structures.
-
-The `compute` function is the main entry point for the library and is used to run a calculation.
+## One calculation
 
 ```python
-from qcdata import Structure, ProgramInput
-from qccompute import compute
-from qccompute.exceptions import ExternalProgramError
+import qccompute
+from qcdata import CalcType, Model, ProgramInput, Structure
 
-# Create the Structure
-h2o = Structure.open("h2o.xyz")
-
-# Define the program input
-prog_input = ProgramInput(
-    program="terachem",
-    structure=h2o,
-    calctype="energy",
-    model={"method": "wb97xd3", "basis": "def2-svp"},
-    keywords={"purify": "no", "restricted": False},
+water = Structure(
+    symbols=["O", "H", "H"],
+    geometry=[[0.0, 0.0, 0.0], [0.524, 1.687, 0.48], [1.146, -0.45, -1.354]],  # bohr
 )
+inp = ProgramInput(
+    program="xtb", calctype=CalcType.gradient, structure=water, model=Model(method="gfn2")
+)
+out = qccompute.compute(inp)
+print(out.results.energy, out.results.gradient)
+```
 
-# Run the calculation; will return a ProgramOutput or raise an exception
+qccompute finds the program by name (`ProgramInput.program`) among the installed programs
+(the `qccompute.programs` entry points) and those registered in this process with
+`qccompute.register_program`. It hands the calculation its thread count (the runner's
+whole count unless the input sets `threads`; see [Threads](threads.md)), runs it, and
+records the run in `out.execution` (wall time, host, threads).
+
+## Failures raise
+
+A failed calculation raises `qcdata.ProgramError`. Its `error` says what kind of failure
+it was (`input`, `convergence`, `timeout`, `environment`, ...) and its `output` is the
+failed `ProgramOutput`, with the partial results, the logs and the traceback:
+
+```python
+from qcdata import ProgramError
+
 try:
-    prog_output = compute(prog_input, collect_files=True)
-except ExternalProgramError as e:
-    # External QQ program failed in some way
-    prog_output = e.prog_output
-    prog_output.input_data # Input data used by the QC program
-    prog_output.success # Will be False
-    prog_output.results # Any half-computed results before the failure
-    prog_output.logs # Logs from the calculation
-    prog_output.plogs # Shortcut to print out the logs in human readable format
-    prog_output.traceback # Stack trace from the calculation
-    prog_output.ptraceback # Shortcut to print out the traceback in human readable format
-    raise e
-else:
-    # Calculation succeeded
-    prog_output.input_data # Input data used by the QC program
-    prog_output.success # Will be True
-    prog_output.results # All structured data and files from the calculation
-    prog_output.results.files # Any files returned by the calculation
-    prog_output.logs # Logs from the calculation
-    prog_output.plogs # Shortcut to print out the logs in human readable format
-    prog_output.results.provenance # Provenance information about the calculation
-    prog_output.extras # Any extra information not in the schema
-
+    out = qccompute.compute(inp)
+except ProgramError as e:
+    print(e.error.kind, e.error.message)
+    print(e.output.logs)
 ```
 
-One may also call `compute(..., raise_exc=False)` to return a `ProgramOutput` object rather than raising an exception when a calculation fails. This may allow easier handling of failures in some cases.
+`raise_exc=False` returns the failed output instead. A program's bug (any other exception)
+is a failure of kind `internal`, caused by the original exception.
+
+## Many calculations
+
+A list runs side by side and returns its outputs in input order. The inputs may mix
+programs, methods and calculation types:
 
 ```python
-from qcdata import Structure, ProgramInput
-from qccompute import compute
-from qccompute.exceptions import ExternalProgramError
-# Create the Structure
-h2o = Structure.open("h2o.xyz")
-
-# Define the program input
-prog_input = ProgramInput(
-    program="terachem",
-    structure=h2o,
-    calctype="energy",
-    model={"method": "wb97xd3", "basis": "def2-svp"},
-    keywords={"purify": "no", "restricted": False},
-)
-
-# Run the calculation; will return a ProgramOutput object
-prog_output = compute(prog_input, collect_files=True, raise_exc=False)
-if not prog_output.success:
-    # Same as except block above
-
-else:
-    # Same as else block above
-
+outputs = qccompute.compute([inp1, inp2, inp3])
 ```
 
-Alternatively, the `compute_args` function can be used to run a calculation with the input data structures passed in as arguments rather than as a single `ProgramInput` object.
+- Every input is planned first: an input its program refuses (an unknown keyword) fails at
+  once, without running.
+- They share the runner's threads: each gets the count divided by the inputs that run
+  ([Threads](threads.md)). A program that evaluates many inputs at once (a
+  machine-learned potential) gets its inputs together.
+- Everything runs, then the failures are raised together as `qcdata.ProgramErrors` (an
+  `ExceptionGroup` of `ProgramError`s). Its `results` holds every output in input order,
+  so no result is lost:
 
 ```python
-from qcdata import Structure
-from qccompute import compute_args
-# Create the Structure
-h2o = Structure.open("h2o.xyz")
+import qcdata
 
-# Run the calculation
-prog_output = compute_args(
-    "terachem",
-    h2o,
-    calctype="energy",
-    model={"method": "wb97xd3", "basis": "def2-svp"},
-    keywords={"purify": "no", "restricted": False},
-    files={...},
-    collect_files=True
-)
+try:
+    outputs = qccompute.compute(inputs)
+except qcdata.ProgramErrors as errors:
+    outputs = errors.results
 ```
 
-The behavior of `compute()` and `compute_args()` can be tuned by passing in keyword arguments like `collect_files` shown above. Arguments can modify which scratch directory location to use, whether to delete or keep the scratch files after a calculation completes, what files to collect from a calculation, whether to stream the program logs in real time as the program executes, and whether to propagate a wavefunction through a series of calculations. Arguments also include hooks for passing in update functions that can be called as a program executes in real time. See the `qccompute.compute` docstring for details.
+For outputs as they finish, `submit` each input and use
+`concurrent.futures.as_completed` (see [Dynamic workflows](examples/dynamic_workflows.md)).
 
-See the [/examples](https://github.com/atomsforhumanity/qccompute/tree/master/examples) directory for more examples.
+## Sessions: one molecule at many geometries
 
-## ✨ Visualization ✨
-
-Visualize all your results with a single line of code!
-
-First install the visualization module:
-
-```sh
-python -m pip install qcdata[view]
-```
-
-or if your shell requires `''` around arguments with brackets:
-
-```sh
-python -m pip install 'qcdata[view]'
-```
-
-Then in a Jupyter notebook import the `qcdata` view module and call `view.view(...)` passing it one or any number of `qcdata` objects you want to visualize, including `Structure` objects or any `ProgramOutput` object. You may also pass arrays of `titles` and/or `subtitles` to add additional information to the molecular structure display. If no titles are passed, `qcdata` will look for `Structure` identifiers such as a name or SMILES to label the `Structure`.
-
-![Structure Viewer](https://public.coltonhicks.com/assets/qcdata/structure_viewer.png)
-
-Seamless visualizations for `ProgramOutput` objects make results analysis easy!
-
-![Optimization Viewer](assets/optimization_viewer.png)
-
-Single point calculations display their results in a table.
-
-![Single Point Viewer](assets/single_point_viewer.png)
-
-If you want to use the HTML generated by the viewer to build your own dashboards, use the functions inside `qcdata.view.py` that begin with `generate_` to create HTML you can insert into any dashboard.
-
-## Support
-
-If you have any issues with `qccompute` or would like to request a feature, please open an [issue](https://github.com/atomsforhumanity/qccompute/issues).
-
-## Custom programs
-
-qccompute only executes; everything program-specific comes from a
-[qccodec](https://github.com/atomsforhumanity/qccodec) `Codec`. When a program is not
-built in, define one in your script and pass it to `compute`, or register it so it is
-found by name (including as a geomeTRIC gradient child):
+Optimizers, IRCs, dynamics and finite differences evaluate one molecule at many
+geometries. A session pins the program, model, keywords, atoms, charge and multiplicity,
+and lets a program keep what speeds the next step (orbitals for a warm start):
 
 ```python
-from qcdata import CalcType, ProgramInput
-from qccodec import Codec, SubprocessInput, re_search
-import qccodec, qccompute
-
-codec = Codec("myprog", calctypes={CalcType.energy})
-
-@codec.encoder
-def encode(inp: ProgramInput) -> SubprocessInput:
-    return SubprocessInput(("myprog", "run.inp"), files={"run.inp": inp.require_structure().to_xyz()})
-
-@codec.parser(target="energy", calctypes=[CalcType.energy])
-def parse_energy(stdout: str) -> float:
-    return float(re_search(r"Total energy:\s+(-?\d+\.\d+)", stdout).group(1))
-
-output = qccompute.compute(prog_input, codec=codec)   # explicit
-qccodec.register(codec)
-output = qccompute.compute(prog_input)                # by program name
+with qccompute.session(inp) as s:
+    frame = s.compute()                       # the input's own geometry and calctype
+    frame = s.compute(new_positions)          # warm-started from the last success
+    hessian = s.compute(new_positions, "hessian")
 ```
 
-Program-specific decode options are passed with `options=`; each codec declares the
-options it accepts in `codec.options` and unknown names are rejected:
+Only a program with sessions of its own (`capabilities().sessions`) warm-starts: you get
+its own session, behind a thin wrapper that counts each request's threads, so the numbers
+are exactly those of the program used directly. Any other program (most external programs, tblite, a `FunctionProgram`) gets a
+session over `compute`, which computes every request from scratch
+(`record["warm_start"]` is false): a convenience, not a speed-up. A failed request raises
+`ProgramError` and the session stays usable; `compute_many` runs every request, then
+raises `qcdata.ProgramErrors`, whose `results` holds every frame in request order. A
+session has one thread count (`qccompute.session(inp, threads=8)`, else as for a
+calculation), which its requests share and hold only while they run ([Threads](threads.md)).
+Lineages name separate histories in one session (both branches of an IRC), `seed`
+starts one from another, and `commit=False` reads a history without moving it; see
+[Sessions, lineages and seeds](examples/sessions.md).
+
+## A share of the machine: the Runner
+
+`qccompute.compute` and `qccompute.session` are the methods of the default runner: every
+core this process may use (its CPU affinity and cgroup quota, or `OMP_NUM_THREADS` if
+set) and every visible GPU. It is made on first use and cannot be reconfigured.
+
+A `Runner` of your own takes a share:
 
 ```python
-compute(prog_input, options={"collect_rotamers": True})   # CREST
+with qccompute.Runner(threads=16, gpus=["0"], isolation="process") as runner:
+    outputs = runner.compute(inputs, timeout=3600)
 ```
 
-## Development
+- `threads`: the runner's thread count, which its calculations share; it never runs more
+  at once ([Threads](threads.md)). `gpus`: the GPUs it may use, each by one calculation
+  at a time; a calculation gets the GPUs its program's plan asks for, and
+  `ctx.device_ordinals()` turns them into CUDA device numbers in the program's process.
+  Each calculation gets its threads, GPUs and memory in a `qccompute.RunContext`.
+- Memory is never scheduled: a calculation gets its share of the runner's, and a
+  `memory_gib` or `device_memory_gib` keyword replaces it ([Threads](threads.md#memory-and-gpus)).
+- `isolation`: `"auto"` runs programs in this process unless they cannot share it (they
+  say `in_process=False`), which run in worker processes; `"process"` runs every program
+  in a worker, so a crash ends only the worker.
+- Workers stay alive between calls, so a program keeps its state; close the runner (or use
+  it as a context manager) to stop them. A program's workers serve its calls whatever
+  their threads, so a model loads once: on a GPU one worker per GPU, which its
+  calculations and sessions share; on the CPU as many as run side by side.
 
-See [CONTRIBUTING.md](https://github.com/atomsforhumanity/qccompute/blob/master/CONTRIBUTING.md) for development setup, the pre-commit workflow, running tests, and the release process.
+The runner never changes a number by itself. A grant may change a program's own choices
+(a storage scheme picked from the memory granted), and the program records each one in
+`output.resolved`.
 
-### How a calculation runs
+## A calculation store
 
-1. `compute()` resolves a codec: the `codec=` argument, a codec registered with
-   `qccodec.register`, a built-in, or one installed by another package.
-2. `codec.encode(input_data)` returns a `SubprocessInput` (command + files) or a
-   `PythonInput` (callable + arguments). Encoding never executes anything.
-3. qccompute creates the scratch directory, stages the files, and runs
-   `run_subprocess` or `run_python`. Both merge stdout and stderr into one log;
-   Python capture includes native writes to the stdout/stderr file descriptors and the
-   loggers the codec names.
-4. `codec.decode(input_data, native_output)` is always called, even after an execution
-   failure, so partial results are recovered. Exceptions carrying `.data` keep it.
-5. Requested files and wavefunctions are collected, the directory is removed if
-   `rm_scratch_dir` is True, and the `ProgramOutput` is built. On failure, the
-   exception's `.prog_output` holds the complete failed output.
+```python
+outputs = qccompute.compute(inputs, store=store, tags=["screen-1"], meta={"by": "me"})
+```
 
-Environment: invocation defaults from the codec override inherited values, and
-`environment=` overrides both. Subprocess overrides are local to the child. Python
-execution temporarily changes the process environment, working directory, and output
-streams under a reentrant lock, so use separate processes for independent concurrent
-Python calculations. xtb and CREST default to `OMP_NUM_THREADS=1` in their child
-environments.
+With a store, every input is looked up first and only misses run; every run is stored.
+A store files runs by the calculation's key (the input as given,
+`qcdata.calculation_key`) and by the *identities* of the programs that made them:
+`{program: numerics}` for the input's program and every subprogram it names (a program
+named with several specs has its identities joined by `;`). Every output says which
+code made it in `execution.identities`, with or without a store. A stored run
+is reused only when its identities are those of the programs that would run now; a
+stored failure only when the input determines it (kind `input`, `unsupported` or
+`convergence`, or `program` with such a cause), never one of the machine or the moment
+(`resource`, `timeout`, `environment`, ...). A stopped run is never stored. `rerun=True` always runs, past a stored
+failure too; `tags` go onto every key, cache hits included. Every output returned with a
+store names its run, computed or hit, in `execution.store_run` (`"<key>/<run>"`), so a
+network or a report can cite the exact run and read it back with
+`store.get(key, run=...)`. A store implements `key`, `get`, `put` and `tag`
+(`qccompute.runner.Store`); qcstore is one. Rerunning a workflow from a store is all
+cache hits only when it asks for the same inputs; a workflow whose choices depend on
+timing keeps its own decision state (see
+[Dynamic workflows](examples/dynamic_workflows.md)).
 
-Executables: a program runs from the first of `compute(..., executables={"orca":
-"/opt/orca/orca"})`, the environment variable `QCCOMPUTE_<PROGRAM>_EXECUTABLE` (for
-example `QCCOMPUTE_ORCA_EXECUTABLE`), or the codec's command found on `PATH`. Use this
-when the program is not on `PATH`, or when another program shadows its name, such as
-the GNOME screen reader named `orca`. Child calculations use the same mapping. The
-program always runs by its absolute path, which ORCA requires for parallel runs, and
-that path is recorded in `output.execution.extras["executable"]`.
+## One calculation at a time, as futures
 
-Timeouts: `compute(..., timeout=3600)` kills any program that runs longer, together
-with every process it started, and raises `ProgramTimeoutError` with partial results
-attached. The limit applies to each program run, including geomeTRIC's child
-gradients; Python callables themselves are not interrupted.
+`qccompute.submit(inp)` (and `Runner.submit`) starts a calculation and returns a
+`concurrent.futures.Future` of its output, for workflows whose next step depends on the
+last: per reaction, the IRC starts as soon as its transition-state search ends, with no
+stage barriers. Submitted calculations start in the order submitted, as the runner's
+threads allow: set `threads` (usually 1) on each to run many at once
+([Threads](threads.md)). A stored result resolves at once, and `future.cancel()` ends a
+calculation even while it runs. See [Dynamic workflows](examples/dynamic_workflows.md).
 
-Logs: subprocess callbacks stream `(all_logs, new_logs)` with a final callback for
-remaining output; `update_interval` is a minimum spacing. Python callbacks receive the
-captured log once after invocation. Logs remain attached on failure even with
-`collect_logs=False`.
+A program that is not thread-safe (qcopt) runs one calculation at a time per process.
+The runner warns the first time one waits for its turn; `Runner(isolation="process")`
+runs them side by side in worker processes.
 
-Child calculations: geomeTRIC drives gradients through an injected callback, with a
-separate workspace and `ProgramOutput` for each child. Child codecs are resolved by
-program name. `propagate_wfn=True` keeps each child's wavefunction files and calls the
-child codec's `propagate_wfn(output, input_data)` so the next step starts from them.
+## Progress
 
-Exceptions: `CodecNotFoundError`, `InputError`, `ProgramNotFoundError`, and
-`ExternalProgramError` all derive from `QCComputeBaseError` and carry `.prog_output`.
-The older `AdapterNotFoundError`/`AdapterInputError` names remain as aliases for one
-release.
+Programs can report what they are doing while they run (qcopt: one event per step).
+Pass a callable to see it:
 
-### TeraChem FE/PBS dependency
+```python
+def show(event):  # {"event": "step", "step": 12, "energy": -76.4, "path": ["qcopt"]}
+    print(event["path"], event)
 
-The optional FE/PBS codecs require a separate `tcpb` migration. Published
-`tcpb==0.16.0` constructs the old qcdata models internally, so requests report an
-explicit dependency error (or return a failed `ProgramOutput` when `raise_exc=False`).
-Standard TeraChem subprocess execution is independent of this limitation.
+qccompute.compute(inp, progress=show)
+```
+
+Each event is a small JSON object of the program's own, with `path` added: the program
+names from your input down to the one that emitted it, so a subprogram's events
+(`["neb", "qcopt"]`) arrive too. The callable may be called from several threads
+at once. Stored outputs emit nothing, and nothing is stored. A program in a worker
+process streams its events back. `submit` and `session` take `progress=` too; to tell a
+list's inputs apart, submit each with its own callable.
+
+A submitted calculation can be stopped at its next step, keeping what it reached:
+
+```python
+future = qccompute.submit(search, progress=show)
+...
+qccompute.stop(future)  # the program sees ctx.stop_requested() and ends there
+try:
+    future.result()
+except qcdata.ProgramError as e:  # kind "stopped", with the frames reached so far
+    frames = e.output.results.frames
+```
+
+A stopped output is never stored. `future.cancel()` instead ends the calculation and
+discards it.
+
+## Programs
+
+A program is an object implementing `qccompute.program.Program`: its `name`, `version()`,
+`capabilities()`, the JSON Schema of its settings and of its record, `plan(inp)` (a dry
+run that validates and resolves every `"auto"`) and `compute(inp, ctx=None)`. Programs
+register an instance under the `qccompute.programs` entry points:
+
+```toml
+[project.entry-points."qccompute.programs"]
+myprogram = "mypackage.qc:program"
+```
+
+The protocol is structural, so a program without subprograms imports only qcdata. A
+program with subprograms runs them through `ctx.compute` and `ctx.session`; called
+directly (`ctx is None`), it returns `qccompute.compute(inp)`. See
+[Programs and sessions](api/program.md) and [the program interface](design/program-interface.md).
+
+For models and scripts, `FunctionProgram` makes a program of plain functions:
+
+```python
+{!examples/function_program.py!}
+```
+
+`qccompute.testing.check_program(program, inputs)` checks a program against the contract
+(schemas, plans, typed errors, the thread count, sessions, batches);
+`qccompute.testing.toy` is a complete example program.
+
+## External programs
+
+`qccompute[qccodec]` installs qccodec, which registers xtb, CREST, ORCA, Psi4, TeraChem,
+DFTB+, geomeTRIC, Sella, tblite and machine-learned potentials as programs. Their keywords
+are the programs' own; each [program page](https://qccodec.docs.afh.org/programs/)
+explains the mapping. A program that is not on `PATH` is found with
+`QCCODEC_<PROGRAM>_EXECUTABLE`. A `qcdata.FileInput` (a command and its files) runs
+under qccodec's `files` program and returns every file the command wrote; see
+[File Input](examples/file_input.md).
+
+## Workers
+
+`python -m qccompute.serve PROGRAM` hosts a program in its own process, over JSON lines on
+stdin and stdout (or a Unix socket); `qccompute.worker.Worker` is its client, with the
+same `compute`, `plan` and sessions as the program in process. The runner uses them for
+programs that cannot share a process and for `isolation="process"`.
+
+A program in a worker runs its subprograms back in your process: geomeTRIC's gradients
+can come from a `FunctionProgram` you registered in your script, and they share the
+calculation's thread count. Large arrays (Hessians, wavefunctions) cross between the processes as
+`.npy` files rather than as text.

@@ -1,4 +1,10 @@
-The `File Input` can be used as an escape hatch when you want to perform a calculation type that is not yet supported by `qccompute` or use a program not yet supported by `qccompute`. You can submit the program's native input files to the program and `qccompute` will execute the program, collect all the outputs, and return them to you. These calculations could be an MD run, some unique calculation type not supported by `qccompute`, or any arbitrary command you can send to any command-line executable program.
+# File Input
+
+A `qcdata.FileInput` is a command line and the files it needs: an escape hatch for a
+program qccodec does not support yet, or a calculation its codec does not cover (an MD
+run, a script). qccompute runs it under qccodec's `files` program
+(`pip install qccompute[qccodec]`) in a scratch directory and returns every file the
+command wrote in `results.files`, with its output in `logs`.
 
 ```python
 {!examples/file_input.py!}

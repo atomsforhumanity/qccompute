@@ -4,14 +4,15 @@ Instructions for AI coding agents (and a quick reference for people) working in 
 
 ## This package
 
-`qccompute` only executes: it resolves a `qccodec.Codec`, runs the native invocation (`run_subprocess` or `run_python`), decodes, collects files, and builds the `ProgramOutput`. It must never branch on a program name or contain program-specific logic; that belongs in `qccodec`.
+`qccompute` runs programs: the Program protocol (`qccompute.program`), the `Runner` (`qccompute.runner`: finding, planning, placing and running programs, resources, lists, sessions, the store hook), and worker processes (`qccompute.serve` and its client `qccompute.worker`). It depends on qcdata (and threadpoolctl, to hold calculations' BLAS and OpenMP pools at their threads) and must never import qccodec, branch on a program name, or contain program-specific logic; external programs belong in `qccodec`, which registers them as programs. Design: `docs/design/program-interface.md`.
 
-- Failures keep partial results: decoding always runs, exceptions carry the completed `ProgramOutput`, and the first failure stays primary, except that a codec's explanation of a plain nonzero exit (`qccodec.CalculationError`) leads, with the exit status kept as an additional failure.
-- Tests use stand-in programs. Integration tests with real programs live in qccodec (`tests/integration/`), which uses qccompute as a test-only dependency.
+- Failures raise `qcdata.ProgramError` with the failed output as `output`; lists and session `compute_many` run everything, then raise one group holding every result in order.
+- The runner never changes a number by itself; keep the in-process path cheap (it is measured: about 10 us over a direct call of a `FunctionProgram` with a `version`, planning, identities and holding the BLAS pools included).
+- Tests use stand-in programs (`qccompute.testing.toy`, `tests/serve_programs.py`). Integration tests with real programs live in qccodec (`tests/integration/`), which uses qccompute as a test-only dependency.
 
 ## The qc* suite
 
-Dependencies point one way: qcref -> qcdata -> {qcinf, qccodec} -> qccompute. Never import a package that sits later in that order, and keep changes that span packages in separate pull requests, released in that order.
+Dependencies point one way: qcref -> qcdata -> qccompute -> qccodec. qccodec depends on qccompute and registers its programs with it through entry points; qccompute reaches qccodec only through the optional extra `qccompute[qccodec]` and never imports it. Never import a package that sits later in that order, and keep changes that span packages in separate pull requests, released in that order.
 
 ## Commands
 

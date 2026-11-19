@@ -1,0 +1,523 @@
+# The program interface
+
+How qccompute runs programs: the protocol a program implements, the context a runner
+gives each calculation, sessions, failures, the runner, the store, and worker processes.
+This is the design as built; the API pages document each name.
+
+## The layers
+
+```
+workflows, apps, analysis        read and write qcdata; call qccompute
+─────────────────────────────────────────────────────────────────────────
+qcdata     data only: inputs, outputs, Frame, Request, Accuracy, ProgramError,
+           conventions, the calculation key, the save format
+qccompute  the Program protocol (qccompute.program) and the Runner: discovery,
+           planning, placement, resources, lists, sessions, workers, the store hook
+─────────────────────────────────────────────────────────────────────────
+programs   implement the protocol; a program without subprograms imports only qcdata
+qccodec    external programs (xtb, ORCA, Psi4, CREST, ...) as programs: input files,
+           subprocesses, output capture, file collection, parsers
+```
+
+qccompute depends on qcdata only. qccodec is the optional add-on for external programs
+(`pip install qccompute[qccodec]`) and does not import qccompute to run them.
+
+## Programs
+
+There is one kind of program. A program maps one `ProgramInput` to one `ProgramOutput`
+and may have subprograms (`ProgramSpec`s in its input) that it runs through the runner.
+Running many programs, with logic between them, is a workflow: plain Python.
+
+A program registers an instance under the `qccompute.programs` entry point group, or in a
+process with `qccompute.register_program` (a registered program that runs in a worker
+reaches it by its module attribute, else pickled; see **Workers**):
+
+```toml
+[project.entry-points."qccompute.programs"]
+myprogram = "mypackage.qc:program"
+```
+
+The object implements `qccompute.program.Program`, structurally:
+
+| member | what it is |
+|---|---|
+| `name` | the program's name, as in `ProgramInput.program` |
+| `version()` | the program's version |
+| `capabilities()` | calctypes, methods with their calctypes, `sessions`, `batches`, `in_process`, `thread_safe`; a `Capabilities` or a plain mapping |
+| `settings_schema(calctype)` | the JSON Schema of `keywords` and of `resolved.settings` |
+| `record_schema(calctype)` | the JSON Schema of `ProgramOutput.record` |
+| `plan(inp)` | a dry run: validates (kind `input` with a did-you-mean for unknown keys), resolves every `"auto"`, and says what the calculation needs (`Resources`: GPUs; memory, informational) |
+| `compute(inp, ctx=None)` | runs the calculation; returns the successful output or raises `ProgramError` |
+| `numerics(spec)` (optional) | a string that changes whenever results for an unchanged input may change; the version by default |
+| `open_session(inp, ctx=None, calctypes=None)` (optional) | a session, usually the program's own session class |
+| `compute_batch(inputs, ctx=None)` (optional) | many inputs at once; one output per input, in order, failures in place |
+
+A `qcdata.FileInput` that is not a `ProgramInput` (a command with its files, whose
+`program` is the command) runs under the program registered as `files`, the one name the
+protocol reserves; qccodec registers it, and its numerics identity is the run's identity
+(`{"files": ...}`).
+
+What a program returns for `capabilities` and `plan` may be a plain mapping, which
+qccompute validates (`capabilities_of`, `plan_of`): it is the same document a program's
+command line prints and its worker sends. `numerics` takes the spec it would run (the
+input, or a subprogram's `ProgramSpec`), so a program of several methods can give each
+its own identity: a numerics epoch, an executable's sha256, a model's checksum.
+
+`qccompute.program.FunctionProgram(name, energy_gradient, hessian=None, *, version=None,
+takes_input=False, settings=None)` is the smallest complete program: functions of the
+positions, in process and thread-safe, taking the shared `threads` and `accuracy`. With
+`takes_input=True` the functions also get the input (structure, model, keywords), and
+`settings=` declares the JSON Schema of the keywords they read, so one program stands
+in for an engine on any molecule. Its numerics identity is a digest of what the
+functions compute with (code, constants, defaults, closures, the globals they read),
+unless `version` names it.
+
+## The context
+
+`compute`'s second argument is a `RunContext`, which only a runner passes, and a runner
+always passes one. It carries the calculation's thread count, GPUs and memory and the way
+to run subprograms:
+
+- `threads`: the calculation's thread count: its `threads` keyword, else its caller's
+  whole count (1 when it is given GPUs), as [Threads](../threads.md) explains. The program
+  uses at most that many; a larger request of its own is a `resource_capped` warning.
+  `gpus`: as many whole GPUs as its plan asks for (`plan.resources.gpus`), of the
+  runner's or the parent's: a program whose subprograms use GPUs plans theirs and passes
+  them on. While the program runs, the runner holds the process's BLAS and OpenMP pools
+  at its threads, or at one thread when its input names subprograms (below, **Thread
+  pools**).
+- `device_ordinals()`: the granted GPUs as this process's CUDA device ordinals, so every
+  program maps a grant alike. `gpus` names them as `CUDA_VISIBLE_DEVICES` does (indices
+  or `GPU-`/`MIG-` UUIDs). When the process's `CUDA_VISIBLE_DEVICES` is set, a GPU's
+  ordinal is its position there: a worker is started with `CUDA_VISIBLE_DEVICES` set to
+  its grant, so its GPUs are 0, 1, ...; in the runner's process GPU `"2"` of
+  `CUDA_VISIBLE_DEVICES=1,2` is ordinal 1. When it is unset, an index is its own ordinal
+  and a UUID is the index `nvidia-smi` gives it. `nvidia-smi` numbers GPUs in PCI bus
+  order and CUDA by default may not, so a runner that finds its GPUs with `nvidia-smi`
+  sets `CUDA_DEVICE_ORDER=PCI_BUS_ID` (unless it is set) when it is made, for its
+  process and its workers; a process that starts CUDA before it makes a runner sets it
+  itself. A dispatcher's `CUDA_VISIBLE_DEVICES` is never changed. A granted GPU the
+  process cannot see fails with kind `environment`.
+- `memory_gib`, `device_memory_gib`: host and GPU memory (GiB), as the runner grants it
+  (below, **Memory**).
+- `timeout`: the seconds left. A program that starts processes kills them when it runs
+  out and fails with kind `timeout`; one that loops checks it. The runner kills a
+  program in a worker process that runs out, but cannot stop one in its own process
+  (Python cannot stop a thread): there the limit is the program's to honour, and the
+  runner starts none of its subprograms once it has run out (`ctx.compute`,
+  `ctx.session` and its child sessions' requests fail with kind `timeout`), so a driver
+  stops at its next step. For a hard limit on any program, `isolation="process"`.
+- `plan`: the runner's plan of the input, so the program need not plan again.
+- `progress`: where the program reports what it is doing while it runs, when the
+  caller listens (below, **Progress**); None when nobody does, so a program checks it
+  before building an event.
+- `stop_requested()`: whether the caller asked the calculation to stop (below,
+  **Stopping**). A program that works in steps checks it before each step.
+- `scratch`: a directory, made on first use and removed when the call returns. In a
+  worker it is made in a directory the worker's client gives it (`--scratch`) and
+  removes when it closes the worker, so a calculation whose worker is killed (a
+  timeout, a cancel) leaves no scratch behind. `QCCOMPUTE_KEEP_SCRATCH=1` keeps every
+  one, for debugging; a killed worker's failure then names where its scratch is.
+- `compute(inputs, raise_exc=True)` and `session(spec, structure, threads=, calctypes=)`:
+  subprograms, under the calculation's thread count. They run only programs the calculation's input names,
+  its own and its subprograms' recursively, and every program a subprogram's input
+  names must be among them; another is refused (kind `input`, code
+  `unnamed_subprogram`), so a run's identities cover every program it used. The
+  refusal fails the calculation, whatever the program returns or raises afterwards: a
+  store then reuses it, as any input error, rather than rerunning the work. A program
+  that decides at run time which programs to run (a path method that minimizes its
+  ends) names each in its input's subprograms.
+
+`ctx is None` means a direct call: the program uses its own settings. A program with
+subprograms has no route of its own to programs, so called directly it returns
+`qccompute.compute(inp)`, and the default runner runs it with a context. The runner finds
+programs by name: one that is neither installed nor registered fails with kind
+`environment`, and the message says how to register it.
+
+The runner never changes a number by itself. A grant may change a program's resolved
+choices (a storage scheme picked from the memory granted, a precision from the device);
+the program records each one in `resolved`.
+
+## Progress
+
+`submit`, `compute` and `session` take `progress=`, a callable that
+receives small JSON events while calculations run. Programs choose what to emit (qcopt:
+one event per step); the runner only delivers them, and nothing is stored.
+
+- A program calls `ctx.progress(event)` with a JSON object of its own: plain values,
+  qcdata's units, small enough to send every step (a step number, an energy, the largest
+  gradient component; positions where a live view needs them). A shared key: `event`,
+  a snake_case name of what happened (`step`).
+- The caller receives the event with `path` added: the program names from the
+  caller's input down to the program that emitted it (`["neb", "qcopt"]`). A
+  subprogram's events reach the same callable through its parent's context, so a
+  workflow sees every level of a nested run.
+- The callable may be called from several threads at once (a list's calculations, a
+  program's own threads), and should return quickly. An exception it raises is a
+  warning; the calculation goes on.
+- Store hits emit nothing. A list's events do not say which input they are from:
+  `submit` each input with a callable of its own (`functools.partial(show, i)`) to
+  tell them apart.
+- A program in a worker streams its events to the client while a message is in flight
+  (`ctx.progress` on the wire, below); a program run without a listener has
+  `ctx.progress` None, so an unused progress channel costs nothing.
+
+## Stopping
+
+`runner.stop(future)` (`qccompute.stop` for the default runner) asks a submitted
+calculation to stop at its next step and keep what it reached: Stop & analyze in a live
+view, a search ended on a budget. It is not a cancel, which discards the calculation.
+
+- The program sees the request as `ctx.stop_requested()`, checks it where it can end
+  cleanly (an optimizer: before each step), and ends there: its output is a failure of
+  kind `stopped` with its partial results (a search's frames so far), raised as for any
+  failure. `future.result()` raises `qcdata.ProgramError` with that output.
+- The request covers the whole calculation: its subprograms see it through their
+  contexts, and a program whose subprogram stopped stops too. When a program lets a
+  stopped subprogram's failure escape, the runner fails it with kind `stopped` (not
+  `program`), the subprogram's error as `cause`.
+- In a worker process the request reaches the program through a file named in the
+  message's context (`stop_file`), which the client creates while the message is in
+  flight: one `stat` per check, and never the wrong message. The worker is asked, not
+  killed, and serves on.
+- A calculation asked before it starts stops at its first step; a program with no steps
+  runs to its end. The runner never stores a stopped output, and a store never reuses
+  one.
+
+## Failures
+
+A failed calculation raises `qcdata.ProgramError`, from `compute` as from sessions. Its
+`error` is an `ErrorInfo` (`kind`, `message`, an optional `code`, and for a failed
+subprogram the subprogram's error as `cause`), and its `output` is the whole failed
+output: partial results, logs, record, traceback. A program whose result is one output
+raises `ProgramError(out.error, output=out)`; when a program raises without one, the
+runner attaches the output it built. Any other exception from a program is a bug: the
+runner reports it as kind `internal`, caused by the original exception.
+
+The runner turns failures into failed outputs only where it needs data:
+
+- a list runs every calculation, then raises `qcdata.ProgramErrors`, an `ExceptionGroup`
+  of the `ProgramError`s whose `results` holds every output in input order;
+- a session's `compute_many` runs every request, then raises the same group, whose
+  `results` holds every frame in request order (`ProgramErrors.check(frames)`);
+- `compute_batch` returns failures in place, a refused input included;
+- `raise_exc=False` returns failed outputs in place; the store and workers carry failed
+  outputs as data.
+
+A subprogram's failure that a program lets escape fails it with kind `program`, the
+subprogram's name and its error as `cause`; a program that catches it sees the
+subprogram's own error (kind `stopped` when the subprogram stopped on request). The
+runner sets the kinds `timeout` (a deadline) and `environment` (a program not
+installed, a worker that died: code `worker_died`).
+
+## Sessions
+
+The same program and molecule at many geometries, warm-started: what optimizers, IRCs,
+dynamics, path methods and finite differences need. `prog.Session(inp)` is both the
+program's own API and the protocol object; `open_session` returns it.
+
+```python
+with program.Session(inp) as s:            # every calctype the method supports
+    f = s.compute()                         # the input's geometry and calctype
+    f = s.compute(x2)                       # warm start from this lineage's history
+    h = s.compute(x2, calctype="hessian")   # energy and gradient too
+    g = s.compute(y, lineage=("irc", "forward"), seed=["ts"])
+    fd = s.compute_many([Request(positions=p, commit=False) for p in displaced])
+```
+
+- The input pins atoms, charge, multiplicity, model and keywords; its geometry and
+  calctype are a request's defaults. `calctypes=` narrows what may run; a setting that
+  applies to none of them is an input error (`not_applicable`).
+- Results are `Frame`s, with the shared `warm_start` record key.
+- A lineage is any JSON value, keyed by its canonical text (`qcdata.lineage_key`).
+  `seed` lists lineages to start from when the request's own has no history; `commit`
+  (default true) makes a success the lineage's history.
+- `compute_many` runs requests of one lineage in order, each reading its lineage's
+  history as it stands at its place; requests of different lineages may run
+  concurrently, sharing the session's thread count (`ctx.threads` when it opened): the
+  program gives each the count divided by those it runs at once.
+- A failed request raises `ProgramError` with its failed frame; the session and its other
+  lineages go on, and the lineage's history is untouched.
+- Sessions may be called from several threads; the runner serializes those of programs
+  that are not thread-safe.
+
+`qccompute.session(inp)` hands back the program's own session in process, behind a thin
+wrapper that counts each request's threads, so the numbers are exactly those of the
+program used directly. A program in a worker gets a `WorkerSession` over the pipe, with
+the same methods. A program without sessions gets a `ComputeSession`: one stateless
+calculation per request (`warm_start` false), placed like any other calculation (in this
+process, or in the program's workers). Its `compute_many` runs as a list does, sharing
+the session's count: thirteen path images on eight threads run eight at a time. A
+session holds no threads while it is idle; each request takes its count while it runs
+([Threads](../threads.md)).
+
+## The runner
+
+`Runner(threads=None, gpus="auto", isolation="auto")` with `submit` (one input; returns
+a `concurrent.futures.Future` of its output), `compute` (one input or a list) and
+`session`; `concurrent.futures.as_completed` serves submitted futures. Every call takes
+the same options:
+`store`, `timeout`, `rerun`, `tags`, `meta`, `raise_exc` (not `submit`: its future
+raises) and `progress`. `qccompute.compute`, `qccompute.submit` and `qccompute.session`
+are the methods of the default runner: this machine (every core this process may use,
+or `OMP_NUM_THREADS`, and every visible GPU), made on first use, never reconfigured.
+
+`submit` is for workflows whose next calculation depends on the last (per reaction, a
+transition-state search, the IRC from its saddle, then both ends), many at once with no
+stage barriers. A stored output, or an input its program refuses, resolves the future
+before `submit` returns; the others are planned at once and start in the order
+submitted as the runner's threads and GPUs allow, sharing them with `compute` calls and
+sessions ([Threads](../threads.md)). `future.cancel()` cancels a calculation whether it waits or
+runs: one that waits never starts; one running in a worker process is killed with every
+process it started (below, **Workers**); one running in this process ends cooperatively,
+as for a timeout: `ctx.timeout` reads 0 for it and every subprogram, and it starts no
+more subprograms. A cancelled calculation's output is discarded, never stored.
+
+Every input goes one path: find the program, plan it (an input its program refuses
+fails without running), place it (this process, or a worker process for programs with
+`in_process=False` and for `isolation="process"`), call `compute` or `compute_batch`
+with a context, record the execution.
+
+**Execution.** The runner sets each output's `execution`: `wall_time` (the call's),
+`identities`, `threads` when the program left it unset (the threads granted), and the
+environment: `hostname`, `host_cpu`, `host_mem_gib`, `cpu_model` (as the operating
+system names the CPU), `libc` (`glibc 2.39`) and `devices` (the granted GPUs' names, as
+`nvidia-smi` gives them), each read once per process and filled only where the program
+left it unset, so a program that knows better (one that ran elsewhere) sets its own. A
+program granted a GPU that ran on none (a CPU fallback) says `devices=[]`, which stays; a
+worker fills its program's `devices` the same way before the output crosses the pipe.
+The outputs of a batch ran together: each keeps a `wall_time` its program set (a
+lockstep batch knows when each task finished), else gets the batch's, and the batch's
+wall time is always `timings["batch"]`. One whose program left `threads` unset gets its
+own input's part of the batch's threads: its own, scaled down when the batch was capped
+(`max(1, asked × granted // total asked)`). So `wall_time × threads`
+adds up across a batch's outputs, and a store's runs, to what the batch cost, to
+rounding.
+
+**Resources.** qc* never allocates machines or decides what runs when: a dispatcher (a
+batch system, Kubernetes) gives the process its cores, memory and GPUs, and workflows
+choose what to run. A runner gives each calculation one thread count and never runs more
+than its own count at once; whatever holds a count (the runner, a running calculation, a
+session) never has more than it running under it. [Threads](../threads.md) has the rules
+and the recipes. GPUs are whole: each goes to one calculation at a time. The inputs of a
+list that go to a program with batches are one calculation of the list, with the sum of
+their threads and the most GPUs any of them asks for; the program divides them.
+
+**Memory.** There are no memory estimates and no memory scheduling: a plan's
+`memory_gib` and `device_memory_gib` are informational, recorded and never scheduled.
+What the runner grants, in `ctx`:
+
+- *Host memory.* A calculation's share of its caller's: of the runner's for a top-level
+  calculation or session (its threads' share or its GPUs', whichever is larger), of its
+  parent's for a subprogram, of its session's for a request.
+- *GPU memory.* Each granted GPU's, at most a subprogram's parent's.
+- *Keywords.* The input's `memory_gib` or `device_memory_gib` replaces either, at most
+  what its caller has. A batch's single `ctx` gets the shares, not its inputs' keywords.
+  Like `threads`, these resource keywords are what a calculation asks for, and they are
+  left out of its key.
+- Nothing is rounded: a keyword reaches the program as given, a share as computed, so a
+  small grant is never zero and a keyword at the grant is never "capped" by rounding.
+
+**Placement.** A program that may share the process runs in its threads; one that is not
+thread-safe takes turns on a lock per program. The first time one of its calculations
+waits for its turn (threads calling `compute`, futures, a list), the runner warns once
+(`RuntimeWarning`) that they run one at a time and that `isolation="process"` runs them
+side by side. Worker processes are kept for the next
+call until the runner closes, in pools. A worker sees exactly the GPUs granted to it
+(`CUDA_VISIBLE_DEVICES`, empty for none). Workers are pooled by program and GPUs,
+whatever the threads of the calls they serve, because a program's state (a model
+loaded, a GPU context) is costly to repeat: a list's batches of different sizes, and
+calls with different `threads`, share the program's workers rather than starting one
+each. Each call's threads reach the program in `ctx.threads`, which it applies to that
+call (a subprocess's `OMP_NUM_THREADS`, `torch.set_num_threads`); a worker's numerical
+libraries start with the threads of the call that started it (`OMP_NUM_THREADS` and the
+others, unless set), which sizes the pools they make when they load; each call's pools
+are then held at its own threads, as in process (**Thread pools**). On GPUs one
+worker serves every calculation and session of a program on those GPUs, whose work
+queues on the device anyway; without GPUs, at most as many as fit side by side in the
+runner's threads at a call's threads. A call or session takes an idle
+worker of its pool, else starts one while the pool has room, else shares the worker with
+the fewest users, taking turns on it. A worker that dies or is killed for a timeout ends
+the sessions it hosts.
+
+**Thread pools.** Multithreaded BLAS gives different last bits at different thread counts,
+so the runner holds the numerical libraries loaded in a process (OpenBLAS, MKL, BLIS,
+FlexiBLAS and the OpenMP runtimes, as `threadpoolctl` finds them) at a calculation's
+threads around each call of its program: `compute`, `compute_batch`, a session's opening
+and each of its requests, in process and in workers alike. A calculation run alone thus
+gives the same numbers in process and in a worker, whatever the caller's environment and
+whichever call started a pooled worker.
+
+- A count that belongs to the calling thread (OpenMP's, MKL's, OpenBLAS's on OpenMP) is
+  set on the thread that calls the program and restored after.
+- A count that belongs to the process (OpenBLAS on its own threads, BLIS, FlexiBLAS) is
+  set, and on return the call gives back what it found: a subprogram holds its own
+  threads and its parent gets its own back. In process, calculations running at once
+  with different threads share these counts (the one started last holds them); for
+  bitwise reproducibility across mixed thread counts, use `isolation="process"`. Once no
+  calculation runs, every count is back where the caller had it.
+- A calculation that runs subprograms (its input names some) holds its own pools at one
+  thread, and its count goes to its subprograms, which hold theirs while they run. So the
+  threads in use, children included, stay within the count: a parent's pools at the
+  whole count kept threads busy beside its children, because an idle OpenBLAS thread
+  spins for about 0.1 s after each call. On 8 threads, a qcopt optimizer's own steps
+  woke 7 such threads between gradients that axtb computed on all 8: 15-16 runnable
+  threads on 8 cores, and 38 submitted TS searches, IRCs and end minimizations took
+  80-140 s instead of 24-26 s.
+- A parent may raise its own pools up to its count for heavy linear algebra of its own,
+  only while none of its subprograms runs, lowering them again before the next one
+  starts and before it returns.
+- A session's requests are held at its count, in process (the runner's wrapper around
+  the program's own session) and in workers.
+
+## The store
+
+A store files runs by two identities, kept apart:
+
+- *which calculation*: the key, `qcdata.calculation_key(inp)`, the input as given;
+- *which code produced the numbers*: the run's identities, `{program: numerics}` for the
+  input's program and every subprogram it names, recursively. A calculation runs no
+  program its input does not name (`ctx` refuses it), so these are every program
+  that made the numbers. A program named with
+  several specs (g-xTB gradients with GFN2 Hessians, one program) has its distinct
+  identities sorted and joined by `;` (`"gfn2:5;gxtb-2.0.1:7"`). `given` results add no
+  identities: they are data in the input, so already in the key.
+
+With `compute(..., store=store)` the runner computes the input's identities from the
+programs it would run now, looks the key up with them, and returns a stored run only if
+it was made with exactly those identities: a success always, a failure only when the
+input determines it (kind `input`, `unsupported` or `convergence`, or `program` with such
+a cause; never `resource`, `backend`, `environment`, `timeout`, `numerical` or
+`internal`). Misses run, and every run is stored with its identities, except a stopped
+one (kind `stopped`, or failed because a subprogram stopped): it is where the caller
+chose to end the run, not what the input gives. Every output the runner returns carries the identities of the programs
+that made it in `execution.identities`, with or without a store, so an output read back
+says which code made it; a stored run keeps the ones it was made with. `rerun=True`
+always runs; `tags` go onto every key, cache hits included;
+`meta` goes with each run. An output whose record says `warm_start` true depends on
+history, not only on its input, and is never stored. Every output a runner returns with
+a store names its run, `execution.store_run = "<key>/<run>"`: a hit as the store marks
+it, a fresh run once it is stored. So a result is cited exactly, and read back later
+with `qcstore.Store.get(key, run=...)` even after a newer run became the preferred one.
+Concurrent misses of one key each compute, and the store keeps every run.
+
+The runner needs four methods of a store (`qccompute.runner.Store`): `key(inp)`,
+`get(key, identities)`, `put(output, tags=, meta=)` (which files the run under
+`output.execution.identities`) and `tag(key, *tags)`.
+
+## Workers
+
+`python -m qccompute.serve PROGRAM` hosts one program's calculations and sessions in its
+own process, so a crash ends the worker and not its caller, and a program keeps its state
+between calls. `qccompute.worker.Worker` is its client.
+
+- **Which program:** `PROGRAM` is an installed program's name, a `module:attribute`, or
+  `pickle:PATH`. A runner names an installed program (the object its entry point
+  names) by its name, a registered one by the module attribute that holds it, and any
+  other registered instance (one made in a script) by a pickle of it, written once per
+  process to a private directory. A pickle stores classes and functions by reference,
+  so they must be importable in the worker; one that holds a lambda, a closure, or
+  anything defined in the script being run cannot be rebuilt there, and running it in
+  a worker fails with kind `environment`, saying so.
+
+- **Transport:** stdin and stdout, one JSON message per line, one client per connection;
+  `--socket PATH` serves a Unix socket on the same framing. `--scratch DIR`: the
+  calculations' temporary scratch directories are made in `DIR`, which a `Worker`
+  makes for its worker and removes when it closes it, killed or not.
+- **Hello:** the first line, `{"protocol": 1, "program", "version", "capabilities",
+  "array_files": true, "calls": true}`.
+- **Envelope:** every message has an `id`; replies are `{"id", "ok": true, "result"}` or
+  `{"id", "ok": false, "error"}`. `ok: false` is for the message itself; a failed
+  calculation is a result (a failed output or frame).
+- **Ops:** `open`, `compute` (a session's request, or a one-off `input`), `compute_many`,
+  `compute_batch`, `reset`, `plan`, `close`, `lineages`, `options`. End of input closes
+  every session.
+- **Options:** a client turns on what the hello offers with `options {array_dir,
+  calls}`, per connection; a plain JSON-lines client sends nothing and gets neither.
+- **Large arrays:** with `array_dir` (workers are local), an array field over 1 MiB, in
+  a message either way, crosses as a `.npy` file in that directory, with qcdata's pointer
+  `{path, shape, dtype, sha256}` in its place, as in a saved model; the reader checks it
+  and deletes the file. A 1200 x 1200 Hessian's output crosses in 20 ms instead of
+  0.85 s and a 28 MB line.
+- **Subprograms run in the worker when they can, else in the client:** with
+  `calls: true`, a subprogram call of the worker's program (`ctx.compute`,
+  `ctx.session`) runs in the worker itself, under the calculation's thread count, when it can
+  run there exactly as the client would run it: every program its input names is found
+  in the worker with the identities the client gave for the calculation (the wire
+  context's `identities`), may run in process, and its plan uses no GPU. So qcopt's
+  axtb gradients cost no round trip: one caffeine optimization took 10.9 ms per
+  gradient instead of 12.8-15.0 through the client, and 16 submitted at once on 8
+  threads 1.0-1.2 s instead of 1.5-2.0 s, with identical numbers. Every other call
+  comes back to the client as a call line, `{"call", "op", ...}` with the ops above,
+  which the client answers in any order (`{"call", "ok", "result"}`) while the message
+  is in flight: a program registered only in the client, one that needs a worker of its
+  own, a GPU calculation; such a call takes its threads from the calculation's count in
+  the worker before it goes. A nested worker is started by the client, never by a worker.
+  Either way the count, the time left, a stop, progress (paths compose: the worker's
+  `["axtb"]` under the client's `["qcopt"]`) and the check that the input names the
+  program apply alike. Without `calls`, subprograms run in the worker's own default
+  runner. A list of subprograms runs in the worker only if all of it can.
+- **Context on the wire:** `{threads, memory_gib, device_memory_gib, timeout,
+  scratch_dir, progress, stop_file, identities}`; the GPUs are fixed when the worker
+  starts. `identities` are those of the programs the client would run for the
+  calculation (`{program: numerics}`), against which the worker checks its own before
+  running a subprogram itself.
+  `stop_file` names a file whose existence asks the calculation to stop
+  (`ctx.stop_requested()` checks it): the client creates it for `runner.stop`, while the
+  message is in flight, so a request never reaches another message. With
+  `progress: true` (the client's caller listens) the program's progress events stream
+  back as lines `{"id", "progress": event}` naming the message in flight (for a
+  session, its request's message); the client hands each to the caller's callable.
+- **Numbers:** shortest round-trip decimals, so positions and results cross bit for bit;
+  no NaN or infinity on the wire.
+- **Hygiene:** stdout carries protocol lines only; the worker points file descriptor 1
+  at stderr, because native libraries print.
+- **Crashes:** a dead worker is kind `environment`, code `worker_died`, with the exit
+  status and the end of its stderr. After a GPU fault that poisons the device context
+  (code `device_lost`) the worker answers, then exits 3. A runner kills a worker whose
+  calculation exceeds its timeout or is cancelled, with every process it started,
+  however deep and in whatever session (qccodec runs each external program in a
+  session of its own): the tree is found through `/proc`, frozen, then killed. Closing a
+  runner kills a worker still running a calculation rather than waiting for it.
+
+## External programs
+
+qccodec registers each external program as a program (`qccodec.CodecProgram`). An adapter
+encodes the input, runs the command in the context's scratch directory with its output
+captured and the context's deadline, decodes what it wrote, and raises `ProgramError`
+with the failed output and the logs when it fails.
+
+- An input that requests threads (`threads`, or the program's own: ORCA `pal`, Psi4
+  `-n`, CREST `threads`) runs with its request; one that requests none runs with the
+  calculation's count (xtb with 1, its own cap), through the program's own setting or
+  `OMP_NUM_THREADS` and the other numerical libraries' variables. A GPU program sees its granted GPUs in
+  `CUDA_VISIBLE_DEVICES`.
+- Codecs that call a Python library take over the process's output streams and working
+  directory while they run, so they are `in_process=False` and run in workers.
+- geomeTRIC and Sella run their gradient subprograms through `ctx.compute`, which from a
+  worker comes back to the runner's process.
+- An external program's `numerics` is the sha256 of the executable that would run; a
+  library's, its version.
+- A `qcdata.FileInput` runs under the `files` program and returns every file the command
+  wrote.
+
+## Cost
+
+On one core, `qccompute.compute` adds about 10 µs to a direct call of a `FunctionProgram`
+with a `version` (finding it, planning it, its context, recording the execution and the
+identities, and about 2.4 µs of it holding numpy's OpenBLAS at the calculation's
+threads and giving the count back); a `FunctionProgram` without a
+`version` adds about 6 µs more, the digest of its functions that is its identity. The
+runner hands its plan on in `ctx.plan`, so a program need not plan twice. Through qccodec, a trivial external
+command takes about 0.26 ms more than launching it in a fresh directory by hand. A worker
+round trip for the toy program costs about 0.14 ms (JSON on a pipe), and starting a
+worker about 0.15 s plus the program's own imports, once.
+
+## Conformance
+
+`qccompute.testing.check_program(program, inputs)` runs a program's own small inputs and
+checks the contract: schemas that validate, plans that reproduce themselves from
+`resolved.settings`, unknown keys refused with kind `input` by `plan` and `compute`, the
+thread count honoured, standard fields in atomic-unit shapes, energy components that add
+up, and for sessions and batches, agreement with plain computes, refusal of other
+calctypes, and a session that survives a failed request.

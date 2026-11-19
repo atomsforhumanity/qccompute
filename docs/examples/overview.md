@@ -1,41 +1,16 @@
-Calculations are run by calling the `qccompute.compute()` function with the relevant arguments and keywords like this:
+# Examples
 
-```python
-from qcdata import Structure, ProgramInput
-from qccompute import compute
+- [File Input](file_input.md): run any command with its files and get every file it
+  wrote back.
+- [Many calculations at once](many_calculations.md): lists, failures, outputs as they finish, a
+  runner of your own.
+- [Dynamic workflows](dynamic_workflows.md): `submit` and futures, per reaction a
+  transition-state search, its IRC and both ends, many reactions at once with no stage
+  barriers.
+- [Sessions, lineages and seeds](sessions.md): which programs gain from a session, and
+  a worked example of lineages, seeds, commits and resets.
+- [A program from functions](function_program.md): `FunctionProgram`, the smallest
+  complete program.
 
-# Create the Structure
-structure = Structure(
-    symbols=["O", "H", "H"],
-    geometry=[  # type: ignore
-        [0.0, 0.0, 0.0],
-        [0.52421003, 1.68733646, 0.48074633],
-        [1.14668581, -0.45032174, -1.35474466],
-    ],
-)
-
-# Define the program input
-prog_input = ProgramInput(
-    program="terachem",
-    structure=structure,
-    calctype="energy",
-    model={"method": "wb97xd3", "basis": "def2-svp"},
-    keywords={"purify": "no", "restricted": False},
-)
-
-# Run the calculation; will return a ProgramOutput or raise an exception
-result = compute(prog_input, collect_files=True)
-```
-
-The `compute` function resolves a codec and executes its native invocation. It also accepts an explicit local `codec=`. The available arguments are:
-
-::: qccompute.main.compute
-
-## Examples for each program
-
-Complete, runnable scripts for every program and calculation type, with every common
-option shown and the program's quirks explained, are on the
-[qccodec program pages](https://qccodec.docs.afh.org/programs/). The
-examples here cover qccompute itself: running a program from your own input files and
-defining a codec for a program qccodec doesn't support.
-
+Every external program has a runnable example script per calculation type in
+[qccodec's documentation](https://qccodec.docs.afh.org/programs/).

@@ -83,7 +83,7 @@ Never commit `[tool.uv.sources]` entries that point qc* packages at local paths 
 ## Documentation
 
 The site is built with MkDocs from `docs/`, the package's docstrings, and the
-program-agnostic scripts in `examples/`. Examples for specific programs live with their
+program-agnostic scripts in `examples/`. Examples for external programs live with their
 codecs in [qccodec](https://qccodec.docs.afh.org/programs/).
 
 ```sh

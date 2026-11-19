@@ -1,14 +1,14 @@
 [project]
 name = "qccompute"
-version = "0.22.1"
-description = "A package for operating Quantum Chemistry programs using qcdata standardized data structures. Compatible with TeraChem, psi4, QChem, NWChem, ORCA, Molpro, geomeTRIC and many more."
+version = "0.23.0"
+description = "Run quantum chemistry programs on qcdata inputs: one input or many, in process or in workers, with an optional calculation store. External programs come with qccompute[qccodec]."
 authors = [{ name = "Colton Hicks", email = "github@coltonhicks.com" }]
 requires-python = ">=3.11"
 readme = "README.md"
 license = { file = "LICENSE" }
 dependencies = [
-    "qccodec>=0.21.0,<0.22",
-    "qcdata>=0.23.1,<0.24",
+    "qcdata>=0.24.0",
+    "threadpoolctl>=3.1",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -26,9 +26,8 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
-geometric = ["qccodec[geometric]>=0.21.0,<0.22"]
-tcpb = ["qccodec[tcpb]>=0.21.0,<0.22"]
-all = ["qccodec[geometric,tcpb]>=0.21.0,<0.22"]
+qccodec = ["qccodec>=0.22.0rc1"]
+testing = ["jsonschema>=4.18"]
 
 [project.urls]
 Homepage = "https://github.com/atomsforhumanity/qccompute"
@@ -46,7 +45,6 @@ dev = [
     "pytest>=8.3",
     "pytest-cov>=6.0",
     "pytest-mock>=3.11.1,<4",
-    "geometric>=1.0.1,<2",
     "types-toml>=0.10.8.20240310,<0.11",
     "qccompute",
     "pre-commit>=4.0",
